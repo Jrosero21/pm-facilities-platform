@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getClient } from "@/server/clients";
+import { listLocations } from "@/server/client-locations";
 
 export default async function ClientDetailPage({
   params,
@@ -13,6 +14,8 @@ export default async function ClientDetailPage({
   const client = await getClient(ctx.activeTenant.tenantId, id);
 
   if (!client) notFound();
+
+  const locations = await listLocations(ctx.activeTenant.tenantId, id);
 
   return (
     <div>
@@ -35,9 +38,27 @@ export default async function ClientDetailPage({
         </div>
       </dl>
 
-      <p className="mt-8 text-xs text-neutral-500">
-        Locations for this client come in Batch 2c.
-      </p>
+      <div className="mt-8 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-900">Locations</h2>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              {locations.length} active {locations.length === 1 ? "location" : "locations"}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <Link href={`/clients/${id}/locations`} className="text-neutral-600 hover:text-neutral-900">
+              Manage
+            </Link>
+            <Link
+              href={`/clients/${id}/locations/new`}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-white hover:bg-neutral-800"
+            >
+              Add location
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
