@@ -10,17 +10,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate && node scripts/fix-mysql-engine.mjs",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "better-auth": "^1.6.11",
     "drizzle-orm": "^0.45.2",
     "mysql2": "^3.22.3",
     "next": "^16.2.6",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

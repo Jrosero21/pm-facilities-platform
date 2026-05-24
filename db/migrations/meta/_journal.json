@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1779646667257,
+      "tag": "0000_swift_cloak",
+      "breakpoints": true
+    }
+  ]
+}
