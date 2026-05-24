@@ -3,6 +3,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { writeAuditLog } from "@/server/audit";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { roles, tenants, tenantUsers, userRoles } from "@/server/schema";
@@ -146,6 +147,13 @@ export async function setActiveTenant(tenantId: string): Promise<boolean> {
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
+  });
+  await writeAuditLog({
+    tenantId,
+    userId: ctx.user.id,
+    action: "tenant.switched",
+    targetType: "tenant",
+    targetId: tenantId,
   });
   return true;
 }
