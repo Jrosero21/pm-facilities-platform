@@ -18,7 +18,7 @@ No "forgot password" or self-service password change. Locked-out users need admi
 `setActiveTenant()` exists and is validated + audited, but nothing in the UI calls it. Multi-tenant users are pinned to their first active membership until a switcher is built.
 
 ## L-1.6 — better-auth IDs are not UUID v7
-Tables we own use UUID v7 PKs; better-auth generates its own 32-char IDs for `users`/`sessions`/`accounts`/`verifications`. Both fit `varchar(36)`, but those IDs aren't time-sortable. Changing this requires a better-auth ID-generator override and would be a breaking data change — leave as-is unless there's a concrete need.
+Tables we own use UUID v7 PKs; better-auth generates its own 32-char IDs for `users`/`sessions`/`accounts`/`verifications`. Both fit `varchar(36)`, but those IDs aren't time-sortable. Changing this requires a better-auth ID-generator override and would be a breaking data change — leave as-is unless there's a concrete need. This is the trade-off side of the UUID v7 decision; see `02-decisions.md` D-1.3.
 
 ## L-1.7 — MySQL engine must be forced on every migration
 Namecheap MariaDB defaults to MyISAM (no FK support). `scripts/fix-mysql-engine.mjs` rewrites generated migrations to `ENGINE=InnoDB` and runs as part of `pnpm db:generate`. Hand-authored migrations must be passed through it before `db:migrate`. The first run created `__drizzle_migrations` as MyISAM; it was converted to InnoDB manually.
