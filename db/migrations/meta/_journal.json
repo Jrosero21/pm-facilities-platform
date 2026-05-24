@@ -15,6 +15,13 @@
       "when": 1779662670383,
       "tag": "0001_silky_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1779665779036,
+      "tag": "0002_blue_steel_serpent",
+      "breakpoints": true
     }
   ]
 }
