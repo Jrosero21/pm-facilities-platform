@@ -56,7 +56,14 @@ export default async function ClientLocationsPage({
             <tbody className="divide-y divide-neutral-100">
               {locations.map((loc) => (
                 <tr key={loc.id} className="hover:bg-neutral-50">
-                  <td className="px-4 py-2 font-medium text-neutral-900">{loc.name}</td>
+                  <td className="px-4 py-2">
+                    <Link
+                      href={`/clients/${id}/locations/${loc.id}`}
+                      className="font-medium text-neutral-900 hover:underline"
+                    >
+                      {loc.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2 text-neutral-600">{loc.locationCode ?? "—"}</td>
                   <td className="px-4 py-2 text-neutral-600">
                     {loc.addressLine1}, {loc.city}, {loc.stateProvince} {loc.postalCode}

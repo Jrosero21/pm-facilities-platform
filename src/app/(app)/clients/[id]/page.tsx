@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getClient } from "@/server/clients";
 import { listLocations } from "@/server/client-locations";
+import { listClientContacts } from "@/server/client-contacts";
+import { createClientContactAction } from "@/app/(app)/clients/contact-actions";
+import { ContactForm } from "@/components/contact-form";
+import { ContactList } from "@/components/contact-list";
 
 export default async function ClientDetailPage({
   params,
@@ -16,6 +20,8 @@ export default async function ClientDetailPage({
   if (!client) notFound();
 
   const locations = await listLocations(ctx.activeTenant.tenantId, id);
+  const contacts = await listClientContacts(ctx.activeTenant.tenantId, id);
+  const addContact = createClientContactAction.bind(null, id);
 
   return (
     <div>
@@ -56,6 +62,19 @@ export default async function ClientDetailPage({
             >
               Add location
             </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Contacts</h2>
+        <div className="mt-3">
+          <ContactList contacts={contacts} />
+        </div>
+        <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+          <h3 className="text-sm font-medium text-neutral-800">Add a contact</h3>
+          <div className="mt-3">
+            <ContactForm action={addContact} />
           </div>
         </div>
       </div>
