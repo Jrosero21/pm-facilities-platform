@@ -1,6 +1,13 @@
 node_modules/
 .next/
 .env
+.env.*.local
 .env.local
 .DS_Store
 *.log
+*.tsbuildinfo
+/coverage
+/build
+/out
+.vercel
+pnpm-debug.log*
