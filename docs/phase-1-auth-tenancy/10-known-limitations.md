@@ -34,3 +34,9 @@ No GitHub Actions or other CI. Build/lint/typecheck are run manually (`pnpm buil
 
 ## L-1.11 — Setup-time audit rows present
 End-to-end testing produced real `audit_logs` rows (e.g. a curl-based `auth.login`). They are genuine, append-only records and were left in place rather than deleted.
+
+## L-1.12 — Global-role uniqueness not enforced at the database level
+The `user_roles` unique index is on (`user_id`, `role_id`, `tenant_id`). MySQL treats `NULL` as distinct in unique indexes, so multiple rows with the same (`user_id`, `role_id`) and `tenant_id = NULL` are permitted — i.e. a user could be granted the same *global* role (e.g. `super_admin`) more than once. Tenant-scoped grants (non-null `tenant_id`) are correctly de-duplicated by the index. Global-role uniqueness is only guarded in app/seed code (the seed checks for an existing global grant before inserting). A durable fix would need a generated sentinel column (e.g. coalescing `NULL` to a fixed value) or an app-level constraint. See `07-chatbot-knowledge.md` K-1.12.
+
+## L-1.13 — Adding a user is a manual script
+There is no UI or API to create or invite a user (see L-1.1). The only path today is to extend `db/seeds/initial.ts` or run a one-off `tsx` script that calls `auth.api.signUpEmail` and then inserts the `tenant_users` and `user_roles` rows (see `04-admin-sop.md` SOP-1.F). This is a deliberate stopgap until the invitation flow exists: it requires repo access plus the seed env vars, is easy to get wrong (forgetting the membership or role grant), and must not become the long-term mechanism for onboarding users.
