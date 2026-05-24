@@ -61,7 +61,7 @@ The active tenant is resolved server-side, and the cookie is a **hint, not a tru
 4. Otherwise fall back to the user's **first membership with status `active`**.
 5. Otherwise there is no active tenant (→ `requireTenant()` redirects to `/no-tenant`).
 
-A cookie pointing at a tenant the user no longer belongs to (or never did) is ignored — membership is always re-validated against the DB. Switching tenants goes through `setActiveTenant(tenantId)`, which verifies membership before setting the cookie and writes a `tenant.switched` audit row. (No UI switcher exists yet; the mechanism does.)
+A cookie pointing at a tenant the user no longer belongs to (or never did) is ignored — membership is always re-validated against the DB. Switching tenants goes through `setActiveTenant(tenantId)`, which verifies that the user is an active member of the target tenant before it writes the `pm_active_tenant` cookie and records a `tenant.switched` audit row. No UI control calls `setActiveTenant` yet, but the server-side mechanism exists and is the only sanctioned way to change the active tenant.
 
 ## K-1.8 — The server guard surface
 All feature code authorizes through `src/server/auth-context.ts` rather than calling better-auth directly:
