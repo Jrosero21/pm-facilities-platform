@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:generate": "drizzle-kit generate && node scripts/fix-mysql-engine.mjs",
+    "db:generate": "drizzle-kit generate && node scripts/fix-mysql-engine.mjs && node scripts/check-migration-identifiers.mjs",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
