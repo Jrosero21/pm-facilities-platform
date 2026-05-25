@@ -4,6 +4,8 @@ import { requireTenant } from "@/server/auth-context";
 import { getVendor } from "@/server/vendors";
 import { listVendorContacts } from "@/server/vendor-contacts";
 import { listVendorLocations } from "@/server/vendor-locations";
+import { listVendorTradeCoverage } from "@/server/vendor-trade-coverage";
+import { listVendorServiceAreas } from "@/server/vendor-service-areas";
 import { createVendorContactAction } from "@/app/(app)/vendors/contact-actions";
 import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
@@ -25,8 +27,13 @@ export default async function VendorDetailPage({
 
   if (!vendor) notFound();
 
-  const contacts = await listVendorContacts(ctx.activeTenant.tenantId, id);
-  const locations = await listVendorLocations(ctx.activeTenant.tenantId, id);
+  const tenantId = ctx.activeTenant.tenantId;
+  const [contacts, locations, coverage, areas] = await Promise.all([
+    listVendorContacts(tenantId, id),
+    listVendorLocations(tenantId, id),
+    listVendorTradeCoverage(tenantId, id),
+    listVendorServiceAreas(tenantId, id),
+  ]);
   const addContact = createVendorContactAction.bind(null, id);
 
   const fields: { label: string; value: string | null }[] = [
@@ -88,6 +95,24 @@ export default async function VendorDetailPage({
               Add location
             </Link>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-8 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-900">Coverage</h2>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              {coverage.length} {coverage.length === 1 ? "trade" : "trades"} ·{" "}
+              {areas.length} service {areas.length === 1 ? "area" : "areas"}
+            </p>
+          </div>
+          <Link
+            href={`/vendors/${id}/coverage`}
+            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+          >
+            Manage coverage
+          </Link>
         </div>
       </div>
 
