@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { createLocation } from "@/server/client-locations";
-
-export type CreateLocationState = { error: string } | null;
+import type { LocationActionState } from "@/components/location-form";
 
 function isDuplicateKeyError(err: unknown): boolean {
   return (
@@ -18,9 +17,9 @@ function isDuplicateKeyError(err: unknown): boolean {
 
 export async function createLocationAction(
   clientId: string,
-  _prev: CreateLocationState,
+  _prev: LocationActionState,
   formData: FormData,
-): Promise<CreateLocationState> {
+): Promise<LocationActionState> {
   const ctx = await requireTenant();
 
   const name = String(formData.get("name") ?? "").trim();

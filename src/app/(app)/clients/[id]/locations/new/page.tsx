@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getClient } from "@/server/clients";
 import { LocationForm } from "@/components/location-form";
+import { createLocationAction } from "@/app/(app)/clients/location-actions";
 
 export default async function NewLocationPage({
   params,
@@ -33,7 +34,10 @@ export default async function NewLocationPage({
       </div>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">New location</h1>
       <div className="mt-6">
-        <LocationForm clientId={id} />
+        <LocationForm
+          action={createLocationAction.bind(null, id)}
+          cancelHref={`/clients/${id}/locations`}
+        />
       </div>
     </div>
   );

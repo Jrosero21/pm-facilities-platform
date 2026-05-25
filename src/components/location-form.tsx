@@ -2,17 +2,30 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import {
-  createLocationAction,
-  type CreateLocationState,
-} from "@/app/(app)/clients/location-actions";
 
 const inputClass =
   "mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900";
 
-export function LocationForm({ clientId }: { clientId: string }) {
-  const action = createLocationAction.bind(null, clientId);
-  const [state, formAction, pending] = useActionState<CreateLocationState, FormData>(
+// Shared action-state contract for the location form. Owned here (the neutral,
+// domain-agnostic component) so any domain's location action — client, vendor,
+// and beyond — can conform without importing from another domain's folder.
+export type LocationActionState = { error: string } | null;
+
+type LocationAction = (
+  prev: LocationActionState,
+  formData: FormData,
+) => Promise<LocationActionState>;
+
+export function LocationForm({
+  action,
+  cancelHref,
+}: {
+  // Bind the parent id into the create action before passing it in, e.g.
+  // createLocationAction.bind(null, clientId).
+  action: LocationAction;
+  cancelHref: string;
+}) {
+  const [state, formAction, pending] = useActionState<LocationActionState, FormData>(
     action,
     null,
   );
@@ -83,7 +96,7 @@ export function LocationForm({ clientId }: { clientId: string }) {
           {pending ? "Creating…" : "Create location"}
         </button>
         <Link
-          href={`/clients/${clientId}/locations`}
+          href={cancelHref}
           className="text-sm text-neutral-600 hover:text-neutral-900"
         >
           Cancel
