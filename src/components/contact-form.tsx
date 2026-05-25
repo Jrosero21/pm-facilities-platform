@@ -1,10 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
-import type { ContactActionState } from "@/app/(app)/clients/contact-actions";
 
 const inputClass =
   "mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900";
+
+// Shared action-state contract for the contact form. Owned here (the neutral,
+// domain-agnostic component) so any domain's contact action — client, vendor,
+// and later jobs — can conform without importing from another domain's folder.
+export type ContactActionState = { error: string } | null;
 
 type ContactAction = (
   prev: ContactActionState,

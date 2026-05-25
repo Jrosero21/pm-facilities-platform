@@ -47,8 +47,9 @@ export async function createVendorAction(
   const trimOrNull = (key: string) =>
     String(formData.get(key) ?? "").trim() || null;
 
+  let newId: string;
   try {
-    await createVendor({
+    const created = await createVendor({
       tenantId: ctx.activeTenant.tenantId,
       name,
       legalName: trimOrNull("legalName"),
@@ -61,6 +62,7 @@ export async function createVendorAction(
       notes: trimOrNull("notes"),
       createdByUserId: ctx.user.id,
     });
+    newId = created.id;
   } catch (err) {
     if (isDuplicateKeyError(err)) {
       return { error: "A vendor with that code already exists in this tenant." };
@@ -69,6 +71,5 @@ export async function createVendorAction(
   }
 
   revalidatePath("/vendors");
-  // Detail page (/vendors/[id]) lands in batch 3c; redirect there once it exists.
-  redirect("/vendors");
+  redirect(`/vendors/${newId}`);
 }

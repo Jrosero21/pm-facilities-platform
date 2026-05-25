@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
 import { createClientContact } from "@/server/client-contacts";
 import { createLocationContact } from "@/server/location-contacts";
-
-export type ContactActionState = { error: string } | null;
+import type { ContactActionState } from "@/components/contact-form";
 
 function parseContact(formData: FormData) {
   return {
