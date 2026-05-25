@@ -8,3 +8,4 @@ export * from "./trades";
 export * from "./vendors";
 export * from "./vendor-coverage";
 export * from "./vendor-details";
+export * from "./job-reference";
