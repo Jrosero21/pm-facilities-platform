@@ -1,4 +1,5 @@
-// Phase 4 reference seed: priorities (per-tenant) + job_statuses (global).
+// Phase 4 reference seed: priorities (per-tenant) + job_statuses (global) +
+// tenant_job_sequences (per-tenant job_number counter).
 //
 // priorities are TENANT-SCOPED (D-4.1) — each tenant owns its set. The proper
 // home is a "seed on tenant creation" hook once Phase 1's tenant-creation flow
@@ -8,8 +9,13 @@
 // job_statuses are GLOBAL (mirror trades) — seeded once across the whole DB,
 // no tenant dimension.
 //
+// tenant_job_sequences gets one row per tenant (next_number=1) for job_number
+// allocation (D-4.5). This is the eager seed; createJob also lazily ensures the
+// row via ON DUPLICATE KEY as defense-in-depth.
+//
 // Idempotent: priorities keyed on (tenant_id, code); statuses keyed on code
-// alone. Safe to re-run; existing rows left as-is. Codes uppercased. No audit
+// alone; the sequence row is only created if missing (never resets an advanced
+// counter). Safe to re-run; existing rows left as-is. Codes uppercased. No audit
 // rows (bootstrap reference data).
 //
 // Run:
@@ -17,7 +23,12 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db";
-import { jobStatuses, priorities, tenants } from "@/server/schema";
+import {
+  jobStatuses,
+  priorities,
+  tenantJobSequences,
+  tenants,
+} from "@/server/schema";
 
 const TENANT_SLUG = process.env.SEED_TENANT_SLUG ?? "demo";
 
@@ -196,6 +207,21 @@ async function main() {
   console.log(
     `[seed:job-reference] job_statuses (global): ${statusInserted} inserted, ${starterStatuses.length - statusInserted} already present`,
   );
+
+  // tenant_job_sequences: one row per tenant for job_number allocation.
+  // Only created if missing — never resets an already-advanced counter.
+  const existingSeq = await db
+    .select({ tenantId: tenantJobSequences.tenantId })
+    .from(tenantJobSequences)
+    .where(eq(tenantJobSequences.tenantId, tenant.id))
+    .limit(1);
+  if (existingSeq.length === 0) {
+    await db.insert(tenantJobSequences).values({ tenantId: tenant.id, nextNumber: 1 });
+    console.log("[seed:job-reference] tenant_job_sequences: created (next_number=1)");
+  } else {
+    console.log("[seed:job-reference] tenant_job_sequences: already present (left as-is)");
+  }
+
   console.log("[seed:job-reference] done");
 }
 

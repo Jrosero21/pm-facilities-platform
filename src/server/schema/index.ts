@@ -9,3 +9,6 @@ export * from "./vendors";
 export * from "./vendor-coverage";
 export * from "./vendor-details";
 export * from "./job-reference";
+export * from "./jobs";
+export * from "./job-history";
+export * from "./job-details";
