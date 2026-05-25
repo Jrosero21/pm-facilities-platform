@@ -43,6 +43,13 @@
       "when": 1779716047548,
       "tag": "0005_empty_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1779717052913,
+      "tag": "0006_thick_darwin",
+      "breakpoints": true
     }
   ]
 }
