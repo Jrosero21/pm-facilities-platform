@@ -12,3 +12,7 @@ export * from "./job-reference";
 export * from "./jobs";
 export * from "./job-history";
 export * from "./job-details";
+export * from "./dispatch-reference";
+export * from "./dispatch-assignments";
+export * from "./dispatch-comms";
+export * from "./dispatch-presence";

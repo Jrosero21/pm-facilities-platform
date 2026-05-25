@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --env-file=.env.local db/seeds/initial.ts",
     "db:seed:trades": "tsx --env-file=.env.local db/seeds/trades.ts",
-    "db:seed:job-reference": "tsx --env-file=.env.local db/seeds/job-reference.ts"
+    "db:seed:job-reference": "tsx --env-file=.env.local db/seeds/job-reference.ts",
+    "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts"
   },
   "dependencies": {
     "better-auth": "^1.6.11",
