@@ -29,6 +29,13 @@
       "when": 1779711928275,
       "tag": "0003_reflective_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1779713160690,
+      "tag": "0004_rapid_tomorrow_man",
+      "breakpoints": true
     }
   ]
 }

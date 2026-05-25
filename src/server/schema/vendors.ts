@@ -49,9 +49,13 @@ export const vendors = mysqlTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
   (t) => [
-    // Name unique per tenant. vendor_code unique per tenant *when present* —
-    // MySQL treats NULLs as distinct, so many code-less vendors are allowed.
-    uniqueIndex("vendors_tenant_name_unique").on(t.tenantId, t.name),
+    // Vendor name is intentionally NOT unique per tenant (unlike client name):
+    // real-world vendor name collisions are legitimate (e.g. two unrelated
+    // "ABC Plumbing" in different cities). vendor_code is the optional canonical
+    // disambiguator — unique per tenant *when present* (MySQL treats NULLs as
+    // distinct, so many code-less vendors are allowed). The non-unique
+    // (tenant_id, name) index supports sorted listing.
+    index("vendors_tenant_name_idx").on(t.tenantId, t.name),
     uniqueIndex("vendors_tenant_code_unique").on(t.tenantId, t.vendorCode),
     index("vendors_tenant_idx").on(t.tenantId),
     index("vendors_status_idx").on(t.status),
