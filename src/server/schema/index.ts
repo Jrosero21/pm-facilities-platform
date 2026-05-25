@@ -6,3 +6,4 @@ export * from "./clients";
 export * from "./client-details";
 export * from "./trades";
 export * from "./vendors";
+export * from "./vendor-coverage";

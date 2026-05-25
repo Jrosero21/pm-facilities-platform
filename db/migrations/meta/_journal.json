@@ -36,6 +36,13 @@
       "when": 1779713160690,
       "tag": "0004_rapid_tomorrow_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1779716047548,
+      "tag": "0005_empty_captain_cross",
+      "breakpoints": true
     }
   ]
 }
