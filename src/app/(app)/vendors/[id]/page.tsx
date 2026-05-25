@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getVendor } from "@/server/vendors";
 import { listVendorContacts } from "@/server/vendor-contacts";
+import { listVendorLocations } from "@/server/vendor-locations";
 import { createVendorContactAction } from "@/app/(app)/vendors/contact-actions";
 import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
@@ -25,6 +26,7 @@ export default async function VendorDetailPage({
   if (!vendor) notFound();
 
   const contacts = await listVendorContacts(ctx.activeTenant.tenantId, id);
+  const locations = await listVendorLocations(ctx.activeTenant.tenantId, id);
   const addContact = createVendorContactAction.bind(null, id);
 
   const fields: { label: string; value: string | null }[] = [
@@ -63,6 +65,31 @@ export default async function VendorDetailPage({
           <dd className="mt-1 whitespace-pre-wrap text-sm text-neutral-800">{vendor.notes}</dd>
         </div>
       )}
+
+      <div className="mt-8 rounded-lg border border-neutral-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-900">Locations</h2>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              {locations.length} active {locations.length === 1 ? "location" : "locations"}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <Link
+              href={`/vendors/${id}/locations`}
+              className="text-neutral-600 hover:text-neutral-900"
+            >
+              Manage
+            </Link>
+            <Link
+              href={`/vendors/${id}/locations/new`}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 font-medium text-white hover:bg-neutral-800"
+            >
+              Add location
+            </Link>
+          </div>
+        </div>
+      </div>
 
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Contacts</h2>
