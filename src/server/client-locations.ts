@@ -27,6 +27,33 @@ export async function listLocations(
     .orderBy(clientLocations.name);
 }
 
+export type ClientLocationOption = { id: string; clientId: string; name: string };
+
+/**
+ * All non-archived locations for a tenant (lean: id, clientId, name), by name.
+ * Tenant-wide (not client-scoped) — ships to the new-job form, which filters
+ * client-side by the selected client (option d). Switch to async fetch at
+ * hundreds-of-locations scale (10-known-limitations.md carry-forward).
+ */
+export async function listClientLocationsForTenant(
+  tenantId: string,
+): Promise<ClientLocationOption[]> {
+  return db
+    .select({
+      id: clientLocations.id,
+      clientId: clientLocations.clientId,
+      name: clientLocations.name,
+    })
+    .from(clientLocations)
+    .where(
+      and(
+        eq(clientLocations.tenantId, tenantId),
+        ne(clientLocations.status, "archived"),
+      ),
+    )
+    .orderBy(clientLocations.name);
+}
+
 /** One location by id, scoped to the tenant. Null if missing/cross-tenant. */
 export async function getLocation(
   tenantId: string,

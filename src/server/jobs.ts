@@ -13,6 +13,7 @@ import {
   jobs,
   priorities,
   tenantJobSequences,
+  trades,
 } from "@/server/schema";
 import { getClient } from "@/server/clients";
 import { getLocation } from "@/server/client-locations";
@@ -72,6 +73,84 @@ export async function getJob(tenantId: string, id: string): Promise<JobRow | nul
   const rows = await db
     .select()
     .from(jobs)
+    .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, id)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export type JobDetail = {
+  id: string;
+  jobNumber: number;
+  clientId: string;
+  clientName: string;
+  clientLocationId: string;
+  locationName: string;
+  primaryTradeId: string | null;
+  tradeName: string | null;
+  priorityId: string | null;
+  priorityName: string | null;
+  currentStatusId: string;
+  statusName: string;
+  sourceType: JobSourceType;
+  sourceExternalId: string | null;
+  problemDescription: string;
+  scopeOfWork: string | null;
+  notToExceedAmount: string | null;
+  scheduledStartAt: Date | null;
+  scheduledEndAt: Date | null;
+  dueAt: Date | null;
+  completedAt: Date | null;
+  closedAt: Date | null;
+  isArchived: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/**
+ * One job with its display labels resolved (client / location / trade / priority
+ * / status names) in a single join. Tenant-scoped — null if missing or in a
+ * different tenant (same guard as getJob; the detail page calls notFound() on
+ * null). Row-level equivalent of listJobs' join. getJob stays lean for guards
+ * and the createJob reload; this is the detail page's purpose-built read.
+ */
+export async function getJobDetail(
+  tenantId: string,
+  id: string,
+): Promise<JobDetail | null> {
+  const rows = await db
+    .select({
+      id: jobs.id,
+      jobNumber: jobs.jobNumber,
+      clientId: jobs.clientId,
+      clientName: clients.name,
+      clientLocationId: jobs.clientLocationId,
+      locationName: clientLocations.name,
+      primaryTradeId: jobs.primaryTradeId,
+      tradeName: trades.name,
+      priorityId: jobs.priorityId,
+      priorityName: priorities.name,
+      currentStatusId: jobs.currentStatusId,
+      statusName: jobStatuses.name,
+      sourceType: jobs.sourceType,
+      sourceExternalId: jobs.sourceExternalId,
+      problemDescription: jobs.problemDescription,
+      scopeOfWork: jobs.scopeOfWork,
+      notToExceedAmount: jobs.notToExceedAmount,
+      scheduledStartAt: jobs.scheduledStartAt,
+      scheduledEndAt: jobs.scheduledEndAt,
+      dueAt: jobs.dueAt,
+      completedAt: jobs.completedAt,
+      closedAt: jobs.closedAt,
+      isArchived: jobs.isArchived,
+      createdAt: jobs.createdAt,
+      updatedAt: jobs.updatedAt,
+    })
+    .from(jobs)
+    .innerJoin(clients, eq(jobs.clientId, clients.id))
+    .innerJoin(clientLocations, eq(jobs.clientLocationId, clientLocations.id))
+    .innerJoin(jobStatuses, eq(jobs.currentStatusId, jobStatuses.id))
+    .leftJoin(trades, eq(jobs.primaryTradeId, trades.id))
+    .leftJoin(priorities, eq(jobs.priorityId, priorities.id))
     .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, id)))
     .limit(1);
   return rows[0] ?? null;
