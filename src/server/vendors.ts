@@ -59,12 +59,14 @@ export async function createVendor(
   input: CreateVendorInput,
 ): Promise<VendorRow> {
   const id = uuidv7();
+  // Entity codes are normalized to uppercase on insert (see clients.createClient).
+  const vendorCode = input.vendorCode?.trim().toUpperCase() || null;
   await db.insert(vendors).values({
     id,
     tenantId: input.tenantId,
     name: input.name,
     legalName: input.legalName ?? null,
-    vendorCode: input.vendorCode ?? null,
+    vendorCode,
     vendorType: input.vendorType ?? "local",
     mainPhone: input.mainPhone ?? null,
     mainEmail: input.mainEmail ?? null,
@@ -82,7 +84,7 @@ export async function createVendor(
     targetId: id,
     metadata: {
       name: input.name,
-      vendorCode: input.vendorCode ?? null,
+      vendorCode,
       vendorType: input.vendorType ?? "local",
     },
   });

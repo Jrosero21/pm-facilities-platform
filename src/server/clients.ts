@@ -45,11 +45,15 @@ export type CreateClientInput = {
  */
 export async function createClient(input: CreateClientInput): Promise<ClientRow> {
   const id = uuidv7();
+  // Entity codes are normalized to uppercase on insert (matching country and
+  // trades.code). The utf8mb4_unicode_ci collation already makes uniqueness and
+  // lookups case-insensitive; normalizing the stored value keeps it canonical.
+  const clientCode = input.clientCode?.trim().toUpperCase() || null;
   await db.insert(clients).values({
     id,
     tenantId: input.tenantId,
     name: input.name,
-    clientCode: input.clientCode ?? null,
+    clientCode,
     createdByUserId: input.createdByUserId,
   });
 
@@ -59,7 +63,7 @@ export async function createClient(input: CreateClientInput): Promise<ClientRow>
     action: "client.created",
     targetType: "client",
     targetId: id,
-    metadata: { name: input.name, clientCode: input.clientCode ?? null },
+    metadata: { name: input.name, clientCode },
   });
 
   const row = await getClient(input.tenantId, id);

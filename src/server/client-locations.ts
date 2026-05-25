@@ -70,13 +70,15 @@ export async function createLocation(
   const id = uuidv7();
   const country =
     input.country && input.country.trim() ? input.country.trim().toUpperCase() : "US";
+  // Entity codes are normalized to uppercase on insert (see clients.createClient).
+  const locationCode = input.locationCode?.trim().toUpperCase() || null;
 
   await db.insert(clientLocations).values({
     id,
     tenantId: input.tenantId,
     clientId: input.clientId,
     name: input.name,
-    locationCode: input.locationCode ?? null,
+    locationCode,
     addressLine1: input.addressLine1,
     addressLine2: input.addressLine2 ?? null,
     city: input.city,
@@ -95,7 +97,7 @@ export async function createLocation(
     metadata: {
       clientId: input.clientId,
       name: input.name,
-      locationCode: input.locationCode ?? null,
+      locationCode,
     },
   });
 
