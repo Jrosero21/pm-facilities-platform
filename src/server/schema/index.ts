@@ -17,3 +17,4 @@ export * from "./dispatch-assignments";
 export * from "./dispatch-comms";
 export * from "./dispatch-presence";
 export * from "./communications";
+export * from "./portal-updates";
