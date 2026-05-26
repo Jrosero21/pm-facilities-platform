@@ -28,6 +28,19 @@ export async function listJobNotes(
     .orderBy(desc(jobNotes.createdAt));
 }
 
+/** One note by id, tenant-scoped. Null if missing/cross-tenant. */
+export async function getJobNote(
+  tenantId: string,
+  id: string,
+): Promise<JobNoteRow | null> {
+  const rows = await db
+    .select()
+    .from(jobNotes)
+    .where(and(eq(jobNotes.tenantId, tenantId), eq(jobNotes.id, id)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export type CreateJobNoteInput = {
   tenantId: string;
   jobId: string;

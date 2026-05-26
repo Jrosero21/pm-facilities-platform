@@ -6,6 +6,7 @@ import { listJobContacts } from "@/server/job-contacts";
 import { listJobNotes } from "@/server/job-notes";
 import { listJobEvents } from "@/server/job-events";
 import { listAssignmentsForJob } from "@/server/dispatch";
+import { listCommunicationsForJob } from "@/server/communications";
 import { createJobContactAction } from "@/app/(app)/jobs/contact-actions";
 import { createJobNoteAction } from "@/app/(app)/jobs/note-actions";
 import { ContactForm } from "@/components/contact-form";
@@ -14,6 +15,9 @@ import { JobNoteForm } from "@/components/job-note-form";
 import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { facetLine } from "@/components/dispatch-facets";
+import { ShareNoteButton } from "@/components/share-note-button";
+import { DeliveryStatusBadge } from "@/components/delivery-status-badge";
+import { DeliveryTransitionButtons } from "@/components/delivery-transition-buttons";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -42,11 +46,12 @@ export default async function JobDetailPage({
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
 
-  const [contacts, notes, events, assignments] = await Promise.all([
+  const [contacts, notes, events, assignments, communications] = await Promise.all([
     listJobContacts(tenantId, id),
     listJobNotes(tenantId, id),
     listJobEvents(tenantId, id),
     listAssignmentsForJob(tenantId, id),
+    listCommunicationsForJob(tenantId, id),
   ]);
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
@@ -217,6 +222,20 @@ export default async function JobDetailPage({
                 <p className="mt-1 text-xs text-neutral-500">
                   {n.createdAt.toLocaleString()}
                 </p>
+                {(n.visibility === "client_visible" ||
+                  n.visibility === "vendor_visible" ||
+                  n.visibility === "client_and_vendor_visible") && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(n.visibility === "client_visible" ||
+                      n.visibility === "client_and_vendor_visible") && (
+                      <ShareNoteButton jobId={job.id} noteId={n.id} audience="client" />
+                    )}
+                    {(n.visibility === "vendor_visible" ||
+                      n.visibility === "client_and_vendor_visible") && (
+                      <ShareNoteButton jobId={job.id} noteId={n.id} audience="vendor" />
+                    )}
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -227,6 +246,47 @@ export default async function JobDetailPage({
             <JobNoteForm action={addNote} />
           </div>
         </div>
+      </div>
+
+      {/* Communications */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Communications</h2>
+        {communications.length === 0 ? (
+          <p className="mt-3 text-sm text-neutral-600">
+            No communications yet. Share a client- or vendor-visible note above to log one.
+          </p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {communications.map((c) => (
+              <div
+                key={c.id}
+                className="rounded-lg border border-neutral-200 bg-white p-4"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <DeliveryStatusBadge status={c.deliveryStatus} />
+                  <NoteVisibilityBadge visibility={c.visibility} />
+                  <span className="text-xs uppercase tracking-wide text-neutral-500">
+                    {c.channel} · {c.direction}
+                  </span>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-800">
+                  {c.summary}
+                </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {c.recipientEmail ? `To ${c.recipientEmail} · ` : ""}
+                  {c.sentByName ?? "System"} · {c.createdAt.toLocaleString()}
+                </p>
+                <div className="mt-2">
+                  <DeliveryTransitionButtons
+                    jobId={job.id}
+                    commId={c.id}
+                    status={c.deliveryStatus}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Timeline */}
