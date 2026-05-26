@@ -27,12 +27,14 @@ export function NewDispatchForm({
   tradeName,
   candidates,
   defaultScope,
+  scopeFromProblem,
   defaultScheduledStart,
 }: {
   jobId: string;
   tradeName: string;
   candidates: DispatchCandidate[];
   defaultScope: string;
+  scopeFromProblem: boolean;
   defaultScheduledStart: string;
 }) {
   const action = createDispatchAction.bind(null, jobId);
@@ -163,7 +165,7 @@ export function NewDispatchForm({
       {/* --- contact (POC), dependent on selected vendor (R-4.12) --- */}
       <label className="block">
         <span className="text-sm font-medium text-neutral-800">
-          Coordination contact{" "}
+          Vendor contact{" "}
           <span className="font-normal text-neutral-500">(optional)</span>
         </span>
         {contacts.length === 0 ? (
@@ -225,7 +227,9 @@ export function NewDispatchForm({
         <span className="text-sm font-medium text-neutral-800">
           Scope{" "}
           <span className="font-normal text-neutral-500">
-            (pre-filled from the job — edit as needed)
+            {scopeFromProblem
+              ? "(no scope written yet — using the problem description as a starting point — edit as needed)"
+              : "(pre-filled from the job — edit as needed)"}
           </span>
         </span>
         <textarea

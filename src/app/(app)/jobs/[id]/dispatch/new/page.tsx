@@ -105,6 +105,14 @@ export default async function NewDispatchPage({
     }),
   );
 
+  // Scope pre-fill fallback chain: approved → current scope → problem description.
+  // When neither scope field is set we fall back to the problem statement so the
+  // textarea is never blank, and flag it so the label tells the operator that what
+  // is pre-filled is the customer's problem, not a real technician scope.
+  const scopeSnapshot = job.approvedScopeOfWork ?? job.scopeOfWork ?? null;
+  const scopeFromProblem = scopeSnapshot === null;
+  const defaultScope = scopeSnapshot ?? job.problemDescription ?? "";
+
   return (
     <div>
       {crumb}
@@ -117,7 +125,8 @@ export default async function NewDispatchPage({
           jobId={id}
           tradeName={job.tradeName ?? ""}
           candidates={enriched}
-          defaultScope={job.approvedScopeOfWork ?? job.scopeOfWork ?? ""}
+          defaultScope={defaultScope}
+          scopeFromProblem={scopeFromProblem}
           defaultScheduledStart={tomorrowAt9()}
         />
       </div>

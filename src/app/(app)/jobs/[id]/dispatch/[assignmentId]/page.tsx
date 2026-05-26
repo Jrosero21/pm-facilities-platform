@@ -44,7 +44,7 @@ export default async function AssignmentDetailPage({
   const facts: { label: string; value: string | null }[] = [
     { label: "Vendor", value: a.vendorName },
     { label: "Branch", value: a.vendorLocationName ?? "Vendor-wide (no branch)" },
-    { label: "Coordination contact", value: a.vendorContactName },
+    { label: "Vendor contact", value: a.vendorContactName },
     { label: "Scheduled start", value: fmt(a.scheduledStartAt) },
     { label: "Scheduled end", value: fmt(a.scheduledEndAt) },
     { label: "Agreed NTE", value: a.agreedNteAmount ? `$${a.agreedNteAmount}` : null },
