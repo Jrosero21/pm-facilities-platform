@@ -3,8 +3,8 @@ import "server-only";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
-import { resolveAgentRouting } from "@/server/agents/llm-routing";
-import { SYSTEM_PROMPT, PROMPT_VERSION, buildUserPrompt } from "./prompt";
+import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
+import { buildUserPrompt } from "./prompt";
 import type { JobNoteRow } from "@/server/job-notes";
 import type { JobDetail } from "@/server/jobs";
 
@@ -23,7 +23,6 @@ export type RewriteOutcome = {
   object: RewriteResult;
   usage: { inputTokens: number; outputTokens: number };
   model: string;
-  promptVersion: string;
 };
 
 // Routing is resolved through the shared agent router (extracted Phase 7 batch 7c / D4).
@@ -38,6 +37,15 @@ const REWRITER_ROUTING = {
   defaultDirectModel: "claude-sonnet-4-6",
 } as const;
 
+/**
+ * The rewriter's routing decision — resolved once by runRewriter, then passed to
+ * generateRewrite (mirrors resolveScopeRouting; runRewriter needs the mode to decide whether
+ * to resolve the DB prompt).
+ */
+export function resolveRewriterRouting(): AgentRouting {
+  return resolveAgentRouting(REWRITER_ROUTING);
+}
+
 function mockRewrite(): RewriteOutcome {
   return {
     object: {
@@ -50,31 +58,33 @@ function mockRewrite(): RewriteOutcome {
     },
     usage: { inputTokens: 0, outputTokens: 0 },
     model: "mock",
-    promptVersion: PROMPT_VERSION,
   };
 }
 
 /**
- * Generate a client-facing rewrite of an internal note. Returns the structured object +
- * token usage + provenance (model, prompt_version). Routes through the Vercel AI gateway
- * via a plain "provider/model" string (REWRITER_MODEL overrides; opus-4-7 available).
+ * Generate a client-facing rewrite of an internal note. Routing + the (DB-resolved) system
+ * prompt + temperature are passed in by runRewriter (step 3: the prompt now comes from
+ * ai_prompt_templates, no longer the in-code SYSTEM_PROMPT). Returns the structured object +
+ * token usage + provider-qualified model; prompt_version is recorded by runRewriter.
  */
 export async function generateRewrite(input: {
+  routing: AgentRouting;
+  systemPrompt: string;
+  temperature: number;
   note: JobNoteRow;
   job: JobDetail;
   vendorNames: string[];
 }): Promise<RewriteOutcome> {
-  const routing = resolveAgentRouting(REWRITER_ROUTING);
-  if (routing.mode === "mock") return mockRewrite();
+  if (input.routing.mode === "mock") return mockRewrite();
 
   // gateway → string model; direct → the anthropic() provider model (bare id).
-  const model = routing.mode === "gateway" ? routing.modelId : anthropic(routing.modelId);
+  const model = input.routing.mode === "gateway" ? input.routing.modelId : anthropic(input.routing.modelId);
   const result = await generateObject({
     model,
     schema: rewriteSchema,
-    system: SYSTEM_PROMPT,
-    prompt: buildUserPrompt(input),
-    temperature: 0.3,
+    system: input.systemPrompt,
+    prompt: buildUserPrompt({ note: input.note, job: input.job, vendorNames: input.vendorNames }),
+    temperature: input.temperature,
   });
   return {
     object: result.object,
@@ -82,7 +92,6 @@ export async function generateRewrite(input: {
       inputTokens: result.usage.inputTokens ?? 0,
       outputTokens: result.usage.outputTokens ?? 0,
     },
-    model: routing.recordedModel,
-    promptVersion: PROMPT_VERSION,
+    model: input.routing.recordedModel,
   };
 }

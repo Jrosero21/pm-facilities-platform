@@ -1,13 +1,15 @@
 import "server-only";
 
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
+import { resolveActivePrompt } from "@/server/agents/config/prompts";
+import { resolveAgentPolicy } from "@/server/agents/config/policies";
 import {
   getJobNoteTool,
   getJobDetailTool,
   listAssignmentsTool,
   createRewriteDraftTool,
 } from "./tools";
-import { generateRewrite } from "./llm";
+import { generateRewrite, resolveRewriterRouting } from "./llm";
 
 // update_rewriter_v1 — the first production agent. Fixed pipeline on the shared runner
 // (LOCK 4): openRun → read context (3 auto-logged read tools) → LLM transform → decision
@@ -51,16 +53,36 @@ export async function runRewriter(input: {
     const assignments = await readAssignments({ tenantId: input.tenantId, jobId: input.jobId });
     const vendorNames = [...new Set(assignments.map((a) => a.vendorName))];
 
-    // LLM transform (or deterministic mock under REWRITER_MOCK).
-    const { object, usage, model, promptVersion } = await generateRewrite({ note, job, vendorNames });
+    // Resolve routing once; the real path resolves the DB prompt (fail-closed), the mock path
+    // skips it and records prompt_version='mock' (mirrors scope_generator_v1). Step 3 retrofit:
+    // prompt + policy now come from the substrate, replacing the in-code SYSTEM_PROMPT and the
+    // inline requires_review literal.
+    const routing = resolveRewriterRouting();
+    let systemPrompt = "";
+    let promptVersion = "mock";
+    let temperature = 0.3;
+    if (routing.mode !== "mock") {
+      const prompt = await resolveActivePrompt(input.tenantId, AGENT_ID);
+      systemPrompt = prompt.systemPrompt;
+      promptVersion = String(prompt.version);
+      if (prompt.temperature != null) temperature = Number(prompt.temperature);
+    }
 
-    // decision — Phase 6 hardcoded policy always queues for review (§2.9).
+    // LLM transform (or deterministic mock under REWRITER_MOCK).
+    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames });
+
+    // decision — policy governs disposition; the rewriter has no auto-execute path (§2.9 /
+    // R-6.15), so it ALWAYS queues for review. The resolver is wired (fail-safe to
+    // requiresReview) so per-client/auto-execute policies plug in later without touching the
+    // agent. policy_check reflects the resolved policy — byte-identical strings to the old
+    // inline literal ("requires_review" / "queued_for_review").
+    const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     await logDecision(ctx, {
       decisionType: "rewrite_proposal",
       proposedAction: "Draft a client-facing update from the source note",
       reasoning: object.rationale,
       confidence: object.confidence,
-      policyCheck: "requires_review",
+      policyCheck: policy.requiresReview ? "requires_review" : "review_not_required",
       disposition: "queued_for_review",
       metadata: { strippedItems: object.strippedItems, rephrasings: object.rephrasings ?? [] },
     });
