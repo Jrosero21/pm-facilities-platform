@@ -95,6 +95,7 @@ export type JobDetail = {
   sourceExternalId: string | null;
   problemDescription: string;
   scopeOfWork: string | null;
+  approvedScopeOfWork: string | null;
   notToExceedAmount: string | null;
   scheduledStartAt: Date | null;
   scheduledEndAt: Date | null;
@@ -135,6 +136,7 @@ export async function getJobDetail(
       sourceExternalId: jobs.sourceExternalId,
       problemDescription: jobs.problemDescription,
       scopeOfWork: jobs.scopeOfWork,
+      approvedScopeOfWork: jobs.approvedScopeOfWork,
       notToExceedAmount: jobs.notToExceedAmount,
       scheduledStartAt: jobs.scheduledStartAt,
       scheduledEndAt: jobs.scheduledEndAt,

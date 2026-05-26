@@ -77,6 +77,11 @@ export async function listAssignmentsForJob(tenantId: string, jobId: string) {
       vendorContactName: vendorContacts.name,
       statusCode: dispatchAssignmentStatuses.code,
       statusName: dispatchAssignmentStatuses.name,
+      statusCategory: dispatchAssignmentStatuses.category,
+      matchedTradeName: trades.name,
+      matchedTradeWasPrimary: jobVendorAssignments.matchedTradeWasPrimary,
+      tightestGeoAtDispatch: jobVendorAssignments.tightestGeoAtDispatch,
+      complianceStatusAtDispatch: jobVendorAssignments.complianceStatusAtDispatch,
       agreedNteAmount: jobVendorAssignments.agreedNteAmount,
       scheduledStartAt: jobVendorAssignments.scheduledStartAt,
       sentAt: jobVendorAssignments.sentAt,
@@ -88,6 +93,7 @@ export async function listAssignmentsForJob(tenantId: string, jobId: string) {
       dispatchAssignmentStatuses,
       eq(jobVendorAssignments.currentStatusId, dispatchAssignmentStatuses.id),
     )
+    .innerJoin(trades, eq(jobVendorAssignments.matchedTradeId, trades.id))
     .leftJoin(
       vendorLocations,
       eq(jobVendorAssignments.vendorLocationId, vendorLocations.id),
@@ -124,6 +130,7 @@ export async function getAssignmentDetail(tenantId: string, id: string) {
       vendorContactName: vendorContacts.name,
       statusCode: dispatchAssignmentStatuses.code,
       statusName: dispatchAssignmentStatuses.name,
+      statusCategory: dispatchAssignmentStatuses.category,
       agreedNteAmount: jobVendorAssignments.agreedNteAmount,
       scheduledStartAt: jobVendorAssignments.scheduledStartAt,
       scheduledEndAt: jobVendorAssignments.scheduledEndAt,
