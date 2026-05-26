@@ -21,3 +21,6 @@ export * from "./portal-updates";
 export * from "./agents-substrate";
 export * from "./agents-rewriter";
 export * from "./client-updates";
+export * from "./agents-config";
+export * from "./scope-templates";
+export * from "./scope-generation";
