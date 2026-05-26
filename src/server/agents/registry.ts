@@ -1,0 +1,45 @@
+// ── Agent registry (Phase 6 6g.a) ────────────────────────────────────────────────────
+// The enumeration seam for Phase 16's chatbot ("which agents are available?"). One entry
+// per agent identity (versioned agent_id, {name}_v{major}). Pure metadata — implementations
+// live in src/server/agents/<name>/. NO "server-only" so it can be read from anywhere
+// (it holds no DB access).
+//
+// REFINEMENT (flag for review): `testOnly` distinguishes the committed test stub from
+// production agents. test_stub_v1 IS registered (per the build spec) so the substrate has
+// a reference agent, but Phase 16's tenant-facing enumeration MUST filter `testOnly` out —
+// a test fixture must never surface as an "available agent" to operators.
+
+export type AgentRegistryEntry = {
+  id: string;
+  name: string;
+  description: string;
+  inputSourceTypes: string[]; // polymorphic source_type values this agent reads (LOCK 1)
+  outputType: string;
+  testOnly: boolean;
+};
+
+export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
+  update_rewriter_v1: {
+    id: "update_rewriter_v1",
+    name: "Update Rewriter",
+    description:
+      "Rewrites internal job notes into client-safe update drafts — strips pricing, PII, and vendor-only context. Operator reviews before client-portal publish (§2.9).",
+    inputSourceTypes: ["job_note"], // Phase 10+ extends to "vendor_update"
+    outputType: "update_rewrite_draft",
+    testOnly: false,
+  },
+  test_stub_v1: {
+    id: "test_stub_v1",
+    name: "Test Stub Agent",
+    description:
+      "Deterministic, LLM-free agent that exercises the full substrate (run + tool calls + decision + draft) for substrate-correctness testing. Committed test infrastructure — excluded from tenant-facing enumeration.",
+    inputSourceTypes: ["job_note"],
+    outputType: "update_rewrite_draft",
+    testOnly: true,
+  },
+};
+
+/** Production agents available to operators (test fixtures filtered out) — Phase 16 seam. */
+export function listProductionAgents(): AgentRegistryEntry[] {
+  return Object.values(AGENT_REGISTRY).filter((a) => !a.testOnly);
+}

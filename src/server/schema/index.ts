@@ -18,3 +18,6 @@ export * from "./dispatch-comms";
 export * from "./dispatch-presence";
 export * from "./communications";
 export * from "./portal-updates";
+export * from "./agents-substrate";
+export * from "./agents-rewriter";
+export * from "./client-updates";
