@@ -146,3 +146,31 @@ export async function createVendorTradeCoverage(
     },
   });
 }
+
+/**
+ * Does a specific vendor BRANCH (vendor_location) carry its OWN active coverage
+ * for a trade? Used by createDispatch to snapshot chosen_branch_covered_trade
+ * (D-5.x): the matcher's tradeScope is vendor-level, but this asks about the
+ * exact branch the operator picked, which may not be one of the covered branches.
+ * Tenant-scoped; branch-level rows only (a NULL vendor_location_id is vendor-wide
+ * coverage, not a branch covering the trade).
+ */
+export async function branchCoversTrade(
+  tenantId: string,
+  vendorLocationId: string,
+  tradeId: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: vendorTradeCoverage.id })
+    .from(vendorTradeCoverage)
+    .where(
+      and(
+        eq(vendorTradeCoverage.tenantId, tenantId),
+        eq(vendorTradeCoverage.vendorLocationId, vendorLocationId),
+        eq(vendorTradeCoverage.tradeId, tradeId),
+        eq(vendorTradeCoverage.status, "active"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}

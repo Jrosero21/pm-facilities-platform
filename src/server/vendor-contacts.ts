@@ -27,6 +27,19 @@ export async function listVendorContacts(
     .orderBy(desc(vendorContacts.isPrimary), vendorContacts.name);
 }
 
+/** One vendor contact by id, scoped to the tenant. Null if missing/cross-tenant. */
+export async function getVendorContact(
+  tenantId: string,
+  id: string,
+): Promise<VendorContactRow | null> {
+  const rows = await db
+    .select()
+    .from(vendorContacts)
+    .where(and(eq(vendorContacts.tenantId, tenantId), eq(vendorContacts.id, id)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export type CreateVendorContactInput = {
   tenantId: string;
   vendorId: string;
