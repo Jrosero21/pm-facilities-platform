@@ -28,6 +28,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "update_rewrite_draft",
     testOnly: false,
   },
+  scope_generator_v1: {
+    id: "scope_generator_v1",
+    name: "Scope Generator",
+    description:
+      "Generates a structured, reviewable technician scope of work from a job's problem description. Operator reviews and edits before the scope is published to the job (§2.9).",
+    inputSourceTypes: ["job"], // reads current-job context only (OQ #6)
+    outputType: "job_scope_draft",
+    testOnly: false,
+  },
   test_stub_v1: {
     id: "test_stub_v1",
     name: "Test Stub Agent",

@@ -17,7 +17,8 @@
     "db:seed": "tsx --env-file=.env.local db/seeds/initial.ts",
     "db:seed:trades": "tsx --env-file=.env.local db/seeds/trades.ts",
     "db:seed:job-reference": "tsx --env-file=.env.local db/seeds/job-reference.ts",
-    "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts"
+    "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts",
+    "db:seed:agent-config": "tsx --env-file=.env.local db/seeds/agent-config.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",

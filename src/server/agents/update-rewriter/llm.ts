@@ -3,6 +3,7 @@ import "server-only";
 import { generateObject } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
+import { resolveAgentRouting } from "@/server/agents/llm-routing";
 import { SYSTEM_PROMPT, PROMPT_VERSION, buildUserPrompt } from "./prompt";
 import type { JobNoteRow } from "@/server/job-notes";
 import type { JobDetail } from "@/server/jobs";
@@ -25,32 +26,17 @@ export type RewriteOutcome = {
   promptVersion: string;
 };
 
-// Three routing modes resolved from env (LOCK 10/11), in precedence order:
-//   REWRITER_MOCK=1            → mock (explicit dev override, wins over any key)
-//   AI_GATEWAY_API_KEY set     → gateway: a plain "provider/model" string
-//   ANTHROPIC_API_KEY set      → direct: the @ai-sdk/anthropic provider (bare model id)
-//   (none)                     → mock (dev never hard-fails on a missing key)
-// The model-id FORMAT differs by path: gateway "anthropic/claude-sonnet-4-6" vs direct
-// "claude-sonnet-4-6" (no provider prefix). recordedModel normalizes both to the
-// provider-qualified form for agent_runs.model. Extracted as a pure function so each branch
-// is verifiable without a real LLM call.
-export type RewriteRouting =
-  | { mode: "mock" }
-  | { mode: "gateway"; modelId: string; recordedModel: string }
-  | { mode: "direct"; modelId: string; recordedModel: string };
-
-export function resolveRouting(): RewriteRouting {
-  if (process.env.REWRITER_MOCK === "1") return { mode: "mock" };
-  if (process.env.AI_GATEWAY_API_KEY) {
-    const modelId = process.env.REWRITER_MODEL ?? "anthropic/claude-sonnet-4-6";
-    return { mode: "gateway", modelId, recordedModel: modelId };
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    const modelId = process.env.REWRITER_MODEL ?? "claude-sonnet-4-6";
-    return { mode: "direct", modelId, recordedModel: `anthropic/${modelId}` };
-  }
-  return { mode: "mock" };
-}
+// Routing is resolved through the shared agent router (extracted Phase 7 batch 7c / D4).
+// The rewriter's knobs are unchanged — REWRITER_MOCK / REWRITER_MODEL, same gateway/direct/
+// mock precedence and the same recordedModel normalization the in-file resolveRouting did.
+// Behavior preservation is verified by the D6 routing-parity matrix + a rewriter pipeline
+// smoke (the extraction only moved the routing decision; it changed no behavior).
+const REWRITER_ROUTING = {
+  mockEnvVar: "REWRITER_MOCK",
+  modelEnvVar: "REWRITER_MODEL",
+  defaultGatewayModel: "anthropic/claude-sonnet-4-6",
+  defaultDirectModel: "claude-sonnet-4-6",
+} as const;
 
 function mockRewrite(): RewriteOutcome {
   return {
@@ -78,7 +64,7 @@ export async function generateRewrite(input: {
   job: JobDetail;
   vendorNames: string[];
 }): Promise<RewriteOutcome> {
-  const routing = resolveRouting();
+  const routing = resolveAgentRouting(REWRITER_ROUTING);
   if (routing.mode === "mock") return mockRewrite();
 
   // gateway → string model; direct → the anthropic() provider model (bare id).
