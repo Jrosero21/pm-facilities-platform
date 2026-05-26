@@ -7,6 +7,7 @@ import { listJobNotes } from "@/server/job-notes";
 import { listJobEvents } from "@/server/job-events";
 import { listAssignmentsForJob } from "@/server/dispatch";
 import { listCommunicationsForJob } from "@/server/communications";
+import { listDraftsForJobDetailed } from "@/server/agents/drafts";
 import { createJobContactAction } from "@/app/(app)/jobs/contact-actions";
 import { createJobNoteAction } from "@/app/(app)/jobs/note-actions";
 import { ContactForm } from "@/components/contact-form";
@@ -18,6 +19,8 @@ import { facetLine } from "@/components/dispatch-facets";
 import { ShareNoteButton } from "@/components/share-note-button";
 import { DeliveryStatusBadge } from "@/components/delivery-status-badge";
 import { DeliveryTransitionButtons } from "@/components/delivery-transition-buttons";
+import { DraftClientUpdateButton } from "@/components/draft-client-update-button";
+import { UpdateDraftsSection } from "@/components/update-drafts-section";
 import { JobTimeline } from "@/components/job-timeline";
 import { mergeTimeline } from "@/lib/timeline";
 
@@ -48,13 +51,15 @@ export default async function JobDetailPage({
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
 
-  const [contacts, notes, events, assignments, communications] = await Promise.all([
+  const [contacts, notes, events, assignments, communications, drafts] = await Promise.all([
     listJobContacts(tenantId, id),
     listJobNotes(tenantId, id),
     listJobEvents(tenantId, id),
     listAssignmentsForJob(tenantId, id),
     listCommunicationsForJob(tenantId, id),
+    listDraftsForJobDetailed(tenantId, id),
   ]);
+  const notesById = Object.fromEntries(notes.map((n) => [n.id, n.body]));
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
 
@@ -238,20 +243,17 @@ export default async function JobDetailPage({
                 <p className="mt-1 text-xs text-neutral-500">
                   {n.createdAt.toLocaleString()}
                 </p>
-                {(n.visibility === "client_visible" ||
-                  n.visibility === "vendor_visible" ||
-                  n.visibility === "client_and_vendor_visible") && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(n.visibility === "client_visible" ||
-                      n.visibility === "client_and_vendor_visible") && (
-                      <ShareNoteButton jobId={job.id} noteId={n.id} audience="client" />
-                    )}
-                    {(n.visibility === "vendor_visible" ||
-                      n.visibility === "client_and_vendor_visible") && (
-                      <ShareNoteButton jobId={job.id} noteId={n.id} audience="vendor" />
-                    )}
-                  </div>
-                )}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <DraftClientUpdateButton jobId={job.id} noteId={n.id} />
+                  {(n.visibility === "client_visible" ||
+                    n.visibility === "client_and_vendor_visible") && (
+                    <ShareNoteButton jobId={job.id} noteId={n.id} audience="client" />
+                  )}
+                  {(n.visibility === "vendor_visible" ||
+                    n.visibility === "client_and_vendor_visible") && (
+                    <ShareNoteButton jobId={job.id} noteId={n.id} audience="vendor" />
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -262,6 +264,17 @@ export default async function JobDetailPage({
             <JobNoteForm action={addNote} />
           </div>
         </div>
+      </div>
+
+      {/* Update drafts (rewriter) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Update drafts</h2>
+        <UpdateDraftsSection
+          jobId={job.id}
+          drafts={drafts}
+          notesById={notesById}
+          clientName={job.clientName}
+        />
       </div>
 
       {/* Communications */}

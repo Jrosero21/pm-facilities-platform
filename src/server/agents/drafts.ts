@@ -3,7 +3,8 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { updateRewriteDrafts } from "@/server/schema";
+import { agentDecisions, updateRewriteDrafts } from "@/server/schema";
+import { writeAuditLog } from "@/server/audit";
 
 export type UpdateRewriteDraftRow = typeof updateRewriteDrafts.$inferSelect;
 export type DraftSourceType = "job_note" | "vendor_update";
@@ -74,16 +75,96 @@ export async function createRewriteDraft(input: {
   return row;
 }
 
-/** Discard a pending draft silently (no review row). Terminal. Single-row update. */
-export async function discardDraft(tenantId: string, id: string): Promise<void> {
+/**
+ * Discard a pending draft (operator dismissal — no review row, unlike reject). Terminal.
+ * Single-row update + writeAuditLog OUTSIDE (R-4.5). This IS an operator-driven mutation
+ * on agent output, so it audits to audit_logs (the agent's OWN actions live in the
+ * substrate; only human actions hit audit_logs — R-6.x).
+ *
+ * Throws: DRAFT_NOT_FOUND, DRAFT_NOT_PENDING_REVIEW.
+ */
+export async function discardDraft(tenantId: string, id: string, actorUserId: string): Promise<void> {
+  const draft = await getDraft(tenantId, id);
+  if (!draft) throw new Error("DRAFT_NOT_FOUND");
+  if (draft.status !== "pending_review") throw new Error("DRAFT_NOT_PENDING_REVIEW");
+
   await db
     .update(updateRewriteDrafts)
     .set({ status: "discarded" })
-    .where(
+    .where(and(eq(updateRewriteDrafts.tenantId, tenantId), eq(updateRewriteDrafts.id, id)));
+
+  await writeAuditLog({
+    tenantId,
+    userId: actorUserId,
+    action: "rewrite_draft.discarded",
+    targetType: "update_rewrite_draft",
+    targetId: id,
+    metadata: { jobId: draft.jobId },
+  });
+}
+
+// MariaDB stores drizzle `json()` as LONGTEXT; mysql2 returns it as a STRING and drizzle's
+// mysql json type does NOT parse on read — so json columns round-trip as strings here.
+// Parse at the read boundary so the UI gets a real object (R-6.x / drizzle-gotchas).
+function parseJsonColumn(v: unknown): unknown {
+  if (typeof v === "string") {
+    try {
+      return JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  return v ?? null;
+}
+
+export type DraftListItemDetailed = {
+  id: string;
+  jobId: string;
+  agentRunId: string;
+  sourceType: DraftSourceType;
+  sourceId: string;
+  draftContent: string;
+  status: UpdateRewriteDraftRow["status"];
+  publishedCommunicationId: string | null;
+  createdAt: Date;
+  confidence: string | null;
+  rationale: string | null;
+  decisionMetadata: unknown;
+};
+
+/**
+ * Drafts for a job joined to their rewrite_proposal decision (confidence/rationale/
+ * stripped-items) for the Update drafts UI. Newest first. The decision lives on
+ * agent_decisions via the shared agent_run_id.
+ */
+export async function listDraftsForJobDetailed(
+  tenantId: string,
+  jobId: string,
+): Promise<DraftListItemDetailed[]> {
+  const rows = await db
+    .select({
+      id: updateRewriteDrafts.id,
+      jobId: updateRewriteDrafts.jobId,
+      agentRunId: updateRewriteDrafts.agentRunId,
+      sourceType: updateRewriteDrafts.sourceType,
+      sourceId: updateRewriteDrafts.sourceId,
+      draftContent: updateRewriteDrafts.draftContent,
+      status: updateRewriteDrafts.status,
+      publishedCommunicationId: updateRewriteDrafts.publishedCommunicationId,
+      createdAt: updateRewriteDrafts.createdAt,
+      confidence: agentDecisions.confidence,
+      rationale: agentDecisions.reasoning,
+      decisionMetadata: agentDecisions.metadata,
+    })
+    .from(updateRewriteDrafts)
+    .leftJoin(
+      agentDecisions,
       and(
-        eq(updateRewriteDrafts.tenantId, tenantId),
-        eq(updateRewriteDrafts.id, id),
-        eq(updateRewriteDrafts.status, "pending_review"),
+        eq(agentDecisions.agentRunId, updateRewriteDrafts.agentRunId),
+        eq(agentDecisions.decisionType, "rewrite_proposal"),
       ),
-    );
+    )
+    .where(and(eq(updateRewriteDrafts.tenantId, tenantId), eq(updateRewriteDrafts.jobId, jobId)))
+    .orderBy(desc(updateRewriteDrafts.createdAt));
+  return rows.map((r) => ({ ...r, decisionMetadata: parseJsonColumn(r.decisionMetadata) }));
 }
