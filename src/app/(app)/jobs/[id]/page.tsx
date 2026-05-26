@@ -18,6 +18,8 @@ import { facetLine } from "@/components/dispatch-facets";
 import { ShareNoteButton } from "@/components/share-note-button";
 import { DeliveryStatusBadge } from "@/components/delivery-status-badge";
 import { DeliveryTransitionButtons } from "@/components/delivery-transition-buttons";
+import { JobTimeline } from "@/components/job-timeline";
+import { mergeTimeline } from "@/lib/timeline";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -292,16 +294,9 @@ export default async function JobDetailPage({
       {/* Timeline */}
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Timeline</h2>
-        <ul className="mt-3 space-y-2">
-          {events.map((e) => (
-            <li key={e.id} className="text-sm text-neutral-700">
-              {e.summary}{" "}
-              <span className="text-neutral-500">
-                — {e.actorName ?? "System"} — {e.createdAt.toLocaleString()}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="mt-3">
+          <JobTimeline rows={mergeTimeline(events, communications)} />
+        </div>
       </div>
     </div>
   );
