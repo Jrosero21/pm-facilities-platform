@@ -71,6 +71,13 @@
       "when": 1779751361514,
       "tag": "0009_brief_wallflower",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1779772638164,
+      "tag": "0010_silly_proudstar",
+      "breakpoints": true
     }
   ]
 }
