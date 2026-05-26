@@ -42,6 +42,7 @@ export async function listCommunicationsForJob(tenantId: string, jobId: string) 
       summary: communicationLogs.summary,
       deliveryStatus: communicationLogs.deliveryStatus,
       sourceType: communicationLogs.sourceType,
+      sourceId: communicationLogs.sourceId,
       recipientType: communicationLogs.recipientType,
       recipientEmail: communicationLogs.recipientEmail,
       sentAt: communicationLogs.sentAt,

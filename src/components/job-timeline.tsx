@@ -58,34 +58,68 @@ const Inbound = () => (
     <path d="M11 5 5 11m4 0H5V7" />
   </svg>
 );
+const Note = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 2h5l3 3v9H4z" />
+    <path d="M6.5 7.5h3M6.5 10h3" />
+  </svg>
+);
 
 function rowIcon(row: TimelineRow) {
   if (row.kind === "communication") return row.direction === "inbound" ? <Inbound /> : <Outbound />;
+  if (row.kind === "note") return <Note />;
   if (row.eventType === "job.created") return <Created />;
   if (row.eventType === "job.dispatched") return <Dispatched />;
   return <Dot />;
 }
 
-type FilterMode = "both" | "milestones" | "communications";
+// Display text + actor differ by kind; notes have no `summary`/`sentByName`.
+function rowText(row: TimelineRow): string {
+  return row.kind === "note" ? row.bodyExcerpt : row.summary;
+}
+function rowActor(row: TimelineRow): string {
+  if (row.kind === "event") return row.actorName ?? "System";
+  if (row.kind === "communication") return row.sentByName ?? "System";
+  return row.authorName ?? "System";
+}
+
+type FilterMode = "all" | "milestones" | "communications" | "notes";
 const FILTERS: { mode: FilterMode; label: string }[] = [
-  { mode: "both", label: "Both" },
+  { mode: "all", label: "All" },
   { mode: "milestones", label: "Milestones" },
   { mode: "communications", label: "Communications" },
+  { mode: "notes", label: "Notes" },
 ];
 
 // Category accent + icon color — a CATEGORY axis (source-kind), intentionally NOT the
-// status/visibility/delivery palettes (R-6.x): slate = milestone, indigo = communication.
+// status/visibility/delivery palettes (R-6.x): slate = milestone, indigo = communication,
+// rose = note (a warm third hue, distinct from both cool accents and from every semantic
+// badge palette, so the three categories stay legible without conflating axes).
 function accent(row: TimelineRow): string {
-  return row.kind === "event"
-    ? "border-l-slate-400 text-slate-500"
-    : "border-l-indigo-400 text-indigo-500";
+  switch (row.kind) {
+    case "event":
+      return "border-l-slate-400 text-slate-500";
+    case "communication":
+      return "border-l-indigo-400 text-indigo-500";
+    case "note":
+      return "border-l-rose-400 text-rose-500";
+  }
 }
 
 export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
-  const [mode, setMode] = useState<FilterMode>("both");
-  const filtered = rows.filter((r) =>
-    mode === "both" ? true : mode === "milestones" ? r.kind === "event" : r.kind === "communication",
-  );
+  const [mode, setMode] = useState<FilterMode>("all");
+  const filtered = rows.filter((r) => {
+    switch (mode) {
+      case "all":
+        return true;
+      case "milestones":
+        return r.kind === "event";
+      case "communications":
+        return r.kind === "communication";
+      case "notes":
+        return r.kind === "note";
+    }
+  });
 
   // Group by day (rows are already sorted oldest-first, so groups stay chronological).
   const groups: { key: string; day: Date; rows: TimelineRow[] }[] = [];
@@ -132,11 +166,9 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
                   <li key={`${row.kind}-${row.id}`} className={`flex gap-2 border-l-2 pl-3 ${accent(row)}`}>
                     <span className="mt-0.5 shrink-0">{rowIcon(row)}</span>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-neutral-900">{row.summary}</p>
+                      <p className="text-sm font-medium text-neutral-900">{rowText(row)}</p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
-                        <span>
-                          {row.kind === "event" ? row.actorName ?? "System" : row.sentByName ?? "System"}
-                        </span>
+                        <span>{rowActor(row)}</span>
                         <span>·</span>
                         <span title={row.createdAt.toLocaleString()} suppressHydrationWarning>
                           {relativeTime(row.createdAt)}
@@ -147,6 +179,7 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
                             <NoteVisibilityBadge visibility={row.visibility} />
                           </>
                         )}
+                        {row.kind === "note" && <NoteVisibilityBadge visibility={row.visibility} />}
                       </p>
                     </div>
                   </li>

@@ -4,20 +4,29 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
-import { jobNotes } from "@/server/schema";
+import { jobNotes, users } from "@/server/schema";
 import { getJob } from "@/server/jobs";
 import type { NoteVisibility } from "@/components/note-visibility-badge";
 
 export type JobNoteRow = typeof jobNotes.$inferSelect;
 
-/** Non-archived notes for a job, newest first. */
-export async function listJobNotes(
-  tenantId: string,
-  jobId: string,
-): Promise<JobNoteRow[]> {
+/**
+ * Non-archived notes for a job, newest first. Left-joins users for the author
+ * name (null for system-authored) — narrative parity with listJobEvents /
+ * listCommunicationsForJob, so the 6c.1 timeline can attribute notes.
+ */
+export async function listJobNotes(tenantId: string, jobId: string) {
   return db
-    .select()
+    .select({
+      id: jobNotes.id,
+      jobId: jobNotes.jobId,
+      body: jobNotes.body,
+      visibility: jobNotes.visibility,
+      createdAt: jobNotes.createdAt,
+      authorName: users.name,
+    })
     .from(jobNotes)
+    .leftJoin(users, eq(jobNotes.createdByUserId, users.id))
     .where(
       and(
         eq(jobNotes.tenantId, tenantId),
@@ -27,6 +36,8 @@ export async function listJobNotes(
     )
     .orderBy(desc(jobNotes.createdAt));
 }
+
+export type JobNoteListItem = Awaited<ReturnType<typeof listJobNotes>>[number];
 
 /** One note by id, tenant-scoped. Null if missing/cross-tenant. */
 export async function getJobNote(

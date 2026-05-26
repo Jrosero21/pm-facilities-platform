@@ -58,6 +58,20 @@ export default async function JobDetailPage({
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
 
+  // 6c.1 timeline-notes filter (page-side, in-memory — fine at Phase 6 scale; refactor to
+  // a data-layer filter only if note counts grow). A note narrates in the timeline iff it
+  // is NOT internal_only (internal_only stays workspace-only per the two-view model) AND
+  // has not already been shared as a communication (the share IS its representation — a
+  // shared note is its comm row, never duplicated as a note). R-6.x.
+  const sharedNoteIds = new Set(
+    communications
+      .filter((c) => c.sourceType === "job_note" && c.sourceId)
+      .map((c) => c.sourceId as string),
+  );
+  const timelineNotes = notes.filter(
+    (n) => n.visibility !== "internal_only" && !sharedNoteIds.has(n.id),
+  );
+
   const fields: { label: string; value: string | null }[] = [
     { label: "Client", value: job.clientName },
     { label: "Location", value: job.locationName },
@@ -295,7 +309,7 @@ export default async function JobDetailPage({
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Timeline</h2>
         <div className="mt-3">
-          <JobTimeline rows={mergeTimeline(events, communications)} />
+          <JobTimeline rows={mergeTimeline(events, communications, timelineNotes)} />
         </div>
       </div>
     </div>
