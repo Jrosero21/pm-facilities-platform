@@ -200,6 +200,45 @@ Each phase should include:
 - known limitations
 - closeout
 
+### 2.9 AI Agents Operate Under Policy, Never Mutate State Directly
+
+All AI capabilities in the platform — scope generation, NTE negotiation, update rewriting, email parsing, anomaly detection, chatbot actions — operate under explicit, per-tenant and per-client policies. Agents never directly mutate operational state.
+
+_First implemented in Phase 6 (the update rewriter); generalized through Phase 7+ (generic agent infrastructure + per-client `agent_policies`)._
+
+The required pattern is:
+Trigger → Agent Run → Proposed Action (with reasoning) → Policy Check → Auto-Execute (if within policy) OR Human Review Queue
+
+Every agent must write to audit tables:
+
+- `agent_runs` — one row per agent invocation
+- `agent_tool_calls` — every read/write tool the agent used
+- `agent_decisions` — proposed action, reasoning, confidence, disposition
+- `agent_negotiation_threads` — multi-turn exchanges (vendor/client) tied to a run
+
+Per-tenant `agent_policies` define:
+
+- which workflows are enabled
+- auto-execute thresholds (example: auto-approve NTE increase under $X if justification fields complete)
+- required justification fields per client
+- escalation rules
+- which actions require operator review regardless of confidence
+
+**Examples of correctly-bounded agents:**
+
+- Scope generator drafts scope → operator approves → scope saved to job
+- NTE negotiator validates vendor justification → either auto-approves within policy and logs, or queues for operator with a drafted client-facing justification
+- Update rewriter takes vendor note → produces client-ready draft → operator reviews before client portal publish
+
+**Never-allowed patterns:**
+
+- Agent silently changes job status, dispatch state, or invoice values
+- Agent sends client-facing communication without policy approval or review
+- Agent approves money commitments outside explicit policy bounds
+- Agent auto-creates active jobs without intake review (per §2.6)
+
+This invariant applies retroactively. Any AI feature in any phase must follow this pattern. Phases 7, 8, and 16 are the primary homes for agent infrastructure, but the rule applies anywhere AI touches operational data.
+
 ---
 
 ## 3. Technical Context
@@ -844,6 +883,11 @@ GitHub should be the source of truth. Local snapshots are safety backups.
 - `client_update_logs`
 - `vendor_update_logs`
 - `portal_update_queue`
+- `update_rewrite_drafts`
+- `update_rewrite_reviews`
+- `agent_runs` (rewriter audit substrate per §2.9; generic-ized in Phase 7)
+- `agent_tool_calls`
+- `agent_decisions`
 
 **Note visibility options:**
 
@@ -872,6 +916,9 @@ GitHub should be the source of truth. Local snapshots are safety backups.
 - communication log structure
 - basic update queue concept
 - visibility/review rules
+- vendor-to-client update rewriter agent (drafts client-facing updates from vendor notes; strips internal pricing, PII, and vendor-only context; operator reviews before client portal publish per §2.9)
+- rewriter draft queue surfaced in update engine
+- per-client rewriter policy hooks (which clients require review, which allow auto-publish within policy)
 - phase docs
 
 **Acceptance criteria:**
@@ -881,11 +928,15 @@ GitHub should be the source of truth. Local snapshots are safety backups.
 - Job timeline shows notes/events/status changes.
 - Client/vendor visibility is controlled.
 - Communication records can be tied to jobs.
+- Vendor notes can generate a client-ready draft via the rewriter agent.
+- Rewriter drafts are never auto-published to client unless explicit per-client policy allows it.
+- Rewriter draft generation is logged in agent audit tables (`agent_runs`, `agent_tool_calls`, `agent_decisions` per §2.9).
+- Operator can edit and approve a draft before it becomes a client-visible communication.
 - Phase docs updated.
 
 **Do not build:**
 
-- full AI update writer
+- autonomous client communication without operator review (the rewriter agent must remain draft-and-review per §2.9; auto-publish within policy is a later enhancement, not Phase 6)
 - full external portal sync
 - full vendor portal
 - full client portal
@@ -903,8 +954,11 @@ GitHub should be the source of truth. Local snapshots are safety backups.
 - `scope_templates`
 - `scope_template_steps`
 - `job_scope_steps`
-- `ai_scope_generation_logs`
 - `ai_prompt_templates`
+- `agent_runs` (introduced Phase 6 for rewriter audit substrate per §2.9; generic-ized and reused by Phase 8, 13, 16)
+- `agent_tool_calls` (introduced Phase 6 for rewriter audit substrate per §2.9; generic-ized and reused here)
+- `agent_decisions` (introduced Phase 6 for rewriter audit substrate per §2.9; generic-ized and reused here)
+- `agent_policies` (generic, per-tenant policy definitions)
 
 **Deliverables:**
 
@@ -914,6 +968,7 @@ GitHub should be the source of truth. Local snapshots are safety backups.
 - operator review/edit/approve flow
 - approved scope saved to job
 - AI generation logging
+- generic agent infrastructure (runs, tool calls, decisions, policies) reusable by future AI workflows
 - phase docs
 
 **Acceptance criteria:**
@@ -1431,15 +1486,20 @@ Future chats should treat this as planning guidance. Live schema should be inspe
 - `client_update_logs`
 - `vendor_update_logs`
 - `portal_update_queue`
+- `update_rewrite_drafts`
+- `update_rewrite_reviews`
 
-### AI Scope / AI Logging
+### AI / Agents
 
 - `scope_templates`
 - `scope_template_steps`
-- `ai_scope_generation_logs`
 - `ai_prompt_templates`
 - `ai_generated_updates`
-- `ai_action_logs`
+- `agent_runs`
+- `agent_tool_calls`
+- `agent_decisions`
+- `agent_policies`
+- `agent_negotiation_threads`
 
 ### Billing / Proposals
 
