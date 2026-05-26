@@ -20,6 +20,7 @@
     "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.79",
     "ai": "^6.0.191",
     "better-auth": "^1.6.11",
     "drizzle-orm": "^0.45.2",

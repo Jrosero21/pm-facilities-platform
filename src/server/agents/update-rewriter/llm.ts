@@ -1,6 +1,7 @@
 import "server-only";
 
 import { generateObject } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { SYSTEM_PROMPT, PROMPT_VERSION, buildUserPrompt } from "./prompt";
 import type { JobNoteRow } from "@/server/job-notes";
@@ -24,14 +25,31 @@ export type RewriteOutcome = {
   promptVersion: string;
 };
 
-const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
+// Three routing modes resolved from env (LOCK 10/11), in precedence order:
+//   REWRITER_MOCK=1            → mock (explicit dev override, wins over any key)
+//   AI_GATEWAY_API_KEY set     → gateway: a plain "provider/model" string
+//   ANTHROPIC_API_KEY set      → direct: the @ai-sdk/anthropic provider (bare model id)
+//   (none)                     → mock (dev never hard-fails on a missing key)
+// The model-id FORMAT differs by path: gateway "anthropic/claude-sonnet-4-6" vs direct
+// "claude-sonnet-4-6" (no provider prefix). recordedModel normalizes both to the
+// provider-qualified form for agent_runs.model. Extracted as a pure function so each branch
+// is verifiable without a real LLM call.
+export type RewriteRouting =
+  | { mode: "mock" }
+  | { mode: "gateway"; modelId: string; recordedModel: string }
+  | { mode: "direct"; modelId: string; recordedModel: string };
 
-// REWRITER_MOCK=1 → deterministic stub (dev iteration without token cost). Also falls back
-// to mock when no key is configured, so dev never hard-fails on a missing key (LOCK 10).
-// The real call needs AI_GATEWAY_API_KEY (gateway) or ANTHROPIC_API_KEY (direct).
-function shouldMock(): boolean {
-  if (process.env.REWRITER_MOCK === "1") return true;
-  return !process.env.AI_GATEWAY_API_KEY && !process.env.ANTHROPIC_API_KEY;
+export function resolveRouting(): RewriteRouting {
+  if (process.env.REWRITER_MOCK === "1") return { mode: "mock" };
+  if (process.env.AI_GATEWAY_API_KEY) {
+    const modelId = process.env.REWRITER_MODEL ?? "anthropic/claude-sonnet-4-6";
+    return { mode: "gateway", modelId, recordedModel: modelId };
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    const modelId = process.env.REWRITER_MODEL ?? "claude-sonnet-4-6";
+    return { mode: "direct", modelId, recordedModel: `anthropic/${modelId}` };
+  }
+  return { mode: "mock" };
 }
 
 function mockRewrite(): RewriteOutcome {
@@ -60,9 +78,11 @@ export async function generateRewrite(input: {
   job: JobDetail;
   vendorNames: string[];
 }): Promise<RewriteOutcome> {
-  if (shouldMock()) return mockRewrite();
+  const routing = resolveRouting();
+  if (routing.mode === "mock") return mockRewrite();
 
-  const model = process.env.REWRITER_MODEL ?? DEFAULT_MODEL;
+  // gateway → string model; direct → the anthropic() provider model (bare id).
+  const model = routing.mode === "gateway" ? routing.modelId : anthropic(routing.modelId);
   const result = await generateObject({
     model,
     schema: rewriteSchema,
@@ -76,7 +96,7 @@ export async function generateRewrite(input: {
       inputTokens: result.usage.inputTokens ?? 0,
       outputTokens: result.usage.outputTokens ?? 0,
     },
-    model,
+    model: routing.recordedModel,
     promptVersion: PROMPT_VERSION,
   };
 }
