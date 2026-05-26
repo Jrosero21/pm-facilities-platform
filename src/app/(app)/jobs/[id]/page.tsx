@@ -11,6 +11,7 @@ import { createJobNoteAction } from "@/app/(app)/jobs/note-actions";
 import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
 import { JobNoteForm } from "@/components/job-note-form";
+import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { facetLine } from "@/components/dispatch-facets";
 
@@ -209,6 +210,9 @@ export default async function JobDetailPage({
                 key={n.id}
                 className="rounded-lg border border-neutral-200 bg-white p-3"
               >
+                <div className="mb-1">
+                  <NoteVisibilityBadge visibility={n.visibility} />
+                </div>
                 <p className="whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
                 <p className="mt-1 text-xs text-neutral-500">
                   {n.createdAt.toLocaleString()}

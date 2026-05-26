@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
 import { jobNotes } from "@/server/schema";
 import { getJob } from "@/server/jobs";
+import type { NoteVisibility } from "@/components/note-visibility-badge";
 
 export type JobNoteRow = typeof jobNotes.$inferSelect;
 
@@ -31,14 +32,17 @@ export type CreateJobNoteInput = {
   tenantId: string;
   jobId: string;
   body: string;
+  visibility?: NoteVisibility;
   createdByUserId: string;
 };
 
 /**
- * Create a job note. Guards job-in-tenant (JOB_NOT_FOUND). visibility is forced
- * to internal_only in Phase 4 — the column exists for Phase 6's visibility
- * workflows, but the operator can't set it yet (D-4.x). Single-row mutation:
- * audit via writeAuditLog() outside any transaction.
+ * Create a job note. Guards job-in-tenant (JOB_NOT_FOUND). visibility is an
+ * operator classification (Phase 6 6b) — one of the 5-value enum, default
+ * internal_only. Setting visibility is CLASSIFICATION only; it does NOT share the
+ * note (R-5.8 explicit-transitions) — the explicit "Share with client/vendor"
+ * action lands post-6d once communication_logs exists. Single-row mutation:
+ * audit via writeAuditLog() outside any transaction (R-4.5).
  */
 export async function createJobNote(
   input: CreateJobNoteInput,
@@ -52,7 +56,7 @@ export async function createJobNote(
     tenantId: input.tenantId,
     jobId: input.jobId,
     body: input.body,
-    visibility: "internal_only",
+    visibility: input.visibility ?? "internal_only",
     createdByUserId: input.createdByUserId,
   });
 
