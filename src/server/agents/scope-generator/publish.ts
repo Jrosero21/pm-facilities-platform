@@ -7,7 +7,7 @@ import { auditLogs, jobScopeDrafts, jobScopeSteps, jobs } from "@/server/schema"
 import { getJob } from "@/server/jobs";
 import { getScopeDraft, type ScopeStep } from "./drafts";
 import { getApproveReviewForScopeDraft } from "./reviews";
-import { DraftNotApproved } from "./errors";
+import { DraftNotApproved, ScopeAlreadyPublished } from "./errors";
 
 // ── Phase 7 batch 7c — publishScopeDraft ──────────────────────────────────────────────
 // The human-gated, ONLY draft -> job_scope_steps path (the agent can never reach this —
@@ -90,6 +90,24 @@ export async function publishScopeDraft(input: {
       .for("update");
     if (!lockedDraft[0]) throw new Error("DRAFT_NOT_FOUND");
     if (lockedDraft[0].status !== "approved") throw new DraftNotApproved(input.draftId);
+
+    // 2b. gate (KL-7.g / DEC-B): refuse a 2nd publish into an already-scoped job — checked
+    // UNDER the job lock so concurrent publishes serialize. publishScopeDraft APPENDS, so
+    // without this a sibling draft would duplicate the scope. One scope per job in Phase 7;
+    // re-scope is a future workflow that would need replace-semantics here. This is the
+    // write-boundary invariant any future writer inherits.
+    const existingSteps = await tx
+      .select({ id: jobScopeSteps.id })
+      .from(jobScopeSteps)
+      .where(
+        and(
+          eq(jobScopeSteps.tenantId, input.tenantId),
+          eq(jobScopeSteps.jobId, draft.jobId),
+          eq(jobScopeSteps.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (existingSteps[0]) throw new ScopeAlreadyPublished(draft.jobId);
 
     // 3. the canonical structured steps (the ONLY write to job_scope_steps).
     if (stepRows.length > 0) await tx.insert(jobScopeSteps).values(stepRows);

@@ -10,3 +10,16 @@ export class DraftNotApproved extends Error {
     this.name = "DraftNotApproved";
   }
 }
+
+/**
+ * publishScopeDraft gate (KL-7.g / DEC-B): the job already has a published scope, so a second
+ * publish would append-duplicate `job_scope_steps`. One scope per job in Phase 7; re-scope is a
+ * future workflow. Enforced at the write boundary (inside the publish txn, under the job lock)
+ * so every writer inherits it — not just the UI action wrapper.
+ */
+export class ScopeAlreadyPublished extends Error {
+  constructor(jobId: string) {
+    super(`SCOPE_ALREADY_PUBLISHED: job ${jobId} already has a published scope`);
+    this.name = "ScopeAlreadyPublished";
+  }
+}

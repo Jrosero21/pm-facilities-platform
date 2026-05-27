@@ -3,7 +3,7 @@ import "server-only";
 import { and, desc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { jobScopeDrafts } from "@/server/schema";
+import { agentDecisions, jobScopeDrafts } from "@/server/schema";
 import { writeAuditLog } from "@/server/audit";
 
 // ── Phase 7 batch 7c — job_scope_drafts data layer ────────────────────────────────────
@@ -136,4 +136,74 @@ export async function discardScopeDraft(tenantId: string, id: string, actorUserI
     targetId: id,
     metadata: { jobId: draft.jobId },
   });
+}
+
+// R-6.19: agent_decisions.metadata is json (longtext on MariaDB) — parse at the boundary,
+// then extract the assumptions array for the review UI.
+function parseAssumptions(v: unknown): string[] {
+  let parsed: unknown = v;
+  if (typeof v === "string") {
+    try {
+      parsed = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  const a = (parsed as { assumptions?: unknown } | null)?.assumptions;
+  return Array.isArray(a) ? (a as string[]) : [];
+}
+
+// A draft joined to its scope_proposal decision (confidence / rationale / assumptions) for
+// the review UI — the scope analog of listDraftsForJobDetailed. The decision lives on
+// agent_decisions via the shared agent_run_id. Newest first.
+export type ScopeDraftDetailed = ScopeDraft & {
+  confidence: string | null;
+  rationale: string | null;
+  assumptions: string[];
+};
+
+export async function listScopeDraftsForJobDetailed(
+  tenantId: string,
+  jobId: string,
+): Promise<ScopeDraftDetailed[]> {
+  const rows = await db
+    .select({
+      id: jobScopeDrafts.id,
+      tenantId: jobScopeDrafts.tenantId,
+      jobId: jobScopeDrafts.jobId,
+      agentRunId: jobScopeDrafts.agentRunId,
+      proposedSteps: jobScopeDrafts.proposedSteps,
+      status: jobScopeDrafts.status,
+      publishedAt: jobScopeDrafts.publishedAt,
+      createdAt: jobScopeDrafts.createdAt,
+      updatedAt: jobScopeDrafts.updatedAt,
+      confidence: agentDecisions.confidence,
+      rationale: agentDecisions.reasoning,
+      decisionMetadata: agentDecisions.metadata,
+    })
+    .from(jobScopeDrafts)
+    .leftJoin(
+      agentDecisions,
+      and(
+        eq(agentDecisions.agentRunId, jobScopeDrafts.agentRunId),
+        eq(agentDecisions.decisionType, "scope_proposal"),
+      ),
+    )
+    .where(and(eq(jobScopeDrafts.tenantId, tenantId), eq(jobScopeDrafts.jobId, jobId)))
+    .orderBy(desc(jobScopeDrafts.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    tenantId: r.tenantId,
+    jobId: r.jobId,
+    agentRunId: r.agentRunId,
+    proposedSteps: parseSteps(r.proposedSteps),
+    status: r.status,
+    publishedAt: r.publishedAt,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    confidence: r.confidence,
+    rationale: r.rationale,
+    assumptions: parseAssumptions(r.decisionMetadata),
+  }));
 }

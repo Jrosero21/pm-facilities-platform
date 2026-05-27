@@ -23,6 +23,10 @@ import { DraftClientUpdateButton } from "@/components/draft-client-update-button
 import { UpdateDraftsSection } from "@/components/update-drafts-section";
 import { JobTimeline } from "@/components/job-timeline";
 import { mergeTimeline } from "@/lib/timeline";
+import { listScopeDraftsForJobDetailed } from "@/server/agents/scope-generator/drafts";
+import { listScopeStepsForJob } from "@/server/agents/scope-generator/steps";
+import { GenerateScopeButton } from "@/components/generate-scope-button";
+import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -51,14 +55,17 @@ export default async function JobDetailPage({
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
 
-  const [contacts, notes, events, assignments, communications, drafts] = await Promise.all([
-    listJobContacts(tenantId, id),
-    listJobNotes(tenantId, id),
-    listJobEvents(tenantId, id),
-    listAssignmentsForJob(tenantId, id),
-    listCommunicationsForJob(tenantId, id),
-    listDraftsForJobDetailed(tenantId, id),
-  ]);
+  const [contacts, notes, events, assignments, communications, drafts, scopeDrafts, scopeSteps] =
+    await Promise.all([
+      listJobContacts(tenantId, id),
+      listJobNotes(tenantId, id),
+      listJobEvents(tenantId, id),
+      listAssignmentsForJob(tenantId, id),
+      listCommunicationsForJob(tenantId, id),
+      listDraftsForJobDetailed(tenantId, id),
+      listScopeDraftsForJobDetailed(tenantId, id),
+      listScopeStepsForJob(tenantId, id),
+    ]);
   const notesById = Object.fromEntries(notes.map((n) => [n.id, n.body]));
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
@@ -76,6 +83,10 @@ export default async function JobDetailPage({
   const timelineNotes = notes.filter(
     (n) => n.visibility !== "internal_only" && !sharedNoteIds.has(n.id),
   );
+
+  // Scope state is derived from the substrate tables, not jobs.scope_generation_status
+  // (KL-7.f / D-7.e): a job has a published scope iff job_scope_steps exist for it.
+  const hasPublishedScope = scopeSteps.length > 0;
 
   const fields: { label: string; value: string | null }[] = [
     { label: "Client", value: job.clientName },
@@ -145,6 +156,31 @@ export default async function JobDetailPage({
           </div>
         ))}
       </dl>
+
+      {/* Scope of work */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">Scope of work</h2>
+          {!hasPublishedScope && <GenerateScopeButton jobId={job.id} />}
+        </div>
+        {hasPublishedScope && (
+          <div className="mt-3">
+            <ol className="list-decimal space-y-1 pl-5 text-sm text-neutral-800">
+              {scopeSteps.map((s) => (
+                <li key={s.id} className="whitespace-pre-wrap">
+                  {s.instruction}
+                </li>
+              ))}
+            </ol>
+            <p className="mt-2 text-xs text-neutral-500">Scope published. Re-scope is not yet supported.</p>
+          </div>
+        )}
+        {scopeDrafts.length > 0 ? (
+          <ScopeDraftsSection jobId={job.id} drafts={scopeDrafts} publishDisabled={hasPublishedScope} />
+        ) : !hasPublishedScope ? (
+          <p className="mt-3 text-sm text-neutral-600">No scope generated yet.</p>
+        ) : null}
+      </div>
 
       {/* Dispatch */}
       <div className="mt-8">
