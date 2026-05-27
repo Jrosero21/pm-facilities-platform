@@ -19,6 +19,11 @@ import { getClient } from "@/server/clients";
 import { getLocation } from "@/server/client-locations";
 import { getJobStatusByCode, getPriority } from "@/server/job-reference";
 import { getTrade } from "@/server/trades";
+// Phase 8 (8c.4): createJob is the SOLE writer of jobs.not_to_exceed_amount — it resolves
+// the NTE from the client NTE config (Surface 23) and snapshots it. First Phase-4 → Phase-8
+// import; one-way (jobs → billing); billing modules never import jobs.ts (acyclic). (9e)
+import { resolveClientNteRule } from "@/server/billing/nte";
+import { emitJobBillingEvent } from "@/server/billing/events";
 
 export type JobRow = typeof jobs.$inferSelect;
 // 8-value union derived from the schema enum (no drift).
@@ -168,6 +173,9 @@ export type CreateJobInput = {
   sourceExternalId?: string | null;
   problemDescription: string;
   scopeOfWork?: string | null;
+  // Operator-entered NTE (the override/manual value), canonical "d.dd" from the action layer
+  // (9b). Optional: absent ⇒ the resolver's value snapshots (Case A) or NULL (Case E). (8c.4)
+  notToExceedAmount?: string | null;
   createdByUserId: string;
 };
 
@@ -208,6 +216,31 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
   const jobId = uuidv7();
   const sourceType: JobSourceType = input.sourceType ?? "manual";
 
+  // --- NTE resolution + override decision (Surface 23 / 8c.4) — pre-txn read ---
+  // resolveClientNteRule needs the full key; skip if trade OR priority is absent (9f).
+  const operatorNte = input.notToExceedAmount ?? null;
+  const resolvedNte =
+    input.primaryTradeId && input.priorityId
+      ? await resolveClientNteRule({
+          tenantId: input.tenantId,
+          clientId: input.clientId,
+          tradeId: input.primaryTradeId,
+          priorityId: input.priorityId,
+          clientLocationId: input.clientLocationId,
+        })
+      : null;
+  // 5-case matrix (9c). Comparison is plain === — both are canonical "d.dd" (operatorNte is
+  // action-canonicalized at the boundary, 9b; resolvedNte.amount is a DB decimal(12,2)). No
+  // money arithmetic in jobs.ts (9a — no decimal lib here).
+  let finalNte: string | null;
+  let isOverride = false;
+  if (operatorNte !== null) {
+    finalNte = operatorNte; // Case B / C / D
+    if (resolvedNte !== null && operatorNte !== resolvedNte.amount) isOverride = true; // Case C
+  } else {
+    finalNte = resolvedNte !== null ? resolvedNte.amount : null; // Case A / Case E
+  }
+
   await db.transaction(async (tx) => {
     // 1. Ensure the tenant's sequence row exists (idempotent, race-safe).
     await tx.execute(sql`
@@ -238,6 +271,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
       sourceExternalId: input.sourceExternalId ?? null,
       problemDescription: input.problemDescription,
       scopeOfWork: input.scopeOfWork ?? null,
+      notToExceedAmount: finalNte, // 8c.4: rule-resolved snapshot or operator value (matrix 9c)
       createdByUserId: input.createdByUserId,
     });
 
@@ -277,6 +311,28 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
       targetId: jobId,
       metadata: { jobNumber: n, clientId: input.clientId, sourceType },
     });
+
+    // 8. (8c.4) Operator overrode the rule-resolved NTE (Case C only) — financial audit,
+    //    INSIDE the txn so the override event commits atomically with the job + its snapshot.
+    //    Job-level event (no record refs); ruleSource (not "source" — jobs.source_type exists).
+    if (isOverride && resolvedNte !== null && operatorNte !== null) {
+      await emitJobBillingEvent(tx, {
+        tenantId: input.tenantId,
+        jobId,
+        eventType: "nte.overridden",
+        actorUserId: input.createdByUserId,
+        summary: `Job NTE overridden: ${resolvedNte.amount} (rule) → ${operatorNte}`,
+        amount: operatorNte,
+        currency: resolvedNte.currency,
+        metadata: {
+          ruleId: resolvedNte.ruleId,
+          ruleSource: resolvedNte.source,
+          ruleAmount: resolvedNte.amount,
+          overrideAmount: operatorNte,
+          level: "job",
+        },
+      });
+    }
   });
 
   const row = await getJob(input.tenantId, jobId);

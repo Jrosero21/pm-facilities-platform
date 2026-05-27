@@ -211,6 +211,17 @@ All six are now **LOCKED** (operator approval of the 8c plan). Recorded here as 
   4. **Append-only** is enforced by the **absence of mutators** (only `emit` + `list` exported) + the table's missing `updated_at` — verified structurally (Object.keys export check).
   5. **Reader order** `created_at ASC, id ASC` — the `uuidv7` `id` is the deterministic within-second tie-break.
 
+### 8c.4 sub-batch locks + construction notes (recorded at build)
+
+- **9a — LOCKED: no `Big` in `jobs.ts`.** The action canonicalizes the operator NTE to `"d.dd"` (`canonicalizeNte`: shape + strip-leading-zeros + pad + `>0` + ≤10-int-digit overflow); `createJob` compares it to `resolvedNte.amount` (a DB `decimal(12,2)`) with plain `===`. `jobs.ts` does no money arithmetic, so it stays free of a money lib — trust-at-boundary, the 8c.3-9f precedent.
+- **9b — LOCKED: action-layer NTE validation/canonicalization** at the boundary (invalid → `{ error }` before `createJob`).
+- **9c — LOCKED: 5-case override matrix.** Override = **Case C only** (a rule resolved AND the operator value differs). Case A (rule, no operator) and Case B (operator == resolved, incl. pre-fill acceptance) **snapshot silently — no audit event**. Cases D/E (no rule) are the A5 manual-fallback path — nothing to override.
+- **9d — LOCKED: form passes operator value only**; `createJob` re-resolves + compares (no hidden field / no flag).
+- **9e — LOCKED: `jobs → billing` dependency direction** (one-way, acyclic). **The first Phase-4 → Phase-8 import**, established here because Surface 23 makes `createJob` the **sole writer of `jobs.not_to_exceed_amount`** (R-7.2 for that column), so resolution + override-emit must live inside `createJob`'s txn for atomicity. *(For `02-decisions.md`: "Phase-4 `createJob` became the sole writer of `jobs.not_to_exceed_amount` as of 8c.4; this required Phase-4 to depend on Phase-8 billing modules, jobs → billing only.")*
+- **9f — LOCKED: resolution gated on both `primaryTradeId` AND `priorityId`** present (the resolver needs the full key); else skip → operator value or NULL.
+- **9g — LOCKED: UI NTE field + pre-fill deferred to 8c.11e.** `createJob` + the action accept an optional `notToExceedAmount`; the form not sending it yet is the forward-compat path (Case A/E).
+- **Construction notes:** `nte.overridden` is **job-level** (no record refs); `metadata.ruleSource` (NOT `source` — `jobs.source_type` already exists, Catch 2); `currency = resolvedNte.currency` (same-currency MVP, Catch 3 → CF-8c.4.1); summary format `Job NTE overridden: <ruleAmount> (rule) → <overrideAmount>`. `createJob`'s existing 7-step txn is unchanged except the added `not_to_exceed_amount` column + an appended step-8 override emit; `job.created` (job_events + audit_logs) still fires alongside.
+
 ---
 
 ## §6 — Forward-carry into 8c known-limitations (for the closeout docs batch)

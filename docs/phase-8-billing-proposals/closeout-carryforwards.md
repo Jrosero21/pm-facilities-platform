@@ -23,3 +23,13 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (closeout-tracked, NOT 8c.1 scope).** Add a `billing_config.*` taxonomy entry (e.g. `billing_config.nte_rule_archived` / `.created` / `.activated`) emitted on NTE-rule lifecycle changes. The natural home for the emit is **wherever NTE-rule admin lives** (8c.11e UI) or a future config-audit follow-on — decide there. `emitJobBillingEvent` is job-scoped, so a config-level event may need a different sink (config events are not job-scoped); flag that shape question when implemented.
 
 **Refs.** 8c.1 pre-DB review (archive is a silent state change); 8c-construction-plan §2 (8c.1).
+
+---
+
+## CF-8c.4.1 — Multi-currency NTE override comparison not handled
+
+**What.** 8c.4's override detection compares `operatorNte !== resolvedNte.amount` (a plain `===` on canonical `"d.dd"` strings) and **does not consider currency**. The override event records `currency = resolvedNte.currency`. This is correct under the **same-currency MVP** (OQ-2 — `'USD'` everywhere), where amount comparison alone is sufficient.
+
+**Obligation (if multi-currency lands later).** When per-record currency diverges from `'USD'`, the override comparison boundary in `createJob` must compare **both amount AND currency** (an operator value in a different currency than the rule is an override regardless of the numeric amount), and the `nte.overridden` metadata must record **both** the rule currency and the override currency explicitly. Until then this is a documented same-currency assumption, not a bug.
+
+**Refs.** 8c.4 Catch 3; OQ-2 (same-currency MVP); `8c-construction-plan §5` (8c.4 construction notes).
