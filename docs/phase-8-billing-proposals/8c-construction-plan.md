@@ -185,6 +185,17 @@ All six are now **LOCKED** (operator approval of the 8c plan). Recorded here as 
 - **8c-D5 — LOCKED: `src/server/billing/` subdir** is the billing data-layer home (created in 8c.1 Turn 2 with the first files).
 - **8c-D6 — LOCKED: soft "ready to close" signal** (all client invoices `paid` ⇒ a UI hint), **not** a hard precondition on `markBillingClosed` (OQ-25 explicit-close).
 
+### 8c.2 sub-batch locks + construction notes (recorded at build)
+
+- **9a — LOCKED: `big.js` + `@types/big.js`** (MIT, money-purpose, server-only; bundle size moot). Decimal-string arithmetic; round-half-up.
+- **9b — LOCKED: `tax_amount` validation lives at the line-CRUD write boundary (8c.5+), not in recalc.** `recalculate*Totals` trusts stored line values and only sums.
+- **9c — LOCKED: the `exceeds_nte` / `nte_baseline_amount` arm of `recalculateVendorInvoiceTotals` is deferred to 8c.7.** 8c.2 ships the totals body only; 8c.7 grafts the NTE arm on (after totals, same txn).
+- **Coding rules established (for `02-decisions.md` at closeout):**
+  1. **Explicit-mode rounding** — every `Big.round()` passes `Big.roundHalfUp` (via the `HALF_UP` constant / `roundHalfUp` helper); **never rely on the mutable `Big.RM` global** (another module could flip it to banker's). Do not "DRY" the mode away.
+  2. **Markup operation order** — `(extended × pct) / 100` (multiply *before* divide; the product is exact, the single division comes last where round-to-2 absorbs it). Do not rewrite as `extended × (pct/100)`.
+  3. **Line-CRUD concurrency contract (8c.5+)** — callers that edit lines + recalc MUST hold the **parent row `FOR UPDATE`** for the edit+recalc (serializing per-record recalcs). `recalculate*Totals` itself is lock-free and converges (the line rows are the source of truth).
+- **Construction note:** AR vs AP math factored into pure `computeArLines` / `computeApLines` (operate on plain arrays); the Drizzle SELECT/UPDATE stays per-writer (type-safe); line UPDATEs are tenant-scoped (`WHERE id AND tenantId`).
+
 ---
 
 ## §6 — Forward-carry into 8c known-limitations (for the closeout docs batch)
