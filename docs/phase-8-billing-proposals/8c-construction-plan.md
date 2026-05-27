@@ -196,6 +196,21 @@ All six are now **LOCKED** (operator approval of the 8c plan). Recorded here as 
   3. **Line-CRUD concurrency contract (8c.5+)** — callers that edit lines + recalc MUST hold the **parent row `FOR UPDATE`** for the edit+recalc (serializing per-record recalcs). `recalculate*Totals` itself is lock-free and converges (the line rows are the source of truth).
 - **Construction note:** AR vs AP math factored into pure `computeArLines` / `computeApLines` (operate on plain arrays); the Drizzle SELECT/UPDATE stays per-writer (type-safe); line UPDATEs are tenant-scoped (`WHERE id AND tenantId`).
 
+### 8c.3 sub-batch locks + construction notes (recorded at build)
+
+- **9a — LOCKED: `BILLING_EVENT_TYPES` = `const` array `as const`** (→ string-literal union) + a runtime `Set` for O(1) membership.
+- **9b — LOCKED: 0-to-many record refs per event, NO XOR.** `payment.recorded` sets 2 (payment + paid invoice); job-level events (`nte.overridden`, `billing.closed`) set 0. The per-type ref convention is documented in an `events.ts` header comment.
+- **9c — LOCKED: generic `Error`** on all validation failures (`INVALID_BILLING_EVENT_{TYPE,SUMMARY,AMOUNT,CURRENCY}`) — programmer errors; internal-only writer.
+- **9d — LOCKED: merged-timeline reader deferred to 8c.11a (UI).** Data layer ships two separate listers (`listJobEvents` Phase 4 + `listJobBillingEvents` here); the UI merges/sorts (OQ-19).
+- **9e — LOCKED: 21-type taxonomy.** Includes `billing.closed`, `vendor_invoice.paid`, `change_order.submitted`, `change_order.withdrawn`, `client_invoice.voided`; **`change_order.created` dropped** (Catch 1 — first CO emit is `change_order.submitted`, matching the proposal "first emit at send" pattern; drafts are operationally transient).
+- **9f — LOCKED: trust-caller on `job∈tenant`** (no per-emit read; the FK guarantees the job exists).
+- **Construction notes (for `02-decisions.md` at closeout):**
+  1. **`events.ts` is a leaf module** — imported BY the record modules (8c.4–8c.10); imports none of them (no `nte`/`totals`/record-module imports). The amount validator is inlined to preserve this.
+  2. **Metadata serialization** — `emitJobBillingEvent` passes the **object** to `.values()` and lets Drizzle `json()` serialize; the reader **defensive-parses** on read (`typeof === "string" ? JSON.parse : raw`, R-6.19). This codifies the established pattern from a 20+-site inspection (every metadata write passes an object; zero `JSON.stringify`), not a re-invention.
+  3. **Summary trim-before-store** (Catch 2): trim, then validate the *trimmed* length, then store the *trimmed* value.
+  4. **Append-only** is enforced by the **absence of mutators** (only `emit` + `list` exported) + the table's missing `updated_at` — verified structurally (Object.keys export check).
+  5. **Reader order** `created_at ASC, id ASC` — the `uuidv7` `id` is the deterministic within-second tie-break.
+
 ---
 
 ## §6 — Forward-carry into 8c known-limitations (for the closeout docs batch)
