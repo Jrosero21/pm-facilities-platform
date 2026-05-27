@@ -222,6 +222,23 @@ All six are now **LOCKED** (operator approval of the 8c plan). Recorded here as 
 - **9g — LOCKED: UI NTE field + pre-fill deferred to 8c.11e.** `createJob` + the action accept an optional `notToExceedAmount`; the form not sending it yet is the forward-compat path (Case A/E).
 - **Construction notes:** `nte.overridden` is **job-level** (no record refs); `metadata.ruleSource` (NOT `source` — `jobs.source_type` already exists, Catch 2); `currency = resolvedNte.currency` (same-currency MVP, Catch 3 → CF-8c.4.1); summary format `Job NTE overridden: <ruleAmount> (rule) → <overrideAmount>`. `createJob`'s existing 7-step txn is unchanged except the added `not_to_exceed_amount` column + an appended step-8 override emit; `job.created` (job_events + audit_logs) still fires alongside.
 
+### 8c.5 sub-batch locks + construction notes (recorded at build)
+
+- **10a — LOCKED: chain root = `parent_proposal_id IS NULL`** (revisions point at root; chain query `parent_proposal_id = root OR id = root`).
+- **10b — LOCKED: root `revision_number = 1`; revisions = `max(chain) + 1`.**
+- **10c — LOCKED: revision copies the prior's line items** (re-quote intent; extended/markup recomputed).
+- **10d — LOCKED: revision copies header** (`scope_snapshot`, `title`, `currency`, `validUntil`, `notes`); **0-live re-open supported** (revise a `declined`/`withdrawn` proposal → new `draft`; the terminal prior is **not** flipped and emits **no** `proposal.superseded`).
+- **10e — LOCKED: `lineNumber` auto-assigned `max + 1`** under the parent lock; no caller param (reorder deferred).
+- **10f — LOCKED: validators inlined** in `proposals.ts`; a shared `billing/money.ts` is deferred until 3–4 modules duplicate.
+- **10h — LOCKED: `sendProposal` twice → `ProposalNotDraft`** (under-lock re-check; no silent no-op).
+- **10i — LOCKED: event summary formats** (§6 table).
+- **Construction notes (for `02-decisions.md` at closeout):**
+  1. **`billing/errors.ts` evolved from re-export shim → MIXED module** (re-exports `SingleActiveInvariantViolated`/`ActivationTargetMismatch` for NTE **+** defines the 4 proposal F3 classes).
+  2. **4 F3 classes** (exact names + stable ctor signatures): `ProposalNotDraft(id, status)`, `ProposalNotSent(id, status)`, `ProposalNotWithdrawable(id, status)`, `ProposalChainHasLiveRevision(rootId, liveCount)`.
+  3. **Chain-revision serialization = lock the chain ROOT row `FOR UPDATE`** (per-chain mutex); live-count + supersedes-target precondition covers both the 1-live (flip prior → superseded) and 0-live re-open (no flip) cases.
+  4. **`accepted`-not-withdrawable reconciliation** (Turn-3): `LIVE_STATUSES` = {draft,sent,viewed,accepted} (revision-chain slot — an accepted proposal can be superseded), but **`WITHDRAWABLE_STATUSES` = {draft,sent,viewed}** — an `accepted` proposal is a **commitment** (revise/change-order, never withdraw → `ProposalNotWithdrawable`). This refined the Turn-1 plan (which had listed `accepted` as withdrawable) to match the Turn-3 test/intent.
+  5. **Module-graph isolation = the D-7.3 enforcement.** `proposals.ts` imports **no** scope-substrate / jobs-data-layer / publish-writer; the forbidden symbol names appear **nowhere** in the file (descriptive comments), verified by a **whole-file string-match grep** (verify Group 13) — guards against a future "sync-the-scope" import regression. `recordProposalAcceptance` empirically leaves `job_scope_steps` row count unchanged (verify Group 6).
+
 ---
 
 ## §6 — Forward-carry into 8c known-limitations (for the closeout docs batch)
