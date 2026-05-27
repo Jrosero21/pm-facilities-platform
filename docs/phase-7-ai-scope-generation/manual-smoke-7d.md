@@ -16,43 +16,43 @@ Each item is **a specific action → a specific observable result.** Tick each; 
 The `/jobs/new` form is five required selects/fields + one optional, top to bottom. The
 **Location** select is **disabled until a Client is chosen** and **resets if you change the
 Client** (it's filtered to the selected client).
-- [ ] Go to `/jobs/new`.
-- [ ] **Client** → pick any client from the dropdown (placeholder *"Select a client…"*). →
+- [x] Go to `/jobs/new`.
+- [x] **Client** → pick any client from the dropdown (placeholder *"Select a client…"*). →
   The **Location** select becomes enabled (its placeholder changes from *"Select a client
   first"* to *"Select a location…"*).
-- [ ] **Location** → pick a location under that client. (If you re-pick the Client, this resets
+- [x] **Location** → pick a location under that client. (If you re-pick the Client, this resets
   to its placeholder — re-select a location.)
-- [ ] **Trade** → pick any trade (e.g. *HVAC* or *Plumbing*) — required; scope generation uses
+- [x] **Trade** → pick any trade (e.g. *HVAC* or *Plumbing*) — required; scope generation uses
   it as context.
-- [ ] **Priority** → pick any priority (e.g. *Standard*).
-- [ ] **Problem description** (required textarea) → e.g. *"Walk-in freezer not holding
+- [x] **Priority** → pick any priority (e.g. *Standard*).
+- [x] **Problem description** (required textarea) → e.g. *"Walk-in freezer not holding
   temperature; compressor runs but box stays warm."*
-- [ ] **Initial scope** (optional) → leave blank.
-- [ ] Click **Create job**. → Lands on `/jobs/[id]`; note the **job #**. The **Scope of work**
+- [x] **Initial scope** (optional) → leave blank.
+- [x] Click **Create job**. → Lands on `/jobs/[id]`; note the **job #**. The **Scope of work**
   section shows a **"Generate scope"** button and *"No scope generated yet."*
 
 ## 1. Generate
-- [ ] On the fresh job, find the **"Scope of work"** section (between *Problem description* and
+- [x] On the fresh job, find the **"Scope of work"** section (between *Problem description* and
   *Dispatch*). → A **"Generate scope"** button is present; below it, *"No scope generated yet."*
-- [ ] Click **Generate scope**. → Button shows *"Generating…"*; after a few seconds the page
+- [x] Click **Generate scope**. → Button shows *"Generating…"*; after a few seconds the page
   refreshes and a **"Pending review (1)"** group appears with one collapsed draft row
   (confidence badge + *"N steps · {timestamp}"* + the first step text).
 
 ## 2. Review — collapse / expand
-- [ ] Click **Review** on the pending row. → The row expands: **Assumptions** list, **Rationale**
+- [x] Click **Review** on the pending row. → The row expands: **Assumptions** list, **Rationale**
   line, the editable **step list**, and Approve / Reject / Discard controls.
-- [ ] Click **Close**. → The row collapses back to the summary.
+- [x] Click **Close**. → The row collapses back to the summary.
 
 ## 3. Edit affordances (re-expand the draft)
-- [ ] **Rewrite:** edit a step's instruction textarea. → Text updates in place.
-- [ ] **Category:** change a step's category select (e.g. `—` → `Verify`). → Selection updates.
-- [ ] **Expects photo:** toggle a step's checkbox. → Checkbox flips.
-- [ ] **Reorder:** click ▲/▼ on a middle step. → The step swaps position. Confirm ▲ is
+- [x] **Rewrite:** edit a step's instruction textarea. → Text updates in place.
+- [x] **Category:** change a step's category select (e.g. `—` → `Verify`). → Selection updates.
+- [x] **Expects photo:** toggle a step's checkbox. → Checkbox flips.
+- [x] **Reorder:** click ▲/▼ on a middle step. → The step swaps position. Confirm ▲ is
   **disabled** on the first step and ▼ is **disabled** on the last step.
-- [ ] **Remove:** click **×** on a step. → The step disappears; remaining steps renumber.
-- [ ] **Add step:** click **+ Add step**. → A new empty step appends at the end with category `—`
+- [x] **Remove:** click **×** on a step. → The step disappears; remaining steps renumber.
+- [x] **Add step:** click **+ Add step**. → A new empty step appends at the end with category `—`
   and expects-photo unchecked.
-- [ ] **Empty-instruction guard:** leave the added step's instruction blank and click **Approve**.
+- [x] **Empty-instruction guard:** leave the added step's instruction blank and click **Approve**.
   → Inline red error: *"A scope needs at least one step, each with instruction text."* (no state
   change).
 
@@ -69,22 +69,22 @@ Client** (it's filtered to the selected client).
   uppercase) — the two are visually distinguished.
 
 ## 5. Publish + published state
-- [ ] With a *Ready to publish* draft on the fresh job, click **Publish scope**. → Button shows
+- [x] With a *Ready to publish* draft on the fresh job, click **Publish scope**. → Button shows
   *"Publishing…"*; on refresh the **"Scope of work"** section now shows a **numbered list** of the
   published steps, **the "Generate scope" button is gone**, and the note *"Scope published.
   Re-scope is not yet supported."* appears.
-- [ ] **Sibling gate** (set up before publishing): generate **two** drafts, approve **both**, then
+- [x] **Sibling gate** (set up before publishing): generate **two** drafts, approve **both**, then
   publish **one**. → After publish, the **other** approved draft's row shows **no Publish button**
   and the note *"Scope already published for this job. This draft can no longer be published.
   Discard or leave as history."*
-- [ ] **Gated-sibling discard** (the 7d hotfix): on that gated approved sibling, confirm the
+- [x] **Gated-sibling discard** (the 7d hotfix): on that gated approved sibling, confirm the
   **Discard** control is visible **alongside** the note. Click **Discard**. → The draft moves to
   the **Dismissed** group with status **`DISCARDED`**. → The **published scope on the parent job
   is unaffected** (same numbered steps, no change).
-- [ ] **Already-published job:** open Job #1 (or #2). → The Scope of work section shows the
+- [x] **Already-published job:** open Job #1 (or #2). → The Scope of work section shows the
   published numbered steps + the *"Scope published…"* note, and **no Generate button**.
 
 ## Result
-- [ ] All items pass → record "7d manual smoke: pass" in the closeout.
-- [ ] Any gap → note it; triage as **blocking UX defect** (hotfix before docs/tag) or
+- [x] All items pass → record "7d manual smoke: pass" in the closeout.
+- [x] Any gap → note it; triage as **blocking UX defect** (hotfix before docs/tag) or
   **acknowledged limitation** (KL entry, defer).

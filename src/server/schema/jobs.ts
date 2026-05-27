@@ -33,7 +33,7 @@ import { priorities, jobStatuses } from "./job-reference";
 // (scheduled/due/completed/closed) are `datetime` to dodge the 2038 ceiling and
 // TZ-conversion semantics; created_at/updated_at stay DB-managed `timestamp` (D-4.4).
 // scope_generation_status is varchar (Phase 4 vocab = 'not_started' only; Phase 7
-// owns the rest — D-4.2). primary_trade_id / priority_id are nullable for non-manual
+// owns the rest — D-4.6). primary_trade_id / priority_id are nullable for non-manual
 // intake; the manual form requires them (D-4.7).
 export const jobs = mysqlTable(
   "jobs",
