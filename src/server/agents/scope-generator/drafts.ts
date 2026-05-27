@@ -112,16 +112,19 @@ export async function createScopeDraft(input: {
 }
 
 /**
- * Discard a pending draft (operator dismissal — no review row, unlike reject). Terminal.
- * Single-row update + writeAuditLog OUTSIDE (R-6.7). Operator action on agent output → it
- * DOES hit audit_logs (the agent's own writes do not).
+ * Discard a draft (operator dismissal — no review row, unlike reject). Allowed from
+ * pending_review OR approved (H1 / D-7.h): a stranded APPROVED sibling on an already-published
+ * job (KL-7.g gate) can't publish, so it needs a disposal path. Terminal states
+ * (rejected/discarded/published) are not discardable. This is the scope-generator's state
+ * machine; the rewriter's discard stays pending-only (its approved drafts are always
+ * publishable — no stranding). Single-row update + writeAuditLog OUTSIDE (R-6.7).
  *
- * Throws: DRAFT_NOT_FOUND, DRAFT_NOT_PENDING_REVIEW.
+ * Throws: DRAFT_NOT_FOUND, DRAFT_NOT_DISCARDABLE.
  */
 export async function discardScopeDraft(tenantId: string, id: string, actorUserId: string): Promise<void> {
   const draft = await getScopeDraft(tenantId, id);
   if (!draft) throw new Error("DRAFT_NOT_FOUND");
-  if (draft.status !== "pending_review") throw new Error("DRAFT_NOT_PENDING_REVIEW");
+  if (draft.status !== "pending_review" && draft.status !== "approved") throw new Error("DRAFT_NOT_DISCARDABLE");
 
   await db
     .update(jobScopeDrafts)

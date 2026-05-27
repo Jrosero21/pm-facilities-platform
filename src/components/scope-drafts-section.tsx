@@ -297,11 +297,19 @@ function ApprovedScopeRow({
         ))}
       </ol>
       {publishDisabled ? (
-        // Courteous gate (DEC-C): explain the disabled state, don't silently hide it. The
-        // load-bearing gate is server-side in publishScopeDraft (KL-7.g / SCOPE_ALREADY_PUBLISHED).
-        <p className="mt-2 text-xs text-neutral-500">
-          Scope already published for this job. This draft can no longer be published. Discard or leave as history.
-        </p>
+        // Courteous gate (DEC-C): explain the disabled state AND surface both options the note
+        // names — the load-bearing gate is server-side in publishScopeDraft (KL-7.g /
+        // SCOPE_ALREADY_PUBLISHED); here the operator can Discard (H2/H1: approved → discarded)
+        // or leave it as history. Without the Discard control the note would promise an action
+        // the UI doesn't offer (the bug this hotfix closes).
+        <div className="mt-2">
+          <p className="text-xs text-neutral-500">
+            Scope already published for this job. This draft can no longer be published. Discard or leave as history.
+          </p>
+          <div className="mt-1">
+            <DiscardScopeForm jobId={jobId} draftId={draft.id} />
+          </div>
+        </div>
       ) : (
         <PublishScopeForm jobId={jobId} draftId={draft.id} />
       )}

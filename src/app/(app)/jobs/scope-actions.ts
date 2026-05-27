@@ -116,7 +116,7 @@ export async function discardScopeDraftAction(jobId: string, draftId: string): P
     await discardScopeDraft(ctx.activeTenant.tenantId, draftId, ctx.user.id);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    if (msg === "DRAFT_NOT_PENDING_REVIEW") return { error: "This draft is no longer pending review." };
+    if (msg === "DRAFT_NOT_DISCARDABLE") return { error: "This draft cannot be discarded in its current state." };
     if (msg === "DRAFT_NOT_FOUND") return { error: "Draft not found." };
     throw err;
   }

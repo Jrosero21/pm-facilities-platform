@@ -76,7 +76,11 @@ Client** (it's filtered to the selected client).
 - [ ] **Sibling gate** (set up before publishing): generate **two** drafts, approve **both**, then
   publish **one**. → After publish, the **other** approved draft's row shows **no Publish button**
   and the note *"Scope already published for this job. This draft can no longer be published.
-  Discard or leave as history."* Confirm a **Discard** path is still available on it.
+  Discard or leave as history."*
+- [ ] **Gated-sibling discard** (the 7d hotfix): on that gated approved sibling, confirm the
+  **Discard** control is visible **alongside** the note. Click **Discard**. → The draft moves to
+  the **Dismissed** group with status **`DISCARDED`**. → The **published scope on the parent job
+  is unaffected** (same numbered steps, no change).
 - [ ] **Already-published job:** open Job #1 (or #2). → The Scope of work section shows the
   published numbered steps + the *"Scope published…"* note, and **no Generate button**.
 
