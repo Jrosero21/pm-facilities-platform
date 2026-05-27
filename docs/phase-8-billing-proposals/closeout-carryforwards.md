@@ -13,3 +13,13 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Blocker condition.** If the from-scratch rebuild **diverges** from the worked-DB schema, that is a **blocker for the `v0.9.0-phase-8` tag** — investigate and reconcile before closeout.
 
 **Refs.** `8b-schema-plan.md §7.5`; 8b verify-review (drift-check substitution flagged at apply).
+
+---
+
+## CF-8c.1.1 — NTE-rule archive should emit a billing event (audit trail)
+
+**What.** In 8c.1, `archiveClientNteRule` is a **silent state change** (`active|archived → archived`) — no audit/event row. NTE-rule lifecycle changes (create / activate-supersede / archive) are tenant billing-config edits that should eventually be auditable.
+
+**Obligation (closeout-tracked, NOT 8c.1 scope).** Add a `billing_config.*` taxonomy entry (e.g. `billing_config.nte_rule_archived` / `.created` / `.activated`) emitted on NTE-rule lifecycle changes. The natural home for the emit is **wherever NTE-rule admin lives** (8c.11e UI) or a future config-audit follow-on — decide there. `emitJobBillingEvent` is job-scoped, so a config-level event may need a different sink (config events are not job-scoped); flag that shape question when implemented.
+
+**Refs.** 8c.1 pre-DB review (archive is a silent state change); 8c-construction-plan §2 (8c.1).
