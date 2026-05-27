@@ -113,6 +113,62 @@
       "when": 1779822619100,
       "tag": "0015_salty_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1779894182397,
+      "tag": "0016_great_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1779894272905,
+      "tag": "0017_high_wendell_vaughn",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1779894770959,
+      "tag": "0018_white_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1779895464352,
+      "tag": "0019_complete_invaders",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1779895517772,
+      "tag": "0020_lying_sentry",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1779895565776,
+      "tag": "0021_light_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1779895637259,
+      "tag": "0022_faulty_turbo",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1779895705426,
+      "tag": "0023_brave_stranger",
+      "breakpoints": true
     }
   ]
 }

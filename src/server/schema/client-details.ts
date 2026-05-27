@@ -175,6 +175,17 @@ export const clientBillingRules = mysqlTable(
     name: varchar("name", { length: 255 }).notNull(),
     markupPercent: decimal("markup_percent", { precision: 6, scale: 3 }),
     paymentTermsDays: int("payment_terms_days"),
+    // Phase 8 (8b migration 0016) — two per-client billing-policy columns added to
+    // this client-side billing-config substrate (8a §A; 8b-D1 Option B):
+    // - is_tax_exempt: recorded, NOT enforced in Phase 8 (OQ-7).
+    // - emergency_nte_multiplier: per-client override of the emergency NTE multiplier;
+    //   NULL = tenant-default resolver constant 1.50, applied only when the job's
+    //   priority.code = 'EMERGENCY' (Surface 23 A3). Resolver/enforcement is 8c code.
+    isTaxExempt: boolean("is_tax_exempt").notNull().default(false),
+    emergencyNteMultiplier: decimal("emergency_nte_multiplier", {
+      precision: 4,
+      scale: 2,
+    }),
     notes: text("notes"),
     isDefault: boolean("is_default").notNull().default(false),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),

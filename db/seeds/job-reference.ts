@@ -147,6 +147,18 @@ const starterStatuses: {
     description:
       "Job is fully closed including all closeout documents, invoicing, and final review. No further activity expected.",
   },
+  // Phase 8 (8b-D3): billing-close terminal, DISTINCT from the operational CLOSED
+  // (OQ-26). Billing close is an accounting-gated, explicit human transition (#20/#21);
+  // operational close and billing close are independent. Idempotent on code.
+  {
+    name: "Closed (Billed)",
+    code: "CLOSED_BILLED",
+    category: "completed",
+    sortOrder: 9,
+    isTerminal: true,
+    description:
+      "Billing is complete for the job (final invoice issued/paid). Distinct from operational CLOSED; reached via an explicit accounting-gated billing-close action.",
+  },
 ];
 
 async function main() {
