@@ -48,3 +48,29 @@ export class ProposalChainHasLiveRevision extends Error {
     this.name = "ProposalChainHasLiveRevision";
   }
 }
+
+// ── Change-order state-machine F3 errors (8c.6) ──────────────────────────────────────
+
+/** A draft-only operation (edit / line CRUD / submit) hit a non-draft change order. */
+export class ChangeOrderNotEditable extends Error {
+  constructor(id: string, status: string) {
+    super(`Change order ${id} is not editable (status=${status})`);
+    this.name = "ChangeOrderNotEditable";
+  }
+}
+
+/** approve/decline hit a change order that is not in `submitted`. */
+export class ChangeOrderNotApprovable extends Error {
+  constructor(id: string, status: string) {
+    super(`Change order ${id} is not approvable (status=${status})`);
+    this.name = "ChangeOrderNotApprovable";
+  }
+}
+
+/** withdraw hit a change order that is not draft/submitted (approved is a commitment; declined/withdrawn are terminal). */
+export class ChangeOrderNotWithdrawable extends Error {
+  constructor(id: string, status: string) {
+    super(`Change order ${id} is not withdrawable (status=${status})`);
+    this.name = "ChangeOrderNotWithdrawable";
+  }
+}

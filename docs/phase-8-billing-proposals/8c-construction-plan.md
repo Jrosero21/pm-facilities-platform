@@ -239,6 +239,21 @@ All six are now **LOCKED** (operator approval of the 8c plan). Recorded here as 
   4. **`accepted`-not-withdrawable reconciliation** (Turn-3): `LIVE_STATUSES` = {draft,sent,viewed,accepted} (revision-chain slot — an accepted proposal can be superseded), but **`WITHDRAWABLE_STATUSES` = {draft,sent,viewed}** — an `accepted` proposal is a **commitment** (revise/change-order, never withdraw → `ProposalNotWithdrawable`). This refined the Turn-1 plan (which had listed `accepted` as withdrawable) to match the Turn-3 test/intent.
   5. **Module-graph isolation = the D-7.3 enforcement.** `proposals.ts` imports **no** scope-substrate / jobs-data-layer / publish-writer; the forbidden symbol names appear **nowhere** in the file (descriptive comments), verified by a **whole-file string-match grep** (verify Group 13) — guards against a future "sync-the-scope" import regression. `recordProposalAcceptance` empirically leaves `job_scope_steps` row count unchanged (verify Group 6).
 
+### 8c.6 sub-batch locks + construction notes (recorded at build)
+
+- **11a — LOCKED: `getEffectiveNte` returns `null` when the base (`jobs.notToExceedAmount`) is null** — honest "no base ⇒ no effective NTE"; 8c.7 skips the job-level aggregate exceedance check on `null` (rather than treat it as `0.00`).
+- **11b — LOCKED: CO events set the `proposalId` ref when the CO is linked** (multi-ref correlates the timeline; the ref column, not metadata — Catch 2).
+- **11c — LOCKED: separate `approveChangeOrder` + `declineChangeOrder`** (operator-decision; not the unified `recordProposalAcceptance` client-decision shape).
+- **11d — LOCKED: read `total` directly** (no `getCoTotal` helper).
+- **11e — LOCKED: `approveChangeOrder` does NOT check the linked proposal's state** (the `proposalId` link is informational; no cross-substrate coupling).
+- **11f — LOCKED: writer maps approve → `{status:"approved", decision:"accepted"}`** — the `change_order_approvals.decision` enum is the shared `{accepted,declined}` from 8b (→ CF-8c.6.1); no schema change.
+- **Construction notes (for `02-decisions.md` at closeout):**
+  1. **Two structural guarantees** (both empirically + structurally verified): D-7.3 (no published-scope-substrate touch) **and** the 8c.4 sole-writer (no write to the job's NTE column). Verify Group 9 confirmed `approveChangeOrder` leaves `jobs.not_to_exceed_amount` row-value **and** `job_scope_steps` count unchanged; Group 10 string-matches the file for 8 forbidden tokens (the 6 scope/jobs tokens **+ `.update(jobs)` / `tx.update(jobs)`**).
+  2. **First record-module use of `big.js`** — `getEffectiveNte` sums base + Σ approved CO totals via `Big`, reusing **`roundHalfUp` from `totals.ts`** (explicit-mode discipline preserved, not re-invented).
+  3. **`getEffectiveNte` is computed-on-read** (OQ-14): only `status='approved'` COs counted; the base column is never mutated.
+  4. **`reasonPreview`** truncates the unbounded `reason` to 80 chars + `…` for the `varchar(500)` event summary; the full reason stays in `change_orders.reason`.
+  5. **Second line-validator duplication** (after `proposals.ts`); the shared `billing/money.ts` extraction decision is deferred to **8c.7's pre-DB review** (extract if 8c.7's validators are substantially identical; keep inline + re-evaluate at 8c.8 if vendor-invoice validation differs materially).
+
 ---
 
 ## §6 — Forward-carry into 8c known-limitations (for the closeout docs batch)

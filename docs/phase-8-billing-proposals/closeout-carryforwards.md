@@ -33,3 +33,13 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (if multi-currency lands later).** When per-record currency diverges from `'USD'`, the override comparison boundary in `createJob` must compare **both amount AND currency** (an operator value in a different currency than the rule is an override regardless of the numeric amount), and the `nte.overridden` metadata must record **both** the rule currency and the override currency explicitly. Until then this is a documented same-currency assumption, not a bug.
 
 **Refs.** 8c.4 Catch 3; OQ-2 (same-currency MVP); `8c-construction-plan §5` (8c.4 construction notes).
+
+---
+
+## CF-8c.6.1 — Vocabulary alignment opportunity for `change_order_approvals.decision`
+
+**What.** `change_order_approvals.decision` uses the **`{accepted, declined}`** enum (shared with `proposal_approvals` at the 8b parallel-shape), while `change_orders.status` uses **`{draft, submitted, approved, declined, withdrawn}`**. The 8c.6 writer maps operator **approve → `{status:"approved", decision:"accepted"}`** to satisfy both. The data is coherent ("the approver accepted it" → CO `approved`), but the `approved`/`accepted` words differ across the two columns.
+
+**Obligation (optional cleanup, NOT a blocker).** A future schema migration could align the CO approvals `decision` enum to **`{approved, declined}`** for vocab consistency with `change_orders.status`, at the cost of diverging from the shared approval-shape with `proposal_approvals`. Pursue only if the mismatch causes confusion in code review or for downstream/agent readers.
+
+**Refs.** 8c.6 lock 11f; `8c-construction-plan §5` (8c.6 construction notes); 8b §3 (shared approval-shape).
