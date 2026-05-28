@@ -74,3 +74,29 @@ export class ChangeOrderNotWithdrawable extends Error {
     this.name = "ChangeOrderNotWithdrawable";
   }
 }
+
+// ── Vendor-invoice (AP) state-machine F3 errors (8c.7) ────────────────────────────────
+
+/** A draft-edit operation (line CRUD) hit a non-editable vendor invoice (only received/under_review edit). */
+export class VendorInvoiceNotEditable extends Error {
+  constructor(id: string, status: string) {
+    super(`Vendor invoice ${id} is not editable (status=${status})`);
+    this.name = "VendorInvoiceNotEditable";
+  }
+}
+
+/** approveVendorInvoice hit an invoice not in received/under_review (approve is the operator commit point). */
+export class VendorInvoiceNotApprovable extends Error {
+  constructor(id: string, status: string) {
+    super(`Vendor invoice ${id} is not approvable (status=${status})`);
+    this.name = "VendorInvoiceNotApprovable";
+  }
+}
+
+/** disputeVendorInvoice hit an invoice not in received/under_review (dispute is pre-approval). */
+export class VendorInvoiceNotDisputable extends Error {
+  constructor(id: string, status: string) {
+    super(`Vendor invoice ${id} is not disputable (status=${status})`);
+    this.name = "VendorInvoiceNotDisputable";
+  }
+}

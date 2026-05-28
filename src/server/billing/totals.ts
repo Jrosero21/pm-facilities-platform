@@ -193,11 +193,18 @@ export async function recalculateClientInvoiceTotals(tx: Tx, tenantId: string, c
 /**
  * Recompute vendor-invoice (AP) line extended + header totals (NO markup). Caller owns the txn.
  *
- * 8c.2 ships the TOTALS body only. The exceeds_nte / nte_baseline_amount arm is ADDED in 8c.7
- * (after totals, same txn): it resolves the governing NTE, snapshots nte_baseline_amount, sets
- * exceeds_nte, and emits nte.exceeded. This writer does NOT touch those columns in 8c.2.
+ * 8c.7 added the exceeds_nte / nte_baseline_amount arm (same .set, same txn): the CALLER resolves
+ * the governing NTE (the dispatch's agreed amount, else the job's effective ceiling) and passes it
+ * in as `governingNte`. This keeps THIS writer cycle-free (it never imports the effective-NTE
+ * reader's module) and EVENT-FREE — the calling writer emits the breach event, never this module.
+ * `governingNte === null` (no ceiling) ⇒ exceeds_nte = false, nte_baseline_amount = null.
  */
-export async function recalculateVendorInvoiceTotals(tx: Tx, tenantId: string, vendorInvoiceId: string): Promise<void> {
+export async function recalculateVendorInvoiceTotals(
+  tx: Tx,
+  tenantId: string,
+  vendorInvoiceId: string,
+  governingNte: string | null,
+): Promise<void> {
   const lines = await tx
     .select({
       id: vendorInvoiceLineItems.id,
@@ -214,9 +221,11 @@ export async function recalculateVendorInvoiceTotals(tx: Tx, tenantId: string, v
       .set({ extendedAmount: p.extendedAmount })
       .where(and(eq(vendorInvoiceLineItems.tenantId, tenantId), eq(vendorInvoiceLineItems.id, p.id)));
   }
+  // Flag is set HERE (column), but the AP writer owns the event (Decision 1 column-vs-event split).
+  const exceedsNte = governingNte !== null && new Big(c.total).gt(governingNte);
   const res = await tx
     .update(vendorInvoices)
-    .set({ subtotal: c.subtotal, taxTotal: c.taxTotal, total: c.total })
+    .set({ subtotal: c.subtotal, taxTotal: c.taxTotal, total: c.total, nteBaselineAmount: governingNte, exceedsNte })
     .where(and(eq(vendorInvoices.tenantId, tenantId), eq(vendorInvoices.id, vendorInvoiceId)));
   if (res[0].affectedRows === 0) throw new Error("VENDOR_INVOICE_NOT_FOUND");
 }

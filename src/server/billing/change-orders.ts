@@ -7,6 +7,7 @@ import { db } from "@/server/db";
 import { changeOrderApprovals, changeOrderLineItems, changeOrders, jobs } from "@/server/schema";
 import { recalculateChangeOrderTotals, roundHalfUp } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
+import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
 import {
   ChangeOrderNotApprovable,
   ChangeOrderNotEditable,
@@ -50,20 +51,12 @@ function reasonPreview(reason: string | null): string {
   return reason ?? "(no reason)";
 }
 
-// ── line-item validation (inline; shared billing/money.ts deferred — 10f / Refinement 3) ──
-function isDecimalStr(s: string, maxIntDigits: number, scale: number): boolean {
-  const re = new RegExp(`^\\d+(\\.\\d{1,${scale}})?$`);
-  if (!re.test(s)) return false;
-  const intPart = (s.split(".")[0] ?? "").replace(/^0+(?=\d)/, "");
-  if (intPart.length > maxIntDigits) return false;
-  return parseFloat(s) >= 0;
-}
+// ── line-item validation ──────────────────────────────────────────────────────────────
+// Shared 4-field shape (quantity/unit_price/tax_amount/tax_rate) lives in billing/money.ts
+// (extracted at 8c.7, Option A); markup_percent is AR-only, so its check stays inline here.
 function assertValidLineFields(f: Partial<ChangeOrderLineItemInput>): void {
-  if (f.quantity !== undefined && !isDecimalStr(f.quantity, 8, 2)) throw new Error("INVALID_LINE_QUANTITY");
-  if (f.unitPrice !== undefined && !isDecimalStr(f.unitPrice, 10, 2)) throw new Error("INVALID_LINE_UNIT_PRICE");
-  if (f.taxAmount !== undefined && !isDecimalStr(f.taxAmount, 12, 2)) throw new Error("INVALID_LINE_TAX_AMOUNT");
+  assertCommonLineFields(f);
   if (f.markupPercent != null && !isDecimalStr(f.markupPercent, 3, 3)) throw new Error("INVALID_LINE_MARKUP_PERCENT");
-  if (f.taxRate != null && !isDecimalStr(f.taxRate, 3, 3)) throw new Error("INVALID_LINE_TAX_RATE");
 }
 
 async function lockChangeOrder(tx: Tx, tenantId: string, id: string) {

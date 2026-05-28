@@ -43,3 +43,13 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (optional cleanup, NOT a blocker).** A future schema migration could align the CO approvals `decision` enum to **`{approved, declined}`** for vocab consistency with `change_orders.status`, at the cost of diverging from the shared approval-shape with `proposal_approvals`. Pursue only if the mismatch causes confusion in code review or for downstream/agent readers.
 
 **Refs.** 8c.6 lock 11f; `8c-construction-plan §5` (8c.6 construction notes); 8b §3 (shared approval-shape).
+
+---
+
+## CF-8c.7.1 — `getJobMargin` (OQ-16) deferred to 8c.8
+
+**What.** Job margin = AR revenue − AP cost. The AP cost half shipped in 8c.7 as the reader **`sumApprovedVendorInvoiceTotals(tenantId, jobId)`** (Σ `status='approved'` vendor-invoice totals, keyed by `job_id`). The AR revenue half (client invoices) does not exist until 8c.8, so the full margin reader was deliberately **not** built in 8c.7 (Decision 4) — building it would have reached forward into the not-yet-existent AR substrate.
+
+**Obligation (8c.8).** Implement `getJobMargin(tenantId, jobId)` as **`sumApprovedClientInvoiceTotals(tenantId, jobId) − sumApprovedVendorInvoiceTotals(tenantId, jobId)`**, both keyed by `job_id`, summed with `big.js` + `roundHalfUp` (explicit-mode). `sumApprovedVendorInvoiceTotals` is already exported and ready to consume; 8c.8 adds the AR-side aggregator + the subtraction.
+
+**Refs.** 8c.7 Decision 4; OQ-16; `8c-construction-plan §5` (8c.7 construction notes).
