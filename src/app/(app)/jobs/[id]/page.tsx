@@ -37,6 +37,8 @@ import { listJobBillingEvents } from "@/server/billing/events";
 import { BillingSection } from "@/components/billing-section";
 import { ProposalList } from "@/components/proposal-list";
 import { ChangeOrderList } from "@/components/change-order-list";
+import { VendorInvoiceList } from "@/components/vendor-invoice-list";
+import { ClientInvoiceList } from "@/components/client-invoice-list";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 
 const sourceLabel: Record<string, string> = {
@@ -406,6 +408,22 @@ export default async function JobDetailPage({
         <h2 className="text-sm font-semibold text-neutral-900">Change orders</h2>
         <div className="mt-3">
           <ChangeOrderList changeOrders={changeOrders} jobId={id} />
+        </div>
+      </div>
+
+      {/* Vendor invoices (AP) (8c.11d) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Vendor invoices (AP)</h2>
+        <div className="mt-3">
+          <VendorInvoiceList vendorInvoices={vendorInvoices} jobId={id} />
+        </div>
+      </div>
+
+      {/* Client invoices (AR) (8c.11d) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Client invoices (AR)</h2>
+        <div className="mt-3">
+          <ClientInvoiceList clientInvoices={clientInvoices} jobId={id} />
         </div>
       </div>
 

@@ -420,6 +420,18 @@ export async function listVendorInvoicesForJob(tenantId: string, jobId: string):
     .orderBy(asc(vendorInvoices.createdAt), asc(vendorInvoices.id));
 }
 
+export type VendorInvoiceLineItemRow = typeof vendorInvoiceLineItems.$inferSelect;
+
+/** Line items for a vendor invoice, ordered by line number. Tenant-scoped. Pure read (8c.11d —
+ *  the detail screen renders inputs + the writer-owned extended_amount; AP lines carry NO markup). */
+export async function listVendorInvoiceLineItems(tenantId: string, vendorInvoiceId: string): Promise<VendorInvoiceLineItemRow[]> {
+  return db
+    .select()
+    .from(vendorInvoiceLineItems)
+    .where(and(eq(vendorInvoiceLineItems.tenantId, tenantId), eq(vendorInvoiceLineItems.vendorInvoiceId, vendorInvoiceId)))
+    .orderBy(asc(vendorInvoiceLineItems.lineNumber));
+}
+
 /** Σ approved AP totals for a job (the AP cost side). 8c.8's getJobMargin (OQ-16, CF-8c.7.1)
  *  consumes this minus sumApprovedClientInvoiceTotals once client invoices land. Pure read. */
 export async function sumApprovedVendorInvoiceTotals(tenantId: string, jobId: string): Promise<string> {

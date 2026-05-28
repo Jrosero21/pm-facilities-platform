@@ -297,6 +297,18 @@ export async function listClientInvoicesForJob(tenantId: string, jobId: string):
     .orderBy(asc(clientInvoices.createdAt), asc(clientInvoices.id));
 }
 
+export type ClientInvoiceLineItemRow = typeof clientInvoiceLineItems.$inferSelect;
+
+/** Line items for a client invoice, ordered by line number. Tenant-scoped. Pure read (8c.11d —
+ *  the detail screen renders inputs + the writer-owned extended_amount/markup_amount). */
+export async function listClientInvoiceLineItems(tenantId: string, clientInvoiceId: string): Promise<ClientInvoiceLineItemRow[]> {
+  return db
+    .select()
+    .from(clientInvoiceLineItems)
+    .where(and(eq(clientInvoiceLineItems.tenantId, tenantId), eq(clientInvoiceLineItems.clientInvoiceId, clientInvoiceId)))
+    .orderBy(asc(clientInvoiceLineItems.lineNumber));
+}
+
 /** Σ issued AR totals for a job (the revenue side). AR-"issued" = status='sent' ONLY (draft + void
  *  excluded); payment_status is orthogonal — a paid invoice is still status='sent' (8c.8 Decision 4).
  *  getJobMargin (margin.ts) consumes this minus sumApprovedVendorInvoiceTotals. Pure read. */

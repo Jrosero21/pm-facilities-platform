@@ -7,6 +7,7 @@ import { writeAuditLog } from "@/server/audit";
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { roles, tenants, tenantUsers, userRoles } from "@/server/schema";
+import { isAccountingRole } from "@/server/billing/role-gates";
 
 export const ACTIVE_TENANT_COOKIE = "pm_active_tenant";
 
@@ -130,6 +131,17 @@ export async function requireRole(...allowed: string[]): Promise<AuthContext> {
   const ok = ctx.roleKeys.some((key) => allowed.includes(key));
   if (!ok) redirect("/forbidden");
   return ctx;
+}
+
+/**
+ * Billing accounting-gate (8c.11d). The shared enforcement for accounting-gated billing actions
+ * (send / void client invoice, record payment, close billing). Takes the already-resolved auth
+ * context (so it is decoupled from the cookie read in requireTenant) and redirects /forbidden when
+ * the actor is neither `accounting` nor `super_admin` — the policy lives in the pure, unit-tested
+ * predicate isAccountingRole (8c-D2). Narrowed input type: depends ONLY on roleKeys + isSuperAdmin.
+ */
+export function enforceAccountingGate(ctx: Pick<AuthContext, "roleKeys" | "isSuperAdmin">): void {
+  if (!isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin)) redirect("/forbidden");
 }
 
 /**
