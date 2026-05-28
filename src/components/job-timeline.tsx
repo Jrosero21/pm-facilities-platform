@@ -65,9 +65,52 @@ const Note = () => (
   </svg>
 );
 
+// --- billing-event icons (8c.11a; prefix-grouped, inline SVG per the no-icon-lib posture) ---
+const DocIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 2h5l3 3v9H4z" /><path d="M6.5 8h3M6.5 10.5h3" />
+  </svg>
+);
+const DeltaIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 3 14 13H2z" />
+  </svg>
+);
+const InvoiceIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 2h8v12l-2-1-2 1-2-1-2 1z" /><path d="M6 6h4M6 9h4" />
+  </svg>
+);
+const MoneyIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="8" cy="8" r="6" /><path d="M8 5v6M6.5 6.5h2.25a1.25 1.25 0 0 1 0 2.5H7.25a1.25 1.25 0 0 0 0 2.5H9.5" />
+  </svg>
+);
+const AlertIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2 15 14H1z" /><path d="M8 6.5v3.5M8 12h.01" />
+  </svg>
+);
+const LockIcon = () => (
+  <svg viewBox="0 0 16 16" className={iconCls} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3.5" y="7" width="9" height="6.5" rx="1" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+  </svg>
+);
+
+function billingIcon(eventType: string) {
+  if (eventType.startsWith("proposal.")) return <DocIcon />;
+  if (eventType.startsWith("change_order.")) return <DeltaIcon />;
+  if (eventType.startsWith("vendor_invoice.") || eventType.startsWith("client_invoice.")) return <InvoiceIcon />;
+  if (eventType.startsWith("payment.")) return <MoneyIcon />;
+  if (eventType.startsWith("nte.")) return <AlertIcon />;
+  if (eventType === "billing.closed") return <LockIcon />;
+  return <Dot />;
+}
+
 function rowIcon(row: TimelineRow) {
   if (row.kind === "communication") return row.direction === "inbound" ? <Inbound /> : <Outbound />;
   if (row.kind === "note") return <Note />;
+  if (row.kind === "billing_event") return billingIcon(row.eventType);
   if (row.eventType === "job.created") return <Created />;
   if (row.eventType === "job.dispatched") return <Dispatched />;
   return <Dot />;
@@ -79,14 +122,16 @@ function rowText(row: TimelineRow): string {
 }
 function rowActor(row: TimelineRow): string {
   if (row.kind === "event") return row.actorName ?? "System";
+  if (row.kind === "billing_event") return row.actorName ?? "System";
   if (row.kind === "communication") return row.sentByName ?? "System";
   return row.authorName ?? "System";
 }
 
-type FilterMode = "all" | "milestones" | "communications" | "notes";
+type FilterMode = "all" | "milestones" | "billing" | "communications" | "notes";
 const FILTERS: { mode: FilterMode; label: string }[] = [
   { mode: "all", label: "All" },
   { mode: "milestones", label: "Milestones" },
+  { mode: "billing", label: "Billing" },
   { mode: "communications", label: "Communications" },
   { mode: "notes", label: "Notes" },
 ];
@@ -99,6 +144,8 @@ function accent(row: TimelineRow): string {
   switch (row.kind) {
     case "event":
       return "border-l-slate-400 text-slate-500";
+    case "billing_event":
+      return "border-l-emerald-400 text-emerald-500";
     case "communication":
       return "border-l-indigo-400 text-indigo-500";
     case "note":
@@ -114,6 +161,8 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
         return true;
       case "milestones":
         return r.kind === "event";
+      case "billing":
+        return r.kind === "billing_event";
       case "communications":
         return r.kind === "communication";
       case "notes":
@@ -180,6 +229,9 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
                           </>
                         )}
                         {row.kind === "note" && <NoteVisibilityBadge visibility={row.visibility} />}
+                        {row.kind === "billing_event" && row.amount && (
+                          <span className="font-medium text-emerald-700">${row.amount}</span>
+                        )}
                       </p>
                     </div>
                   </li>

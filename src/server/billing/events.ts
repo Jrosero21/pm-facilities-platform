@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { jobBillingEvents } from "@/server/schema";
+import { jobBillingEvents, users } from "@/server/schema";
 
 // ── Phase 8 batch 8c.3 — JOB BILLING EVENTS (R-7.2 enforcement boundary, #17) ─────────
 // emitJobBillingEvent is the SINGLE shape/taxonomy enforcement boundary for the financial
@@ -135,6 +135,8 @@ export type BillingEvent = {
   jobId: string;
   eventType: string;
   actorUserId: string | null;
+  /** Resolved actor display name (users LEFT join; null for system events or unresolved). 8c.11a. */
+  actorName: string | null;
   summary: string;
   amount: string | null;
   currency: string | null;
@@ -171,6 +173,7 @@ export async function listJobBillingEvents(tenantId: string, jobId: string): Pro
       jobId: jobBillingEvents.jobId,
       eventType: jobBillingEvents.eventType,
       actorUserId: jobBillingEvents.actorUserId,
+      actorName: users.name, // 8c.11a: LEFT join — null when actorUserId is null (system events)
       summary: jobBillingEvents.summary,
       amount: jobBillingEvents.amount,
       currency: jobBillingEvents.currency,
@@ -183,6 +186,7 @@ export async function listJobBillingEvents(tenantId: string, jobId: string): Pro
       createdAt: jobBillingEvents.createdAt,
     })
     .from(jobBillingEvents)
+    .leftJoin(users, eq(jobBillingEvents.actorUserId, users.id))
     .where(and(eq(jobBillingEvents.tenantId, tenantId), eq(jobBillingEvents.jobId, jobId)))
     .orderBy(asc(jobBillingEvents.createdAt), asc(jobBillingEvents.id));
   return rows.map((r) => ({ ...r, metadata: parseMetadata(r.metadata) }));

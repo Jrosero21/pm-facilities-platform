@@ -26,6 +26,15 @@ import { mergeTimeline } from "@/lib/timeline";
 import { listScopeDraftsForJobDetailed } from "@/server/agents/scope-generator/drafts";
 import { listScopeStepsForJob } from "@/server/agents/scope-generator/steps";
 import { GenerateScopeButton } from "@/components/generate-scope-button";
+import { listProposalsForJob } from "@/server/billing/proposals";
+import { listChangeOrdersForJob } from "@/server/billing/change-orders";
+import { listVendorInvoicesForJob } from "@/server/billing/vendor-invoices";
+import { listClientInvoicesForJob } from "@/server/billing/client-invoices";
+import { listPaymentsForJob } from "@/server/billing/payments";
+import { getJobMargin } from "@/server/billing/margin";
+import { getBillingCloseReadiness } from "@/server/billing/close";
+import { listJobBillingEvents } from "@/server/billing/events";
+import { BillingSection } from "@/components/billing-section";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 
 const sourceLabel: Record<string, string> = {
@@ -65,6 +74,18 @@ export default async function JobDetailPage({
       listDraftsForJobDetailed(tenantId, id),
       listScopeDraftsForJobDetailed(tenantId, id),
       listScopeStepsForJob(tenantId, id),
+    ]);
+  // 8c.11a billing reads — all existing verified readers (+ listJobBillingEvents, actorName-enhanced).
+  const [proposals, changeOrders, vendorInvoices, clientInvoices, payments, margin, readiness, billingEvents] =
+    await Promise.all([
+      listProposalsForJob(tenantId, id),
+      listChangeOrdersForJob(tenantId, id),
+      listVendorInvoicesForJob(tenantId, id),
+      listClientInvoicesForJob(tenantId, id),
+      listPaymentsForJob(tenantId, id),
+      getJobMargin(tenantId, id),
+      getBillingCloseReadiness(tenantId, id),
+      listJobBillingEvents(tenantId, id),
     ]);
   const notesById = Object.fromEntries(notes.map((n) => [n.id, n.body]));
   const addContact = createJobContactAction.bind(null, id);
@@ -354,11 +375,27 @@ export default async function JobDetailPage({
         )}
       </div>
 
+      {/* Billing (8c.11a — read-only summary; record screens are 8c.11b–e) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Billing</h2>
+        <div className="mt-3">
+          <BillingSection
+            margin={margin}
+            readiness={readiness}
+            proposals={proposals}
+            changeOrders={changeOrders}
+            vendorInvoices={vendorInvoices}
+            clientInvoices={clientInvoices}
+            payments={payments}
+          />
+        </div>
+      </div>
+
       {/* Timeline */}
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Timeline</h2>
         <div className="mt-3">
-          <JobTimeline rows={mergeTimeline(events, communications, timelineNotes)} />
+          <JobTimeline rows={mergeTimeline(events, communications, timelineNotes, billingEvents)} />
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import type { JobEventListItem } from "@/server/job-events";
 import type { CommunicationListItem } from "@/server/communications";
 import type { JobNoteListItem } from "@/server/job-notes";
+import type { BillingEvent } from "@/server/billing/events";
 
 // A merged timeline row, discriminated by `kind`. The rich timeline (6c) interleaves
 // job_events (milestones), communication_logs (communications), and a curated slice of
@@ -41,11 +42,24 @@ export type TimelineRow =
       visibility: string;
       bodyExcerpt: string;
       authorName: string | null;
+    }
+  | {
+      // 8c.11a: the financial timeline (job_billing_events) joins the same chronological feed
+      // as a fourth category. summary is self-describing (set at write time); amount/currency
+      // are optional decorative chips.
+      kind: "billing_event";
+      id: string;
+      createdAt: Date;
+      eventType: string;
+      summary: string;
+      actorName: string | null;
+      amount: string | null;
+      currency: string | null;
     };
 
-// Same-instant tie-break: MILESTONE (0) before COMMUNICATION (1) before NOTE (2).
+// Same-instant tie-break: MILESTONE (0) before BILLING (1) before COMMUNICATION (2) before NOTE (3).
 const sourceRank = (r: TimelineRow): number =>
-  r.kind === "event" ? 0 : r.kind === "communication" ? 1 : 2;
+  r.kind === "event" ? 0 : r.kind === "billing_event" ? 1 : r.kind === "communication" ? 2 : 3;
 
 function excerpt(s: string, max = 200): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
@@ -62,6 +76,7 @@ export function mergeTimeline(
   events: JobEventListItem[],
   communications: CommunicationListItem[],
   notes: JobNoteListItem[] = [],
+  billingEvents: BillingEvent[] = [],
 ): TimelineRow[] {
   const rows: TimelineRow[] = [
     ...events.map(
@@ -72,6 +87,18 @@ export function mergeTimeline(
         eventType: e.eventType,
         summary: e.summary,
         actorName: e.actorName,
+      }),
+    ),
+    ...billingEvents.map(
+      (b): TimelineRow => ({
+        kind: "billing_event",
+        id: b.id,
+        createdAt: b.createdAt,
+        eventType: b.eventType,
+        summary: b.summary,
+        actorName: b.actorName,
+        amount: b.amount,
+        currency: b.currency,
       }),
     ),
     ...communications.map(
