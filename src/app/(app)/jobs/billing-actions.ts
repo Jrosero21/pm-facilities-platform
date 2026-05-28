@@ -6,6 +6,7 @@ import { requireTenant } from "@/server/auth-context";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { sendClientInvoice } from "@/server/billing/client-invoices";
 import { recordPayment, type PaymentDirection } from "@/server/billing/payments";
+import { markBillingClosed } from "@/server/billing/close";
 
 // ── Phase 8 batch 8c.8 — BILLING ACTIONS (the platform's first ENFORCED role gate) ────
 // Issuing a client invoice (draft → sent) is accounting-gated (8c-D2 / OQ-23/24): `accounting`
@@ -49,5 +50,18 @@ export async function recordPaymentAction(input: {
     reference: input.reference,
     recordedByUserId: ctx.user.id,
   });
+  revalidatePath(`/jobs/${input.jobId}`);
+}
+
+// ── Phase 8 batch 8c.10 — gate #3: closing billing is accounting-gated (OQ-25) ────────
+// Same pattern: requireTenant() + the isAccountingRole predicate → /forbidden. Third reuse of
+// the predicate, fully validating the 8c.8 extraction. markBillingClosed is job-scoped, so jobId
+// is a genuine argument (the job IS the close target) — unlike the payment action's revalidate-only jobId.
+
+/** Close billing for a job (→ CLOSED_BILLED). Accounting-gated; redirects /forbidden otherwise. */
+export async function markBillingClosedAction(input: { jobId: string; note?: string | null }): Promise<void> {
+  const ctx = await requireTenant();
+  if (!isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin)) redirect("/forbidden");
+  await markBillingClosed({ tenantId: ctx.activeTenant.tenantId, jobId: input.jobId, actorUserId: ctx.user.id, note: input.note ?? null });
   revalidatePath(`/jobs/${input.jobId}`);
 }

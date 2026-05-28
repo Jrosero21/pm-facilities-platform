@@ -160,3 +160,13 @@ export class PaymentAmountInvalid extends Error {
     this.name = "PaymentAmountInvalid";
   }
 }
+
+// ── Billing-close (8c.10) F3 error ────────────────────────────────────────────────────
+
+/** markBillingClosed hit a job already in the CLOSED_BILLED terminal status (idempotency guard). */
+export class JobAlreadyBillingClosed extends Error {
+  constructor(jobId: string) {
+    super(`Job ${jobId} is already billing-closed`);
+    this.name = "JobAlreadyBillingClosed";
+  }
+}

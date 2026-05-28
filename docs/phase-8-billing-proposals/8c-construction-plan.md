@@ -311,6 +311,24 @@ Payment data layer (#16) — the convergence sub-batch tying AP + AR payment flo
   5. **Single-invoice paid-crossing** — simpler than the 8c.7 job-aggregate: the invoice-row `FOR UPDATE` (lock order: invoice only — a subset of approve's invoice→job, so no deadlock partner) serializes concurrent payments; the Σ query runs after the insert so it counts the new row (Catch 2).
   6. **Currency snapshots from the invoice** when `input.currency` is omitted (`?? inv.currency`) — the payment currency matches the invoice it pays (same-currency MVP); explicit `input.currency` still wins (Deviation 3).
 
+### 8c.10 sub-batch locks + construction notes (recorded at build) — **CLOSES THE 8c DATA LAYER**
+
+Billing-close data layer (#20/#21) — the **first billing writer into the operational job lifecycle**, and the **last data-layer sub-batch** (8c.1–8c.10 complete; only 8c.11 UI remains). `markBillingClosed` + `getBillingCloseReadiness`; `markBillingClosedAction` (gate #3). Verify: **64/64** assertions passed.
+
+- **Decision 1 — LOCKED: replicate the status-transition dual-write INLINE** via schema imports — no `@/server/jobs` import. Settled by inspection: the existing pattern (`createJob`) is logic-free inserts (no transition matrix), so there is nothing to drift; replicating inline preserves billing's module-graph isolation.
+- **Decision 2 — LOCKED: billing close is independent of operational status** — transitions to `CLOSED_BILLED` from ANY status; the only guard is already-`CLOSED_BILLED` (`JobAlreadyBillingClosed` idempotency). Per the seed's authoritative "operational close and billing close are independent" (OQ-26).
+- **Decision 3 — LOCKED: `closed_at = COALESCE(existing, now())`** — first-close-wins; preserves an earlier operational-close timestamp.
+- **Decision 4 — LOCKED: soft readiness signal** — `getBillingCloseReadiness` returns `{ ready, concerns }` with **7 advisory concern types** (`unpaid_approved_vendor_invoices`, `unpaid_sent_client_invoices`, `unresolved_vendor_invoices`, `disputed_vendor_invoices`, `draft_client_invoices`, `open_proposals`, `open_change_orders`); `ready = concerns.length === 0`; **advisory-only** — `markBillingClosed` never consults it. Reader ships here (8c.10); UI surfacing is 8c.11e.
+- **Decision 5 — LOCKED: `billing.closed` captures `finalMargin`** — `getJobMargin` snapshot computed BEFORE the txn (the close mutates no invoices), stored point-in-time in both the `billing.closed` event metadata and the `audit_logs` row.
+- **Decision 6 — LOCKED: operational event type = `job.status_changed`** (reuse Phase-4 vocab; billing semantics live in the `billing.closed` billing-domain event).
+- **Decision 7 — LOCKED: `audit_logs.action = "billing.closed"`**, direct `tx.insert` (mirrors `createJob` — atomicity over resilience).
+- **Decision 8 — LOCKED: file = `src/server/billing/close.ts`.**
+- **Construction notes (for `02-decisions.md`):**
+  1. **The narrowed sole-writer guarantee.** 8c.10 is the first billing writer to legitimately write `jobs` (`current_status_id` + `closed_at`), so the prior "`.update(jobs)` forbidden" guarantee NARROWS: `.update(jobs)` is now **expected present**, but the `jobs` `.set` is exactly `{ currentStatusId, closedAt }` and the token **`notToExceedAmount` is absent from the whole file** — the 8c.4 sole-writer rule for *that column* persists. Scope substrate (D-7.3) + `job_vendor_assignments` (Phase-5) remain untouched. Verified Groups 4 + 11.
+  2. **Four-way atomic dual-domain write** (one txn, verified Group 1): `jobs` (status + closed_at) + `job_status_history` (from→to) + `job_events` (`job.status_changed`) + `billing.closed` (billing event) + `audit_logs` — all land from one call or none.
+  3. **Third `isAccountingRole` reuse** — `markBillingClosedAction` is the third accounting gate (send invoice / record payment / close billing), fully validating the 8c.8 predicate extraction across every gate. Unlike the payment action's revalidate-only `jobId`, billing-close's `jobId` is a genuine argument (the job is the close target).
+  4. **`job_events` `fromStatusId` is supplementary** — the authoritative from→to transition is the `job_status_history` row; the merged-timeline UI (8c.11a) resolves `fromStatusId` → human label via the `job_statuses` reference table at render.
+
 Phase 8 will NOT build these; they roll into `10-known-limitations.md` (+ the existing `8b §8` flags):
 - **No agent** (OQ-27) — L-7.1 resolver stays inert; **Q-7.1** (agent-config seed split) untriggered.
 - **No `billing_policies`** / dollar-gated approval thresholds (OQ-21) — role gates + NTE flag only.
@@ -322,6 +340,7 @@ Phase 8 will NOT build these; they roll into `10-known-limitations.md` (+ the ex
 - **Emergency-multiplier tenant default is a resolver constant `1.50`** — promote to stored per-tenant config later (8b-D1).
 - **Auto-expiry of proposals** (cron) deferred — `valid_until` computed-on-read (OQ-8).
 - **Quote-first** deferred — `proposals.job_id NOT NULL` (OQ-12).
+- **`closed_at` is "first close"** (operational or billing), not a distinct billing-close timestamp — billing close sets `closed_at` only if null (COALESCE, 8c.10 Decision 3). A separate `billing_closed_at` column is a future addition if the two close moments ever need to be distinguished.
 - **CF-8b.1** — scratch-DB fresh-migration verify before tag (`closeout-carryforwards.md`).
 
 ---
