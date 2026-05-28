@@ -126,3 +126,37 @@ export class ClientInvoiceNotVoidable extends Error {
     this.name = "ClientInvoiceNotVoidable";
   }
 }
+
+// ── Payment-record (8c.9) F3 errors ───────────────────────────────────────────────────
+
+/** recordPayment did not reference EXACTLY ONE invoice (both set, or neither). The XOR invariant. */
+export class PaymentInvoiceRefInvalid extends Error {
+  constructor() {
+    super("Payment must reference exactly one invoice (a vendor invoice OR a client invoice, not both or neither)");
+    this.name = "PaymentInvoiceRefInvalid";
+  }
+}
+
+/** The payment direction disagrees with the invoice reference set (outbound↔vendor, inbound↔client). */
+export class PaymentDirectionMismatch extends Error {
+  constructor(direction: string) {
+    super(`Payment direction "${direction}" does not match the invoice reference set`);
+    this.name = "PaymentDirectionMismatch";
+  }
+}
+
+/** recordPayment hit an invoice not in a payable status (vendor must be approved; client must be sent). */
+export class PaymentInvoiceNotPayable extends Error {
+  constructor(id: string, status: string) {
+    super(`Invoice ${id} is not payable (status=${status})`);
+    this.name = "PaymentInvoiceNotPayable";
+  }
+}
+
+/** Payment amount was not a positive decimal(12,2). */
+export class PaymentAmountInvalid extends Error {
+  constructor(amount: string) {
+    super(`Payment amount "${amount}" is invalid (must be a positive decimal)`);
+    this.name = "PaymentAmountInvalid";
+  }
+}

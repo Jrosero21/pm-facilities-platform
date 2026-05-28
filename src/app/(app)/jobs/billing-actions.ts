@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { sendClientInvoice } from "@/server/billing/client-invoices";
+import { recordPayment, type PaymentDirection } from "@/server/billing/payments";
 
 // ── Phase 8 batch 8c.8 — BILLING ACTIONS (the platform's first ENFORCED role gate) ────
 // Issuing a client invoice (draft → sent) is accounting-gated (8c-D2 / OQ-23/24): `accounting`
@@ -18,5 +19,35 @@ export async function sendClientInvoiceAction(input: { id: string; jobId: string
   const ctx = await requireTenant();
   if (!isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin)) redirect("/forbidden");
   await sendClientInvoice({ tenantId: ctx.activeTenant.tenantId, id: input.id, actorUserId: ctx.user.id });
+  revalidatePath(`/jobs/${input.jobId}`);
+}
+
+// ── Phase 8 batch 8c.9 — gate #2: recording payments is accounting-gated (OQ-24) ──────
+// Same pattern: requireTenant() + the isAccountingRole predicate → /forbidden. `jobId` here is
+// used ONLY for revalidatePath — it is NOT forwarded to recordPayment (the data layer derives
+// job_id from the referenced invoice; recordPayment's type has no jobId field — Catch 3).
+
+/** Record a payment against an invoice. Accounting-gated; redirects /forbidden for everyone else. */
+export async function recordPaymentAction(input: {
+  direction: PaymentDirection;
+  vendorInvoiceId?: string | null;
+  clientInvoiceId?: string | null;
+  amount: string;
+  method?: string | null;
+  reference?: string | null;
+  jobId: string; // revalidate target only — NOT a recordPayment argument
+}): Promise<void> {
+  const ctx = await requireTenant();
+  if (!isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin)) redirect("/forbidden");
+  await recordPayment({
+    tenantId: ctx.activeTenant.tenantId,
+    direction: input.direction,
+    vendorInvoiceId: input.vendorInvoiceId,
+    clientInvoiceId: input.clientInvoiceId,
+    amount: input.amount,
+    method: input.method,
+    reference: input.reference,
+    recordedByUserId: ctx.user.id,
+  });
   revalidatePath(`/jobs/${input.jobId}`);
 }

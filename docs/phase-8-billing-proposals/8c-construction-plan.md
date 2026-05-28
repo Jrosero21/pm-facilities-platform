@@ -290,6 +290,27 @@ Client-invoice data layer (AR, #6/#16/#20) + the platform's **first enforced rol
   2. **AR totals reuse `recalculateClientInvoiceTotals` (8c.2, untouched)** — cost-basis + uplift: `extended = round(qty × unit_price)`, `markup = round((extended × pct)/100)`, header `total = subtotal + markup_total + tax_total`. No 8c.7-style arm (AR has no NTE).
   3. **Module-graph (verified Group 16):** `client-invoices.ts` imports none of the scope substrate, `@/server/jobs`, the sibling billing data layers, or auth; `role-gates.ts` is a pure leaf (no `server-only`/db/schema/auth); the gate is action-layer-only.
 
+### 8c.9 sub-batch locks + construction notes (recorded at build)
+
+Payment data layer (#16) — the convergence sub-batch tying AP + AR payment flows through one `payment_records` table with a `direction` discriminator. `recordPayment` + readers; `recordPaymentAction` (gate #2). Verify: **79/79** assertions passed.
+
+- **Decision 1 — LOCKED: direction mapping** `inbound ↔ clientInvoiceId` (AR, money in), `outbound ↔ vendorInvoiceId` (AP, money out) — resolved by schema inspection (the enum is `["inbound","outbound"]`).
+- **Decision 2 — LOCKED: `amount > 0`** required; zero/negative/bad-shape → `PaymentAmountInvalid`.
+- **Decision 3 — LOCKED: overpayment allowed** (`Σ > total` → `paid`, no throw) → CF-8c.9.1.
+- **Decision 4 — LOCKED: payable preconditions** — vendor invoice `status='approved'`, client invoice `status='sent'`; else `PaymentInvoiceNotPayable`.
+- **Decision 5 — LOCKED: payment on already-paid invoice allowed** — the precondition is `invoice.status` (approved/sent), NOT `payment_status` (the overpayment path).
+- **Decision 6 — LOCKED: `PaymentAmountInvalid` as F3** (payment-error-family parity).
+- **Decision 7 — LOCKED: paid-event crossing semantic** — emit `vendor_invoice.paid`/`client_invoice.paid` iff `oldPaymentStatus !== "paid" && newPaymentStatus === "paid"` (first reach only); `payment.recorded` always fires.
+- **Decision 8 — LOCKED: `payments.ts` is the sole post-creation writer of `payment_status`** on both invoice tables; AR↔AP non-coupling preserved via single-sided direction branches.
+- **Decision 9 — LOCKED: `recordPaymentAction` (gate #2) reuses `isAccountingRole`** (validates the 8c.8 predicate extraction).
+- **Construction notes (for `02-decisions.md`):**
+  1. **XOR invoice-ref invariant** (D-7.7) — exactly one of `(vendorInvoiceId, clientInvoiceId)` set, agreeing with direction; validated before the txn (no DB CHECK). `PaymentInvoiceRefInvalid` / `PaymentDirectionMismatch`.
+  2. **Writer-derived `job_id` via TYPE-ABSENCE** — `RecordPaymentInput` has **no `jobId` field**, so the compiler forbids forwarding it; `recordPayment` reads `job_id` off the locked invoice. The strongest form of the 8c.4 sole-writer discipline (compiler-enforced, not just runtime-guarded). The action's `jobId` is used only for `revalidatePath` (Catch 3).
+  3. **Direction-discriminated single-sided writer** — two **disjoint** branch functions (`applyOutboundPayment` touches `vendor_invoices` only; `applyInboundPayment` touches `client_invoices` only); `recordPayment` dispatches to exactly one. The duplication of the payment insert + `payment.recorded` emit is **intentional**, motivated by structural (grep-provable, per-function) provability of AR↔AP non-coupling — verified by `.update(vendorInvoices)`/`.update(clientInvoices)` each appearing exactly once, in disjoint functions (Group 14), and the `payment.recorded` shape being identical across directions (Group 15 drift guard). `margin.ts` remains the sole AR↔AP meeting point.
+  4. **`payment_status` sole-writer** — `payments.ts` owns every `unpaid → partially_paid → paid` transition; the invoice writers never touch `payment_status` post-creation (created at the DB default `'unpaid'`; verified Group 13 — zero `paymentStatus` references in either invoice module).
+  5. **Single-invoice paid-crossing** — simpler than the 8c.7 job-aggregate: the invoice-row `FOR UPDATE` (lock order: invoice only — a subset of approve's invoice→job, so no deadlock partner) serializes concurrent payments; the Σ query runs after the insert so it counts the new row (Catch 2).
+  6. **Currency snapshots from the invoice** when `input.currency` is omitted (`?? inv.currency`) — the payment currency matches the invoice it pays (same-currency MVP); explicit `input.currency` still wins (Deviation 3).
+
 Phase 8 will NOT build these; they roll into `10-known-limitations.md` (+ the existing `8b §8` flags):
 - **No agent** (OQ-27) — L-7.1 resolver stays inert; **Q-7.1** (agent-config seed split) untriggered.
 - **No `billing_policies`** / dollar-gated approval thresholds (OQ-21) — role gates + NTE flag only.

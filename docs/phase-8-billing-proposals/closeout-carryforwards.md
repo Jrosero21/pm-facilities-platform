@@ -85,3 +85,13 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (future infrastructure, NOT a Phase-8 blocker).** Standing test infrastructure (a runner + retained tests) could elevate the policy-critical pure units (e.g., `isAccountingRole`, `billing/money.ts` validators, `billing/totals.ts` math) from per-sub-batch verification to standing CI — which would also unblock the CF-8c.8.1 integration test.
 
 **Refs.** 8c.8 Decision 2 inspection; `8c-construction-plan §5` (8c.8 notes).
+
+---
+
+## CF-8c.9.1 — Overpayment allowed but not specially tracked
+
+**What.** 8c.9 allows overpayment: when `Σ payments > invoice.total`, the invoice's `payment_status` caps at `'paid'` (8c.9 Decision 3) — the payment is recorded at its full amount, the excess is not rejected. But overpayment is **not specially tracked**: there is no `overpaid` status, no credit-balance concept, and no overpayment-reconciliation workflow in Phase 8. The over-amount lives only as the recorded `payment_records.amount` summing above the invoice total.
+
+**Obligation (future feature, NOT a Phase-8 blocker).** If overpayment handling becomes an operational need — vendor credits, duplicate-payment refunds, client credit balances applied to future invoices — it is a future feature (a credit-balance ledger + reconciliation workflow). Until then, overpayment is permitted and visible only via the payment-vs-total arithmetic; operators reconcile manually (paired with the CF-8c.8 void/refund operator-responsibility note in `06-business-rules`).
+
+**Refs.** 8c.9 Decision 3 + Decision 5; `8c-construction-plan §5` (8c.9 notes); OQ-17 (no cross-invoice allocation).
