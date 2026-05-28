@@ -3,7 +3,7 @@ import "server-only";
 import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { clientNteRules, trades } from "@/server/schema";
+import { auditLogs, clientNteRules, trades } from "@/server/schema";
 import { ActivationTargetMismatch, SingleActiveInvariantViolated } from "@/server/billing/errors";
 
 // ── Phase 8 batch 8c.1 — CLIENT NTE SUBSTRATE (Surface 23) ───────────────────────────
@@ -197,6 +197,16 @@ export async function createClientNteRule(input: {
       status: "active",
       createdByUserId: input.createdByUserId,
     });
+    // CF-8c.1.1 (8c.11e): NTE-rule lifecycle is auditable. config-level event → audit_logs (not
+    // emitJobBillingEvent, which is job-scoped). Inside the tx — atomic with the rule write.
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId, userId: input.createdByUserId,
+      action: "client_nte_rule.created", targetType: "client_nte_rule", targetId: id,
+      metadata: {
+        clientId: input.clientId, tradeId: input.tradeId, priorityId: input.priorityId,
+        clientLocationId: input.clientLocationId, nteAmount: input.nteAmount, currency,
+      },
+    });
   });
   return { id };
 }
@@ -213,6 +223,7 @@ export async function activateClientNteRule(input: {
   priorityId: string;
   clientLocationId: string | null;
   id: string;
+  actorUserId: string | null;
 }): Promise<void> {
   await db.transaction(async (tx) => {
     // Target pre-check (lock the row): it must exist, match the FULL tuple, and be
@@ -268,19 +279,50 @@ export async function activateClientNteRule(input: {
         ),
       );
     if (promote[0].affectedRows !== 1) throw new ActivationTargetMismatch("client_nte_rules", input.id);
+    // CF-8c.1.1 audit (inside the tx — atomic with the promote/demote).
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId, userId: input.actorUserId,
+      action: "client_nte_rule.activated", targetType: "client_nte_rule", targetId: input.id,
+      metadata: {
+        clientId: input.clientId, tradeId: input.tradeId, priorityId: input.priorityId,
+        clientLocationId: input.clientLocationId,
+      },
+    });
   });
 }
 
-/** Retire a rule (active|archived → archived). No single-active concern (lowers active count). */
+/** Retire a rule (active|archived → archived). No single-active concern (lowers active count).
+ *  Wrapped in a tx (8c.11e) so the CF-8c.1.1 audit insert is atomic with the status change. */
 export async function archiveClientNteRule(input: {
   tenantId: string;
   id: string;
+  actorUserId: string | null;
 }): Promise<void> {
-  const res = await db
-    .update(clientNteRules)
-    .set({ status: "archived" })
-    .where(and(eq(clientNteRules.tenantId, input.tenantId), eq(clientNteRules.id, input.id)));
-  if (res[0].affectedRows === 0) throw new Error("CLIENT_NTE_RULE_NOT_FOUND");
+  await db.transaction(async (tx) => {
+    const rule = (
+      await tx
+        .select({
+          clientId: clientNteRules.clientId, tradeId: clientNteRules.tradeId,
+          priorityId: clientNteRules.priorityId, clientLocationId: clientNteRules.clientLocationId,
+        })
+        .from(clientNteRules)
+        .where(and(eq(clientNteRules.tenantId, input.tenantId), eq(clientNteRules.id, input.id)))
+        .for("update")
+    )[0];
+    if (!rule) throw new Error("CLIENT_NTE_RULE_NOT_FOUND");
+    await tx
+      .update(clientNteRules)
+      .set({ status: "archived" })
+      .where(and(eq(clientNteRules.tenantId, input.tenantId), eq(clientNteRules.id, input.id)));
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId, userId: input.actorUserId,
+      action: "client_nte_rule.archived", targetType: "client_nte_rule", targetId: input.id,
+      metadata: {
+        clientId: rule.clientId, tradeId: rule.tradeId, priorityId: rule.priorityId,
+        clientLocationId: rule.clientLocationId,
+      },
+    });
+  });
 }
 
 /** Admin listing for a client (all statuses), newest first. */

@@ -1,48 +1,89 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { enforceAccountingGate, requireTenant } from "@/server/auth-context";
 import { recordPayment, type PaymentDirection } from "@/server/billing/payments";
 import { markBillingClosed } from "@/server/billing/close";
+import {
+  JobAlreadyBillingClosed,
+  PaymentAmountInvalid,
+  PaymentDirectionMismatch,
+  PaymentInvoiceNotPayable,
+  PaymentInvoiceRefInvalid,
+} from "@/server/billing/errors";
 
 // ── Phase 8 — ACCOUNTING-GATED BILLING ACTIONS (payment + close) ──────────────────────
-// 8c.11d: the gate is now the shared enforceAccountingGate(ctx) helper (auth-context.ts) — the
-// policy still lives in the pure, unit-tested isAccountingRole predicate (8c-D2), but the
-// redirect-on-fail is centralized + structurally verifiable across all gated sites. (The 8c.8
-// client-invoice issue action relocated to client-invoices/actions.ts, reshaped to useActionState.)
-// recordPaymentAction + markBillingClosedAction keep their typed-input shape here until 8c.11e
-// FormData-reshapes them alongside the payment + billing-close UIs.
+// 8c.11e: FormData-reshaped to the useActionState template (the deferred half of the §5 hybrid;
+// the gate was already centralized to enforceAccountingGate at 8c.11d). Both stay accounting-gated.
 
-/** Record a payment against an invoice. Accounting-gated. `jobId` is revalidate-only — NOT
- *  forwarded to recordPayment (the data layer derives job_id from the referenced invoice). */
-export async function recordPaymentAction(input: {
-  direction: PaymentDirection;
-  vendorInvoiceId?: string | null;
-  clientInvoiceId?: string | null;
-  amount: string;
-  method?: string | null;
-  reference?: string | null;
-  jobId: string;
-}): Promise<void> {
-  const ctx = await requireTenant();
-  enforceAccountingGate(ctx);
-  await recordPayment({
-    tenantId: ctx.activeTenant.tenantId,
-    direction: input.direction,
-    vendorInvoiceId: input.vendorInvoiceId,
-    clientInvoiceId: input.clientInvoiceId,
-    amount: input.amount,
-    method: input.method,
-    reference: input.reference,
-    recordedByUserId: ctx.user.id,
-  });
-  revalidatePath(`/jobs/${input.jobId}`);
+export type PaymentActionState = { error: string } | null;
+export type BillingCloseActionState = { error: string } | null;
+
+const NUM = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const OPT = (fd: FormData, k: string) => {
+  const v = String(fd.get(k) ?? "").trim();
+  return v === "" ? null : v;
+};
+
+function paymentMessage(e: unknown): string {
+  if (e instanceof PaymentInvoiceRefInvalid) return "Select exactly one invoice for this payment.";
+  if (e instanceof PaymentDirectionMismatch) return "The payment direction doesn't match the selected invoice.";
+  if (e instanceof PaymentInvoiceNotPayable) return "This invoice can't be paid in its current status (vendor must be approved; client must be sent).";
+  if (e instanceof PaymentAmountInvalid) return "Enter a valid positive amount.";
+  return "";
 }
 
-/** Close billing for a job (→ CLOSED_BILLED). Accounting-gated. */
-export async function markBillingClosedAction(input: { jobId: string; note?: string | null }): Promise<void> {
+/** Record a payment (XOR direction → invoice ref). Accounting-gated. Redirects to the job on success.
+ *  `jobId` is the revalidate/redirect target only — recordPayment derives job_id from the invoice. */
+export async function recordPaymentAction(
+  jobId: string,
+  _prev: PaymentActionState,
+  formData: FormData,
+): Promise<PaymentActionState> {
   const ctx = await requireTenant();
   enforceAccountingGate(ctx);
-  await markBillingClosed({ tenantId: ctx.activeTenant.tenantId, jobId: input.jobId, actorUserId: ctx.user.id, note: input.note ?? null });
-  revalidatePath(`/jobs/${input.jobId}`);
+  const direction = NUM(formData, "direction") as PaymentDirection;
+  const vendorInvoiceId = direction === "outbound" ? OPT(formData, "vendorInvoiceId") : null;
+  const clientInvoiceId = direction === "inbound" ? OPT(formData, "clientInvoiceId") : null;
+  try {
+    await recordPayment({
+      tenantId: ctx.activeTenant.tenantId,
+      direction,
+      vendorInvoiceId,
+      clientInvoiceId,
+      amount: NUM(formData, "amount"),
+      method: OPT(formData, "method"),
+      reference: OPT(formData, "reference"),
+      recordedByUserId: ctx.user.id,
+    });
+  } catch (e) {
+    const m = paymentMessage(e);
+    if (m) return { error: m };
+    throw e;
+  }
+  redirect(`/jobs/${jobId}`);
+}
+
+/** Close billing for a job (→ CLOSED_BILLED). Accounting-gated. note is optional (FormData). */
+export async function markBillingClosedAction(
+  jobId: string,
+  _prev: BillingCloseActionState,
+  formData: FormData,
+): Promise<BillingCloseActionState> {
+  const ctx = await requireTenant();
+  enforceAccountingGate(ctx);
+  try {
+    await markBillingClosed({
+      tenantId: ctx.activeTenant.tenantId,
+      jobId,
+      actorUserId: ctx.user.id,
+      note: OPT(formData, "note"),
+    });
+    revalidatePath(`/jobs/${jobId}`);
+    return null;
+  } catch (e) {
+    if (e instanceof JobAlreadyBillingClosed) return { error: "Billing is already closed for this job." };
+    throw e;
+  }
 }

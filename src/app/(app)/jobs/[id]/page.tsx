@@ -39,6 +39,9 @@ import { ProposalList } from "@/components/proposal-list";
 import { ChangeOrderList } from "@/components/change-order-list";
 import { VendorInvoiceList } from "@/components/vendor-invoice-list";
 import { ClientInvoiceList } from "@/components/client-invoice-list";
+import { LinkedPayments } from "@/components/linked-payments";
+import { CloseBillingButton } from "@/components/close-billing-button";
+import { isAccountingRole } from "@/server/billing/role-gates";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 
 const sourceLabel: Record<string, string> = {
@@ -91,6 +94,12 @@ export default async function JobDetailPage({
       getBillingCloseReadiness(tenantId, id),
       listJobBillingEvents(tenantId, id),
     ]);
+  // 8c.11e: accounting-gate (defense-in-depth for the close button) + already-closed guard.
+  // alreadyBillingClosed is a UI hint via the seeded status display name; the data-layer
+  // JobAlreadyBillingClosed guard (8c.10) is the real backstop, so the display-name compare is
+  // safe defense-in-depth (not the enforcement).
+  const canAccount = isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin);
+  const alreadyBillingClosed = job.statusName === "Closed (Billed)";
   const notesById = Object.fromEntries(notes.map((n) => [n.id, n.body]));
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
@@ -424,6 +433,25 @@ export default async function JobDetailPage({
         <h2 className="text-sm font-semibold text-neutral-900">Client invoices (AR)</h2>
         <div className="mt-3">
           <ClientInvoiceList clientInvoices={clientInvoices} jobId={id} />
+        </div>
+      </div>
+
+      {/* Payments (8c.11e) */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">Payments</h2>
+          <Link href={`/jobs/${id}/payments/new`} className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800">
+            Record payment
+          </Link>
+        </div>
+        <LinkedPayments payments={payments} />
+      </div>
+
+      {/* Billing close (8c.11e — accounting-gated; readiness shown in the Billing section above) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Close billing</h2>
+        <div className="mt-3">
+          <CloseBillingButton jobId={id} canAccount={canAccount} alreadyClosed={alreadyBillingClosed} />
         </div>
       </div>
 
