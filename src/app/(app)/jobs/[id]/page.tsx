@@ -36,6 +36,7 @@ import { getBillingCloseReadiness } from "@/server/billing/close";
 import { listJobBillingEvents } from "@/server/billing/events";
 import { BillingSection } from "@/components/billing-section";
 import { ProposalList } from "@/components/proposal-list";
+import { ChangeOrderList } from "@/components/change-order-list";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 
 const sourceLabel: Record<string, string> = {
@@ -397,6 +398,14 @@ export default async function JobDetailPage({
         <h2 className="text-sm font-semibold text-neutral-900">Proposals</h2>
         <div className="mt-3">
           <ProposalList proposals={proposals} jobId={id} />
+        </div>
+      </div>
+
+      {/* Change orders (8c.11c — navigable list + create) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Change orders</h2>
+        <div className="mt-3">
+          <ChangeOrderList changeOrders={changeOrders} jobId={id} />
         </div>
       </div>
 

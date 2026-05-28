@@ -332,3 +332,15 @@ export async function listChangeOrdersForJob(tenantId: string, jobId: string): P
     .where(and(eq(changeOrders.tenantId, tenantId), eq(changeOrders.jobId, jobId)))
     .orderBy(asc(changeOrders.createdAt), asc(changeOrders.id));
 }
+
+export type ChangeOrderLineItemRow = typeof changeOrderLineItems.$inferSelect;
+
+/** Line items for a change order, ordered by line number. Tenant-scoped. Pure read (8c.11c — the
+ *  detail screen renders inputs + the writer-owned extended_amount/markup_amount). */
+export async function listChangeOrderLineItems(tenantId: string, changeOrderId: string): Promise<ChangeOrderLineItemRow[]> {
+  return db
+    .select()
+    .from(changeOrderLineItems)
+    .where(and(eq(changeOrderLineItems.tenantId, tenantId), eq(changeOrderLineItems.changeOrderId, changeOrderId)))
+    .orderBy(asc(changeOrderLineItems.lineNumber));
+}
