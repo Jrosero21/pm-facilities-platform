@@ -53,3 +53,35 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (8c.8).** Implement `getJobMargin(tenantId, jobId)` as **`sumApprovedClientInvoiceTotals(tenantId, jobId) − sumApprovedVendorInvoiceTotals(tenantId, jobId)`**, both keyed by `job_id`, summed with `big.js` + `roundHalfUp` (explicit-mode). `sumApprovedVendorInvoiceTotals` is already exported and ready to consume; 8c.8 adds the AR-side aggregator + the subtraction.
 
 **Refs.** 8c.7 Decision 4; OQ-16; `8c-construction-plan §5` (8c.7 construction notes).
+
+**RESOLVED (8c.8).** `getJobMargin` shipped in `src/server/billing/margin.ts` exactly as specified (`revenue − cost`, both `job_id`-keyed, `big.js` + `roundHalfUp`); `margin.ts` is the sole AR↔AP meeting point. AR revenue = `status='sent'` only (8c.8 Decision 4). Verified Group 11 (7-case matrix).
+
+---
+
+## CF-8c.8.1 — Runtime role-gate integration test deferred to 8c.11d
+
+**What.** 8c.8 ships the platform's first enforced role gate (`sendClientInvoiceAction` → `requireTenant()` + `isAccountingRole(...)` → `redirect("/forbidden")`). The **policy** is empirically verified at the data/predicate layer (8c.8 verify Group 15: `isAccountingRole` 8-case truth table) + the gate placement is confirmed structurally. But the **end-to-end action path** (real session → `requireTenant` cookie/redirect behavior → `redirect("/forbidden")` for a non-accounting user, success for accounting/super_admin) cannot run in the ephemeral `tsx` verify (it has no request context; `next/headers` throws outside a request) — see CF-8c.8.3.
+
+**Obligation (8c.11d, UI/integration).** When the issue-invoice UI lands, add an integration test (or manual QA scriptable steps recorded in the closeout) exercising the live action with seeded accounting / non-accounting / super_admin sessions, asserting the `/forbidden` redirect vs success.
+
+**Refs.** 8c.8 Decision 2; `8c-construction-plan §5` (8c.8 notes); CF-8c.8.3.
+
+---
+
+## CF-8c.8.2 — Client-invoice drafts have no header-delete / discard writer
+
+**What.** 8c.8 exposes no writer to delete or discard a `draft` client invoice (void requires `status='sent'`, 8c.8 Decision 9). A draft created in error is operator scratch space with no removal path — it lingers as a `draft` row (excluded from revenue, so harmless to margin, but it is clutter).
+
+**Obligation (future revision, NOT a Phase-8 blocker).** Add a `discardClientInvoiceDraft` writer (draft → hard-delete or a `discarded` status) when the issue-invoice UI (8c.11d) surfaces the need, mirroring the Phase-7 batch-7d "gated approved-scope drafts are discardable" close-the-stranding precedent.
+
+**Refs.** 8c.8 Decision 9; Phase-7 batch-7d discardable-draft precedent.
+
+---
+
+## CF-8c.8.3 — Platform has no test framework
+
+**What.** As of 8c.8 the repo has **no test runner** (`package.json` has no `vitest`/`jest`/`test` script) and **no test files** (`*.test.ts`, `__tests__/`). The per-sub-batch **ephemeral `scripts/verify-8cN.ts`** scripts (written, run with `--conditions=react-server`, results captured in the commit + docs, then deleted) are the platform's de-facto empirical test layer.
+
+**Obligation (future infrastructure, NOT a Phase-8 blocker).** Standing test infrastructure (a runner + retained tests) could elevate the policy-critical pure units (e.g., `isAccountingRole`, `billing/money.ts` validators, `billing/totals.ts` math) from per-sub-batch verification to standing CI — which would also unblock the CF-8c.8.1 integration test.
+
+**Refs.** 8c.8 Decision 2 inspection; `8c-construction-plan §5` (8c.8 notes).

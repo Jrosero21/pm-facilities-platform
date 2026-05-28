@@ -100,3 +100,29 @@ export class VendorInvoiceNotDisputable extends Error {
     this.name = "VendorInvoiceNotDisputable";
   }
 }
+
+// ── Client-invoice (AR) state-machine F3 errors (8c.8) ────────────────────────────────
+
+/** A draft-edit operation (line CRUD) hit a non-draft client invoice. */
+export class ClientInvoiceNotEditable extends Error {
+  constructor(id: string, status: string) {
+    super(`Client invoice ${id} is not editable (status=${status})`);
+    this.name = "ClientInvoiceNotEditable";
+  }
+}
+
+/** sendClientInvoice hit an invoice not in `draft` (issuing requires a draft). */
+export class ClientInvoiceNotSendable extends Error {
+  constructor(id: string, status: string) {
+    super(`Client invoice ${id} is not sendable (status=${status})`);
+    this.name = "ClientInvoiceNotSendable";
+  }
+}
+
+/** voidClientInvoice hit an invoice not in `sent` (void retracts an issued invoice; drafts can't be voided). */
+export class ClientInvoiceNotVoidable extends Error {
+  constructor(id: string, status: string) {
+    super(`Client invoice ${id} is not voidable (status=${status})`);
+    this.name = "ClientInvoiceNotVoidable";
+  }
+}
