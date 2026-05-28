@@ -398,3 +398,15 @@ export async function listProposalsForJob(tenantId: string, jobId: string): Prom
     .where(and(eq(proposals.tenantId, tenantId), eq(proposals.jobId, jobId)))
     .orderBy(asc(proposals.createdAt), asc(proposals.id));
 }
+
+export type ProposalLineItemRow = typeof proposalLineItems.$inferSelect;
+
+/** Line items for a proposal, ordered by line number. Tenant-scoped. Pure read (8c.11b — the
+ *  detail screen renders inputs + the writer-owned extended_amount/markup_amount). */
+export async function listProposalLineItems(tenantId: string, proposalId: string): Promise<ProposalLineItemRow[]> {
+  return db
+    .select()
+    .from(proposalLineItems)
+    .where(and(eq(proposalLineItems.tenantId, tenantId), eq(proposalLineItems.proposalId, proposalId)))
+    .orderBy(asc(proposalLineItems.lineNumber));
+}
