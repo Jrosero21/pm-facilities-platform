@@ -95,3 +95,23 @@ Items that must be resolved or recorded **before** the Phase 8 closeout (`11-clo
 **Obligation (future feature, NOT a Phase-8 blocker).** If overpayment handling becomes an operational need — vendor credits, duplicate-payment refunds, client credit balances applied to future invoices — it is a future feature (a credit-balance ledger + reconciliation workflow). Until then, overpayment is permitted and visible only via the payment-vs-total arithmetic; operators reconcile manually (paired with the CF-8c.8 void/refund operator-responsibility note in `06-business-rules`).
 
 **Refs.** 8c.9 Decision 3 + Decision 5; `8c-construction-plan §5` (8c.9 notes); OQ-17 (no cross-invoice allocation).
+
+---
+
+## CF-8c.docs.1 — `emergency_nte_multiplier` is schema-present but Phase-8-inert
+
+**What.** `client_billing_rules.emergency_nte_multiplier` (decimal(4,2), nullable; added 8b migration 0016, 8b-D1) is **stored but never applied** in Phase 8. No resolver consults it (`resolveClientNteRule` does not multiply emergency-priority NTEs); no `createJob` path applies it. The 8b-D1 design intent — a tenant-default multiplier of `1.50` with a per-client override, applied when `priority.code = 'EMERGENCY'` — was **not wired**. Emergency-priority jobs resolve their NTE exactly like any other priority. (Discovered during the docs batch by inspection: the column appears only in schema files.)
+
+**Obligation (future wiring).** Before any value in this column takes effect, a future phase must (1) update the NTE resolver to consult `emergency_nte_multiplier` (per-client override) with a tenant-default fallback, (2) give the tenant default a config home (it's currently nowhere — the `1.50` is a design number, not a constant in code), and (3) add an admin UI for both. **Safe interim contract:** future admin code may write to the column freely (it's inert, so a written value changes nothing yet); future *readers* must update the resolver before any written value applies — writing the column without wiring the resolver is a silent no-op, not a bug.
+
+**Refs.** 8b-D1; `02-decisions.md` §B (decision stands, wiring deferred); `10-known-limitations.md` §B (stored-but-inert); `04-admin-sop.md` (forward-flag).
+
+---
+
+## CF-8c.docs.2 — No dispute-resolution / `under_review`-transition writer
+
+**What.** A disputed vendor invoice is **terminal** in Phase 8: there is no writer to resolve a dispute (move it back to `received`/`under_review`, or forward to `approved`). And the `under_review` status — though present in the `vendor_invoices.status` enum and accepted by the edit/approve/dispute guards (forward-compat, 8c.7 Decision 5) — has **no Phase-8 writer that transitions into it**. So a dispute resolved offline has no in-app path to re-open the invoice; it stays `disputed` (excluded from approved-AP cost / margin / the aggregate NTE check).
+
+**Obligation (future dispute-workflow phase).** Add the missing transition writers — a "start review" (`received → under_review`) and a "resolve dispute" (`disputed → under_review`/`approved`, or a re-record path) — each with its billing event(s). This is a substrate-wiring deferral (the platform owes the closure), not a UI polish.
+
+**Refs.** 8c.7 Decision 5; `05-system-workflows.md` (dispute path); `10-known-limitations.md` §A/§B.
