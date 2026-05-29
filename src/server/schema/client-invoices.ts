@@ -7,7 +7,6 @@ import {
   int,
   mysqlEnum,
   mysqlTable,
-  text,
   timestamp,
   varchar,
 } from "drizzle-orm/mysql-core";
