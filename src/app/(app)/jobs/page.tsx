@@ -1,10 +1,21 @@
 import Link from "next/link";
 import { requireTenant } from "@/server/auth-context";
-import { listJobs } from "@/server/jobs";
+import { listJobs, resolveJobsFilters } from "@/server/jobs";
 
-export default async function JobsPage() {
+// (9e) searchParams is async (a Promise) per Next 15 — first searchParams-driven route in the app
+// (manifest §6 establishes the convention). ?status= / ?priority= carry validated entity ids (the
+// dashboard's status/priority cards link here); invalid ids fall through to an unfiltered dimension.
+export default async function JobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; priority?: string }>;
+}) {
   const ctx = await requireTenant();
-  const jobs = await listJobs(ctx.activeTenant.tenantId);
+  const tenantId = ctx.activeTenant.tenantId;
+  const params = await searchParams;
+  const filters = await resolveJobsFilters(tenantId, params);
+  const isFiltered = filters.statusId !== undefined || filters.priorityId !== undefined;
+  const jobs = await listJobs(tenantId, filters);
 
   return (
     <div>
@@ -18,9 +29,20 @@ export default async function JobsPage() {
         </Link>
       </div>
 
+      {isFiltered && (
+        <p className="mt-2 text-sm text-neutral-600">
+          Showing {jobs.length} filtered {jobs.length === 1 ? "job" : "jobs"}.{" "}
+          <Link href="/jobs" className="text-neutral-900 underline hover:no-underline">
+            Clear filters
+          </Link>
+        </p>
+      )}
+
       {jobs.length === 0 ? (
         <p className="mt-8 text-sm text-neutral-600">
-          No jobs yet. Create the first one to get started.
+          {isFiltered
+            ? "No jobs match the current filter."
+            : "No jobs yet. Create the first one to get started."}
         </p>
       ) : (
         <div className="mt-6 overflow-hidden rounded-lg border border-neutral-200 bg-white">

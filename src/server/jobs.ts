@@ -49,8 +49,20 @@ export type JobListItem = {
  * Non-archived jobs for a tenant, newest first. Joined to the display labels the
  * list page renders (client / location / status names, priority name nullable
  * since priority_id is nullable). No pagination yet (carry-forward).
+ *
+ * (9e) Optional `filters` narrow by current status and/or priority — additive on
+ * the existing `is_archived=false` base (the open-population definition, 9c §9),
+ * so a status card's count and the `/jobs?status=` filtered view stay consistent.
+ * Callers pass already-validated ids (see resolveJobsFilters).
  */
-export async function listJobs(tenantId: string): Promise<JobListItem[]> {
+export async function listJobs(
+  tenantId: string,
+  filters?: { statusId?: string; priorityId?: string },
+): Promise<JobListItem[]> {
+  const conditions = [eq(jobs.tenantId, tenantId), eq(jobs.isArchived, false)];
+  if (filters?.statusId) conditions.push(eq(jobs.currentStatusId, filters.statusId));
+  if (filters?.priorityId) conditions.push(eq(jobs.priorityId, filters.priorityId));
+
   return db
     .select({
       id: jobs.id,
@@ -66,8 +78,38 @@ export async function listJobs(tenantId: string): Promise<JobListItem[]> {
     .innerJoin(clientLocations, eq(jobs.clientLocationId, clientLocations.id))
     .innerJoin(jobStatuses, eq(jobs.currentStatusId, jobStatuses.id))
     .leftJoin(priorities, eq(jobs.priorityId, priorities.id))
-    .where(and(eq(jobs.tenantId, tenantId), eq(jobs.isArchived, false)))
+    .where(and(...conditions))
     .orderBy(desc(jobs.createdAt));
+}
+
+/**
+ * (9e) Validate optional `/jobs` URL filter ids against the tenant's vocabulary, dropping any that
+ * don't resolve — graceful fallthrough: a stale/foreign id yields an unfiltered dimension, never a
+ * 404 (manifest §6). Status is global (`job_statuses`); priority is tenant-scoped (`priorities`).
+ * Dashboard-generated links are always valid; this guards hand-edited / stale URLs.
+ */
+export async function resolveJobsFilters(
+  tenantId: string,
+  params: { status?: string; priority?: string },
+): Promise<{ statusId?: string; priorityId?: string }> {
+  const out: { statusId?: string; priorityId?: string } = {};
+  if (params.status) {
+    const rows = await db
+      .select({ id: jobStatuses.id })
+      .from(jobStatuses)
+      .where(eq(jobStatuses.id, params.status))
+      .limit(1);
+    if (rows.length) out.statusId = rows[0].id;
+  }
+  if (params.priority) {
+    const rows = await db
+      .select({ id: priorities.id })
+      .from(priorities)
+      .where(and(eq(priorities.tenantId, tenantId), eq(priorities.id, params.priority)))
+      .limit(1);
+    if (rows.length) out.priorityId = rows[0].id;
+  }
+  return out;
 }
 
 /**
