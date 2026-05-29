@@ -169,6 +169,13 @@
       "when": 1779895705426,
       "tag": "0023_brave_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1780026336546,
+      "tag": "0024_uneven_radioactive_man",
+      "breakpoints": true
     }
   ]
 }

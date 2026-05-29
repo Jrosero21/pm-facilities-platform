@@ -109,6 +109,8 @@ export const jobs = mysqlTable(
     index("jobs_tenant_trade_idx").on(t.tenantId, t.primaryTradeId),
     index("jobs_tenant_priority_idx").on(t.tenantId, t.priorityId),
     index("jobs_tenant_created_idx").on(t.tenantId, t.createdAt),
+    index("jobs_tenant_due_idx").on(t.tenantId, t.dueAt),
+    index("jobs_tenant_source_idx").on(t.tenantId, t.sourceType),
   ],
 );
 
