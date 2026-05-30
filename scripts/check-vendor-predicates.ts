@@ -508,6 +508,129 @@ async function checkVendorNotesVisibilityFilter() {
   );
 }
 
+// -------- Impure + DESTRUCTIVE: vendor photo placeholders (10m) --------
+// Read-filter (author-scoped, DoR-10m.1) + write smoke (createVendorPhotoPlaceholder
+// lands a real row — destructive, like the actions smoke). Targets the same
+// earliest-CoolAir-assignment the seed attaches photos to.
+async function checkVendorAttachmentsVisibilityFilter() {
+  const VF = await import("./seed-sandbox-phase9-fixture");
+  const { listVendorAssignmentAttachments } = await import(
+    "@/server/vendor/list-assignment-attachments"
+  );
+  const { createVendorPhotoPlaceholder } = await import(
+    "@/server/vendor/create-vendor-photo-placeholder"
+  );
+  const { db } = await import("@/server/db");
+  const { tenants, users, vendors, jobVendorAssignments, jobAttachments } =
+    await import("@/server/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, VF.SEED_TENANT.slug));
+  const [vendorUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, VF.SEED_VENDOR_USER.email));
+  if (!tenant || !vendorUser) {
+    check("attachments: seed tenant + vendor user resolved", false);
+    return;
+  }
+  const [vendor] = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.tenantId, tenant.id), eq(vendors.name, VF.boundVendorName())));
+  if (!vendor) {
+    check("attachments: bound vendor resolved", false);
+    return;
+  }
+  const [asn] = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenant.id),
+        eq(jobVendorAssignments.vendorId, vendor.id),
+      ),
+    )
+    .orderBy(jobVendorAssignments.createdAt, jobVendorAssignments.id)
+    .limit(1);
+  if (!asn) {
+    check("attachments: bound vendor has an assignment", false);
+    return;
+  }
+  const scope = new Set([vendor.id]);
+
+  // -- read filter --
+  const attachments = await listVendorAssignmentAttachments(tenant.id, asn.id, scope);
+  const expected = VF.expectedVendorVisibleAttachmentMarkers();
+  const got = attachments.map((a) => a.title).sort();
+  const want = [...expected].sort();
+  check(
+    "attachments filter: returns expected count",
+    attachments.length === expected.length,
+  );
+  check(
+    "attachments filter: returns exactly the expected markers",
+    JSON.stringify(got) === JSON.stringify(want),
+  );
+  check(
+    "attachments filter: all returned rows have NULL file_url (placeholders)",
+    attachments.every((a) => a.fileUrl === null),
+  );
+  check(
+    "attachments filter: empty scope returns []",
+    (await listVendorAssignmentAttachments(tenant.id, asn.id, new Set())).length === 0,
+  );
+
+  // -- write smoke (destructive: lands a real row) --
+  const result = await createVendorPhotoPlaceholder({
+    assignmentId: asn.id,
+    tenantId: tenant.id,
+    vendorScope: scope,
+    actorUserId: vendorUser.id,
+    title: "[10m-harness] write smoke",
+  });
+  check(
+    "createVendorPhotoPlaceholder returns an id",
+    typeof result.id === "string" && result.id.length > 0,
+  );
+  const [written] = await db
+    .select({
+      fileUrl: jobAttachments.fileUrl,
+      attachmentType: jobAttachments.attachmentType,
+      visibility: jobAttachments.visibility,
+    })
+    .from(jobAttachments)
+    .where(eq(jobAttachments.id, result.id));
+  check("createVendorPhotoPlaceholder writes NULL file_url", written?.fileUrl === null);
+  check(
+    "createVendorPhotoPlaceholder writes attachment_type='photo'",
+    written?.attachmentType === "photo",
+  );
+  check(
+    "createVendorPhotoPlaceholder writes visibility='internal_only'",
+    written?.visibility === "internal_only",
+  );
+
+  // -- refusal: scope mismatch --
+  let scopeRefusal = false;
+  try {
+    await createVendorPhotoPlaceholder({
+      assignmentId: asn.id,
+      tenantId: tenant.id,
+      vendorScope: new Set(["bogus-vendor-id"]),
+      actorUserId: vendorUser.id,
+      title: "[10m-harness] should not land",
+    });
+  } catch (err) {
+    scopeRefusal =
+      err instanceof Error && err.message === "VENDOR_SCOPE_MISMATCH";
+  }
+  check("createVendorPhotoPlaceholder refuses scope mismatch", scopeRefusal);
+}
+
 // -------- Main --------
 async function main() {
   checkIsVendorUser();
@@ -518,6 +641,7 @@ async function main() {
   await checkVendorAssignmentsListSmoke();
   await checkAssignmentActionsSmoke();
   await checkVendorNotesVisibilityFilter();
+  await checkVendorAttachmentsVisibilityFilter();
 
   console.log("");
   console.log(`[check-vendor-predicates] passed: ${passed}`);

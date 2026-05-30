@@ -2,9 +2,11 @@ import { notFound } from "next/navigation";
 import { requireVendor } from "@/server/auth-context";
 import { getVendorAssignmentDetail } from "@/server/vendor/get-vendor-assignment-detail";
 import { listVendorAssignmentNotes } from "@/server/vendor/list-assignment-notes";
+import { listVendorAssignmentAttachments } from "@/server/vendor/list-assignment-attachments";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
 import { VendorNoteForm } from "@/components/vendor/vendor-note-form";
+import { VendorPhotoPlaceholderForm } from "@/components/vendor/vendor-photo-placeholder-form";
 import { VendorActionButton } from "@/components/vendor/vendor-action-button";
 import { VendorDeclineForm } from "@/components/vendor/vendor-decline-form";
 import { VendorEtaForm } from "@/components/vendor/vendor-eta-form";
@@ -48,6 +50,11 @@ export default async function VendorAssignmentDetailPage({
   if (!detail) notFound();
 
   const notes = await listVendorAssignmentNotes(
+    ctx.activeTenant.tenantId,
+    detail.id,
+    ctx.vendorScope,
+  );
+  const attachments = await listVendorAssignmentAttachments(
     ctx.activeTenant.tenantId,
     detail.id,
     ctx.vendorScope,
@@ -165,6 +172,42 @@ export default async function VendorAssignmentDetailPage({
         </div>
         <div className="mt-6">
           <VendorNoteForm assignmentId={detail.id} />
+        </div>
+      </section>
+
+      {/* Photos — metadata-only placeholders (Fork 7): no real file upload yet
+          (FB-10a.4). Each row branches on file_url presence so the same render
+          works unchanged when a future phase backfills real files. Author-scoped
+          read (DoR-10m.1) via listVendorAssignmentAttachments. */}
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Photos
+        </h2>
+        <div className="mt-4 space-y-3">
+          {attachments.length === 0 ? (
+            <p className="text-sm text-neutral-500">No photos attached yet.</p>
+          ) : (
+            attachments.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-lg border border-neutral-200 bg-white p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                    {a.fileUrl ? "Uploaded" : "Placeholder"}
+                  </span>
+                  <span className="text-xs text-neutral-500">
+                    {a.authorName ?? "Unknown"} ·{" "}
+                    {new Date(a.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm text-neutral-700">{a.title}</p>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="mt-6">
+          <VendorPhotoPlaceholderForm assignmentId={detail.id} />
         </div>
       </section>
     </section>

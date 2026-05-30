@@ -22,7 +22,7 @@ import { v7 as uuidv7 } from "uuid";
 import {
   tenants, tenantUsers, userRoles, roles, users,
   clients, clientLocations, vendors, vendorLocations, vendorUsers,
-  jobs, jobNotes, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
+  jobs, jobNotes, jobAttachments, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
   vendorInvoices, clientInvoices,
   jobStatuses, priorities, trades, dispatchAssignmentStatuses,
   auditLogs, tenantJobSequences,
@@ -30,7 +30,7 @@ import {
 import {
   SEED_TENANT, SEED_USERS, SEED_USER_PASSWORD,
   CLIENTS, VENDORS, OPEN_JOBS, CLOSED_JOBS, VENDOR_INVOICES, CLIENT_INVOICES,
-  SEED_VENDOR_USER, VENDOR_NOTES_FIXTURE,
+  SEED_VENDOR_USER, VENDOR_NOTES_FIXTURE, VENDOR_PHOTO_PLACEHOLDERS_FIXTURE,
 } from "./seed-sandbox-phase9-fixture";
 
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
@@ -272,6 +272,16 @@ async function main() {
       });
     }
     console.log(`[seed9d] vendor notes: ${VENDOR_NOTES_FIXTURE.length} on job ${noteJobId}`);
+
+    // 10m: vendor photo placeholders on the same job (NULL file_url markers).
+    for (const p of VENDOR_PHOTO_PLACEHOLDERS_FIXTURE) {
+      await db.insert(jobAttachments).values({
+        id: uuidv7(), tenantId, jobId: noteJobId,
+        title: p.titleMarker, attachmentType: "photo", visibility: "internal_only",
+        uploadedByUserId: vendorUserId,
+      });
+    }
+    console.log(`[seed9d] vendor photo placeholders: ${VENDOR_PHOTO_PLACEHOLDERS_FIXTURE.length} on job ${noteJobId}`);
   }
 
   for (const cj of CLOSED_JOBS) {

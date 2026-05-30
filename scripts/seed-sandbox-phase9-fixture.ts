@@ -327,3 +327,27 @@ export function expectedVendorVisibleNoteMarkers(): string[] {
     "[10l-fixture] vendor's own internal note",
   ];
 }
+
+// ── Phase 10 batch 10m-construct — VENDOR PHOTO PLACEHOLDERS FIXTURE ──────────
+// Two placeholder photos (NULL file_url) on the same target job as the 10l notes,
+// authored by the seeded vendor user, to exercise the author-scoped read filter.
+export const VENDOR_PHOTO_PLACEHOLDERS_FIXTURE = [
+  {
+    titleMarker: "[10m-fixture] vendor placeholder photo 1",
+    authorRoleKey: "vendor_user" as const,
+  },
+  {
+    titleMarker:
+      "[10m-fixture] vendor placeholder photo 2 (with longer title for layout test)",
+    authorRoleKey: "vendor_user" as const,
+  },
+] as const;
+
+/** The titleMarkers a vendor (SEED_VENDOR_USER) SHOULD see — both placeholders,
+ *  since both are authored by a user in the vendor's vendor_users scope. */
+export function expectedVendorVisibleAttachmentMarkers(): string[] {
+  return [
+    "[10m-fixture] vendor placeholder photo 1",
+    "[10m-fixture] vendor placeholder photo 2 (with longer title for layout test)",
+  ];
+}
