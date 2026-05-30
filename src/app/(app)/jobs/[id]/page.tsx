@@ -43,6 +43,8 @@ import { LinkedPayments } from "@/components/linked-payments";
 import { CloseBillingButton } from "@/components/close-billing-button";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
+import { isJobStalled } from "@/server/analytics/stalled-jobs";
+import { tierBadge } from "@/components/dashboard/tier-colors";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -71,7 +73,7 @@ export default async function JobDetailPage({
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
 
-  const [contacts, notes, events, assignments, communications, drafts, scopeDrafts, scopeSteps] =
+  const [contacts, notes, events, assignments, communications, drafts, scopeDrafts, scopeSteps, aging] =
     await Promise.all([
       listJobContacts(tenantId, id),
       listJobNotes(tenantId, id),
@@ -81,6 +83,8 @@ export default async function JobDetailPage({
       listDraftsForJobDetailed(tenantId, id),
       listScopeDraftsForJobDetailed(tenantId, id),
       listScopeStepsForJob(tenantId, id),
+      // 9f — per-job aging callout; SAME predicate/query as the dashboard queue (null for terminal jobs).
+      isJobStalled(tenantId, id),
     ]);
   // 8c.11a billing reads — all existing verified readers (+ listJobBillingEvents, actorName-enhanced).
   const [proposals, changeOrders, vendorInvoices, clientInvoices, payments, margin, readiness, billingEvents] =
@@ -148,6 +152,12 @@ export default async function JobDetailPage({
         <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
           {job.statusName}
         </span>
+        {/* 9f — per-job aging callout: same classification as the dashboard operational queue. */}
+        {aging?.isStalled && (
+          <span className={`rounded px-2 py-0.5 text-xs font-medium ${tierBadge("stalled")}`}>
+            Stalled
+          </span>
+        )}
       </div>
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

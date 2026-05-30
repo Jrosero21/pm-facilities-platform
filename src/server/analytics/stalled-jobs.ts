@@ -80,3 +80,57 @@ export async function countStalledJobs(
       .sort((a, b) => a.statusCode.localeCompare(b.statusCode)),
   };
 }
+
+/**
+ * (9f) Single-job counterpart to countStalledJobs — the SAME query shape + the SAME shared `isStalled`
+ * predicate, scoped to one job, so the /jobs/[id] aging badge classifies IDENTICALLY to the dashboard
+ * operational queue (no second code path to drift). Tenant-scoped (defends against cross-tenant id
+ * injection via the URL). Returns null when the job is missing OR in a terminal status — no stalled
+ * callout for closed jobs, mirroring the queue's `is_terminal=false` exclusion by construction. The
+ * returned `dwellSeconds` lets a future caller surface "in <status> for <duration>" with no extra query.
+ *
+ * Pairs with countStalledJobs as the "aggregate + single-row" reader pattern: extract the predicate
+ * (isStalled, 9c.6) → aggregate reader (countStalledJobs, 9c.5) → single-row reader (here, 9f) once a
+ * consumer surfaces. Avoids cycling the all-job aggregate to classify one job.
+ */
+export async function isJobStalled(
+  tenantId: string,
+  jobId: string,
+): Promise<{ isStalled: boolean; statusCode: string; dwellSeconds: number } | null> {
+  const rows = await db
+    .select({
+      statusCode: jobStatuses.code,
+      isTerminal: jobStatuses.isTerminal,
+      // dwell + scheduled-start + check-in subqueries are VERBATIM from countStalledJobs (no drift).
+      dwellSeconds: sql<number>`TIMESTAMPDIFF(SECOND, COALESCE((SELECT MAX(h.created_at) FROM job_status_history h WHERE h.job_id = ${jobs.id}), ${jobs.createdAt}), NOW())`,
+      jobScheduledStartAt: jobs.scheduledStartAt,
+      minAssignmentScheduledStartAt: sql<
+        string | null
+      >`(SELECT MIN(a.scheduled_start_at) FROM job_vendor_assignments a WHERE a.job_id = ${jobs.id})`,
+      checkInCount: sql<number>`(SELECT COUNT(*) FROM vendor_check_ins v JOIN job_vendor_assignments a ON v.assignment_id = a.id WHERE a.job_id = ${jobs.id})`,
+    })
+    .from(jobs)
+    .innerJoin(jobStatuses, eq(jobs.currentStatusId, jobStatuses.id))
+    .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)))
+    .limit(1);
+
+  const r = rows[0];
+  if (!r) return null; // missing or cross-tenant
+  if (r.isTerminal) return null; // terminal status → no aging callout (matches the queue's exclusion)
+
+  const scheduledStartAt = resolveScheduledStartAt(
+    { scheduledStartAt: toDate(r.jobScheduledStartAt) },
+    toDate(r.minAssignmentScheduledStartAt)
+      ? [{ scheduledStartAt: toDate(r.minAssignmentScheduledStartAt) }]
+      : [],
+  );
+  const dwellSeconds = Number(r.dwellSeconds);
+  const stalled = isStalled({
+    statusCode: r.statusCode,
+    dwellSeconds,
+    scheduledStartAt,
+    checkInCount: Number(r.checkInCount),
+    nowMs: Date.now(),
+  });
+  return { isStalled: stalled, statusCode: r.statusCode, dwellSeconds };
+}
