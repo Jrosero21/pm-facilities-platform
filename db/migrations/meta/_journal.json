@@ -176,6 +176,13 @@
       "when": 1780026336546,
       "tag": "0024_uneven_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1780111396644,
+      "tag": "0025_gorgeous_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

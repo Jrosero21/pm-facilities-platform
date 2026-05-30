@@ -141,3 +141,41 @@ export const vendorLocations = mysqlTable(
     index("vendor_locations_status_idx").on(t.status),
   ],
 );
+
+// Vendor↔user linkage (Phase 10 Fork 1). Maps an auth user to a vendor org
+// within an aggregator tenant, scoping vendor-portal visibility. MANY-TO-MANY:
+// one user may serve several vendor orgs; one vendor org has several staff
+// users. A vendor user ALSO holds a tenant_users membership in the aggregator
+// tenant + a vendor_user role grant; this table adds the vendor-scope on top
+// (10b §1 Fork 1). All three FKs cascade — the mapping is meaningless without
+// its tenant, user, and vendor (mirrors tenant_users' all-cascade precedent).
+// updated_at kept per 10b lock (entity-style flexibility). Indexes: the unique
+// (tenant,user,vendor) enforces one mapping per triple; (tenant,vendor) backs
+// operator-side "who staffs this vendor" reads.
+export const vendorUsers = mysqlTable(
+  "vendor_users",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    vendorId: varchar("vendor_id", { length: 36 })
+      .notNull()
+      .references(() => vendors.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    uniqueIndex("vendor_users_tenant_user_vendor_unique").on(
+      t.tenantId,
+      t.userId,
+      t.vendorId,
+    ),
+    index("vendor_users_tenant_vendor_idx").on(t.tenantId, t.vendorId),
+  ],
+);
