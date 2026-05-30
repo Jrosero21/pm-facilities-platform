@@ -8,6 +8,8 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { roles, tenants, tenantUsers, userRoles } from "@/server/schema";
 import { isAccountingRole } from "@/server/billing/role-gates";
+import { isVendorUser } from "@/server/role-predicates";
+import { getVendorScope } from "@/server/vendor-scope";
 
 export const ACTIVE_TENANT_COOKIE = "pm_active_tenant";
 
@@ -168,4 +170,39 @@ export async function setActiveTenant(tenantId: string): Promise<boolean> {
     targetId: tenantId,
   });
   return true;
+}
+
+/**
+ * Vendor portal guard. Composes requireTenant() + isVendorUser + getVendorScope.
+ *
+ * Redirects:
+ *   - /no-tenant if no active tenant (inherited from requireTenant)
+ *   - /vendor-no-access if user is not a vendor_user, or if their vendor
+ *     scope is empty (no vendor_users mapping rows for this tenant)
+ *
+ * Returns VendorAuthContext: TenantAuthContext extended with a resolved
+ * vendorScope set, so callers don't re-fetch the scope downstream.
+ *
+ * Bare-redirect convention matching requireAuth/requireTenant/requireRole.
+ * No flash/cookie attached.
+ *
+ * Phase 10 batch 10i.
+ */
+export type VendorAuthContext = TenantAuthContext & {
+  vendorScope: Set<string>;
+};
+
+export async function requireVendor(): Promise<VendorAuthContext> {
+  const ctx = await requireTenant();
+  if (!isVendorUser(ctx)) {
+    redirect("/vendor-no-access");
+  }
+  const vendorScope = await getVendorScope(
+    ctx.user.id,
+    ctx.activeTenant.tenantId,
+  );
+  if (vendorScope.size === 0) {
+    redirect("/vendor-no-access");
+  }
+  return { ...ctx, vendorScope };
 }

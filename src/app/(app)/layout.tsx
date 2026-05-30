@@ -1,10 +1,31 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { requireAuth } from "@/server/auth-context";
+import { isVendorUser, canSeeOperations } from "@/server/role-predicates";
+import { getVendorScope } from "@/server/vendor-scope";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await requireAuth();
+
+  // Phase 10 batch 10i — post-login role-routing shim.
+  // Vendor users with at least one vendor mapping in the active tenant
+  // belong in the vendor portal, not the aggregator dashboard. Dual-role
+  // users (operator + vendor_user) default to the aggregator portal since
+  // they have aggregator access; explicit vendor-portal entry is via direct
+  // nav (FB-10i.1 banks the switcher UI).
+  if (ctx.activeTenant && isVendorUser(ctx) && !canSeeOperations(ctx)) {
+    const vendorScope = await getVendorScope(
+      ctx.user.id,
+      ctx.activeTenant.tenantId,
+    );
+    if (vendorScope.size > 0) {
+      redirect("/vendor/jobs");
+    } else {
+      redirect("/vendor-no-access");
+    }
+  }
 
   return (
     <div className="min-h-screen">
