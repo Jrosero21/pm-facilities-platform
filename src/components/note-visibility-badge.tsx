@@ -54,3 +54,18 @@ export function NoteVisibilityBadge({ visibility }: { visibility: string }) {
     </span>
   );
 }
+
+// Phase 10 batch 10l — vendor-origin tag. Renders ONLY for origin='vendor'
+// (operator is the implicit default — no badge). Subtle neutral pill: this is
+// an authorship/provenance axis, deliberately quieter than the colored
+// visibility palette so it doesn't read as a visibility classification.
+export type NoteOrigin = "operator" | "vendor";
+
+export function NoteOriginBadge({ origin }: { origin: string }) {
+  if (origin !== "vendor") return null;
+  return (
+    <span className="rounded border border-neutral-300 px-2 py-0.5 text-xs font-medium text-neutral-600">
+      Vendor
+    </span>
+  );
+}

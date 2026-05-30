@@ -22,6 +22,7 @@ export async function listJobNotes(tenantId: string, jobId: string) {
       jobId: jobNotes.jobId,
       body: jobNotes.body,
       visibility: jobNotes.visibility,
+      origin: jobNotes.origin,
       createdAt: jobNotes.createdAt,
       authorName: users.name,
     })
@@ -58,6 +59,9 @@ export type CreateJobNoteInput = {
   body: string;
   visibility?: NoteVisibility;
   createdByUserId: string;
+  // Provenance (Phase 10 Fork 4). Default 'operator'; the vendor note path
+  // (createVendorNote) passes 'vendor'. App-enforced — the column is varchar.
+  origin?: "operator" | "vendor";
 };
 
 /**
@@ -81,6 +85,7 @@ export async function createJobNote(
     jobId: input.jobId,
     body: input.body,
     visibility: input.visibility ?? "internal_only",
+    origin: input.origin ?? "operator",
     createdByUserId: input.createdByUserId,
   });
 

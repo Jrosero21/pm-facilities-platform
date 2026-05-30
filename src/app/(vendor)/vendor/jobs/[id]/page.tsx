@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
 import { requireVendor } from "@/server/auth-context";
 import { getVendorAssignmentDetail } from "@/server/vendor/get-vendor-assignment-detail";
+import { listVendorAssignmentNotes } from "@/server/vendor/list-assignment-notes";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
+import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
+import { VendorNoteForm } from "@/components/vendor/vendor-note-form";
 import { VendorActionButton } from "@/components/vendor/vendor-action-button";
 import { VendorDeclineForm } from "@/components/vendor/vendor-decline-form";
 import { VendorEtaForm } from "@/components/vendor/vendor-eta-form";
@@ -43,6 +46,12 @@ export default async function VendorAssignmentDetailPage({
     ctx.vendorScope,
   );
   if (!detail) notFound();
+
+  const notes = await listVendorAssignmentNotes(
+    ctx.activeTenant.tenantId,
+    detail.id,
+    ctx.vendorScope,
+  );
 
   const isTerminal =
     detail.statusCode === "WORK_COMPLETE" ||
@@ -119,6 +128,43 @@ export default async function VendorAssignmentDetailPage({
               This assignment is closed. No further actions are available.
             </p>
           )}
+        </div>
+      </section>
+
+      {/* Notes — vendor sees vendor-visible notes + their own org's vendor-origin
+          notes (DoR-10l.2 filter, applied in listVendorAssignmentNotes). No origin
+          tag rendered here: every note the vendor sees is, by the filter, either
+          operator-shared-to-vendor or their own org's — provenance is unambiguous
+          in this context (the operator side carries the tag instead). */}
+      <section>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+          Notes
+        </h2>
+        <div className="mt-4 space-y-3">
+          {notes.length === 0 ? (
+            <p className="text-sm text-neutral-500">No notes yet.</p>
+          ) : (
+            notes.map((n) => (
+              <div
+                key={n.id}
+                className="rounded-lg border border-neutral-200 bg-white p-3"
+              >
+                <div className="mb-1 flex items-center gap-2">
+                  <NoteVisibilityBadge visibility={n.visibility} />
+                  <span className="text-xs text-neutral-500">
+                    {n.authorName ?? "Unknown"} ·{" "}
+                    {new Date(n.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-neutral-700">
+                  {n.body}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="mt-6">
+          <VendorNoteForm assignmentId={detail.id} />
         </div>
       </section>
     </section>

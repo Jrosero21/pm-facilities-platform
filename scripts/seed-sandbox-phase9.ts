@@ -17,12 +17,12 @@
  * Run: npx tsx --env-file=.env.local --conditions=react-server scripts/seed-sandbox-phase9.ts
  */
 import { execSync } from "node:child_process";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import {
   tenants, tenantUsers, userRoles, roles, users,
   clients, clientLocations, vendors, vendorLocations, vendorUsers,
-  jobs, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
+  jobs, jobNotes, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
   vendorInvoices, clientInvoices,
   jobStatuses, priorities, trades, dispatchAssignmentStatuses,
   auditLogs, tenantJobSequences,
@@ -30,7 +30,7 @@ import {
 import {
   SEED_TENANT, SEED_USERS, SEED_USER_PASSWORD,
   CLIENTS, VENDORS, OPEN_JOBS, CLOSED_JOBS, VENDOR_INVOICES, CLIENT_INVOICES,
-  SEED_VENDOR_USER,
+  SEED_VENDOR_USER, VENDOR_NOTES_FIXTURE,
 } from "./seed-sandbox-phase9-fixture";
 
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
@@ -245,6 +245,33 @@ async function main() {
         await db.insert(vendorCheckIns).values({ tenantId, assignmentId: aid, occurredAt: asnCreated, recordedByUserId: adminId });
       }
     }
+  }
+
+  // ── Stage 3e.2b — Phase 10 (10l) vendor notes ──
+  // 4 notes on the bound vendor's EARLIEST assignment's parent job (stable target:
+  // notes are job-scoped + the read filter is status-agnostic, so the SENT
+  // assignment being consumed by the actions harness doesn't matter). Exercises
+  // the DoR-10l.2 vendor-visibility filter. operator-origin notes are authored by
+  // adminId (author doesn't affect their visibility-only filter); the vendor note
+  // is authored by the seeded vendor user.
+  {
+    const coolVendorId = vendorList[VENDORS.findIndex((v) => v.key === SEED_VENDOR_USER.boundVendorKey)];
+    const [firstCoolAsn] = await db
+      .select({ jobId: jobVendorAssignments.jobId })
+      .from(jobVendorAssignments)
+      .where(and(eq(jobVendorAssignments.tenantId, tenantId), eq(jobVendorAssignments.vendorId, coolVendorId)))
+      .orderBy(jobVendorAssignments.createdAt, jobVendorAssignments.id)
+      .limit(1);
+    const noteJobId = firstCoolAsn.jobId;
+    const vendorUserId = (await db.select({ id: users.id }).from(users).where(eq(users.email, SEED_VENDOR_USER.email)).limit(1))[0]!.id;
+    for (const n of VENDOR_NOTES_FIXTURE) {
+      await db.insert(jobNotes).values({
+        id: uuidv7(), tenantId, jobId: noteJobId,
+        body: n.bodyMarker, visibility: n.visibility, origin: n.origin,
+        createdByUserId: n.authorRoleKey === "vendor_user" ? vendorUserId : adminId,
+      });
+    }
+    console.log(`[seed9d] vendor notes: ${VENDOR_NOTES_FIXTURE.length} on job ${noteJobId}`);
   }
 
   for (const cj of CLOSED_JOBS) {

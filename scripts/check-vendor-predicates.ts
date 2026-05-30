@@ -427,6 +427,87 @@ async function checkAssignmentActionsSmoke() {
   check("acceptDispatch refuses a scope mismatch", scopeMismatch);
 }
 
+// -------- Impure: vendor notes visibility filter (10l, DoR-10l.2) --------
+// Targets the bound vendor's EARLIEST assignment (same stable target the seed
+// puts notes on). Status-agnostic — fine that checkAssignmentActionsSmoke has
+// already flipped the SENT assignment.
+async function checkVendorNotesVisibilityFilter() {
+  const VF = await import("./seed-sandbox-phase9-fixture");
+  const { listVendorAssignmentNotes } = await import(
+    "@/server/vendor/list-assignment-notes"
+  );
+  const { db } = await import("@/server/db");
+  const { tenants, vendors, jobVendorAssignments } = await import("@/server/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, VF.SEED_TENANT.slug));
+  if (!tenant) {
+    check("notes: seed tenant resolved", false);
+    return;
+  }
+  const [vendor] = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.tenantId, tenant.id), eq(vendors.name, VF.boundVendorName())));
+  if (!vendor) {
+    check("notes: bound vendor resolved", false);
+    return;
+  }
+  const [asn] = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenant.id),
+        eq(jobVendorAssignments.vendorId, vendor.id),
+      ),
+    )
+    .orderBy(jobVendorAssignments.createdAt, jobVendorAssignments.id)
+    .limit(1);
+  if (!asn) {
+    check("notes: bound vendor has an assignment", false);
+    return;
+  }
+
+  const scope = new Set([vendor.id]);
+  const notes = await listVendorAssignmentNotes(tenant.id, asn.id, scope);
+  const expected = VF.expectedVendorVisibleNoteMarkers();
+  const got = notes.map((n) => n.body).sort();
+  const want = [...expected].sort();
+
+  check(
+    "notes filter: returns the expected visible-note count",
+    notes.length === expected.length,
+  );
+  check(
+    "notes filter: returns exactly the expected markers",
+    JSON.stringify(got) === JSON.stringify(want),
+  );
+  check(
+    "notes filter: excludes operator internal_only",
+    !notes.some((n) => n.body.includes("operator internal-only")),
+  );
+  check(
+    "notes filter: excludes operator client_visible-only",
+    !notes.some((n) => n.body.includes("operator note for client only")),
+  );
+  check(
+    "notes filter: includes operator vendor_visible",
+    notes.some((n) => n.body.includes("operator note shared with vendor")),
+  );
+  check(
+    "notes filter: includes vendor's own internal_only",
+    notes.some((n) => n.body.includes("vendor's own internal note")),
+  );
+  check(
+    "notes filter: empty scope returns []",
+    (await listVendorAssignmentNotes(tenant.id, asn.id, new Set())).length === 0,
+  );
+}
+
 // -------- Main --------
 async function main() {
   checkIsVendorUser();
@@ -436,6 +517,7 @@ async function main() {
   await checkGetVendorScopeWithFixture();
   await checkVendorAssignmentsListSmoke();
   await checkAssignmentActionsSmoke();
+  await checkVendorNotesVisibilityFilter();
 
   console.log("");
   console.log(`[check-vendor-predicates] passed: ${passed}`);

@@ -283,3 +283,47 @@ export const EXPECTED_VENDOR_LIST_COUNT = 5;
 // ACCEPTED. These oracles let the harness assert the seeded mix before mutating it.
 export const EXPECTED_SENT_ASSIGNMENT_COUNT = 1;
 export const EXPECTED_ACCEPTED_ASSIGNMENT_COUNT = 4;
+
+// ── Phase 10 batch 10l-construct — VENDOR NOTES FIXTURE ──────────────────────
+// Four notes seeded against the bound vendor's EARLIEST assignment's parent job
+// (stable target — the SENT assignment is consumed by the actions harness, but
+// notes are job-scoped and listVendorAssignmentNotes is status-agnostic). Spans
+// the visibility/origin matrix to exercise the DoR-10l.2 vendor read filter.
+export const VENDOR_NOTES_FIXTURE = [
+  {
+    bodyMarker: "[10l-fixture] operator internal-only note",
+    visibility: "internal_only" as const,
+    origin: "operator" as const,
+    authorRoleKey: "operator" as const, // hidden from vendor (internal + operator-origin)
+  },
+  {
+    bodyMarker: "[10l-fixture] operator note shared with vendor",
+    visibility: "vendor_visible" as const,
+    origin: "operator" as const,
+    authorRoleKey: "operator" as const, // visible (vendor_visible)
+  },
+  {
+    bodyMarker: "[10l-fixture] vendor's own internal note",
+    visibility: "internal_only" as const,
+    origin: "vendor" as const,
+    authorRoleKey: "vendor_user" as const, // visible (vendor-origin, author in scope)
+  },
+  {
+    bodyMarker: "[10l-fixture] operator note for client only",
+    visibility: "client_visible" as const,
+    origin: "operator" as const,
+    authorRoleKey: "operator" as const, // hidden from vendor (client_visible only)
+  },
+] as const;
+
+/**
+ * The bodyMarkers a vendor (SEED_VENDOR_USER) SHOULD see, per the DoR-10l.2 filter:
+ * the vendor_visible operator note + the vendor's own internal-only note. The two
+ * operator notes (internal_only, client_visible) stay hidden.
+ */
+export function expectedVendorVisibleNoteMarkers(): string[] {
+  return [
+    "[10l-fixture] operator note shared with vendor",
+    "[10l-fixture] vendor's own internal note",
+  ];
+}
