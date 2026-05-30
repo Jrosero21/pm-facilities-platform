@@ -3,8 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SignOutButton } from "@/components/sign-out-button";
 import { requireAuth } from "@/server/auth-context";
-import { isVendorUser, canSeeOperations } from "@/server/role-predicates";
+import { isVendorUser, isClientUser, canSeeOperations } from "@/server/role-predicates";
 import { getVendorScope } from "@/server/vendor-scope";
+import { getClientScope } from "@/server/client-scope";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await requireAuth();
@@ -24,6 +25,22 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       redirect("/vendor/jobs");
     } else {
       redirect("/vendor-no-access");
+    }
+  }
+
+  // Phase 11 batch 11d — client branch (mirrors the vendor branch above).
+  // A client_user without an operator-class role belongs in the client portal.
+  // Dual-role (operator + client_user) users keep the aggregator default
+  // (canSeeOperations guards them out, like the vendor branch).
+  if (ctx.activeTenant && isClientUser(ctx) && !canSeeOperations(ctx)) {
+    const clientScope = await getClientScope(
+      ctx.user.id,
+      ctx.activeTenant.tenantId,
+    );
+    if (clientScope.size > 0) {
+      redirect("/client/jobs");
+    } else {
+      redirect("/client-no-access");
     }
   }
 
