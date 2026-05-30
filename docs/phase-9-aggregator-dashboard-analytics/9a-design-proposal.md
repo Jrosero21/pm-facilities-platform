@@ -155,6 +155,8 @@ All metrics are built now, **including the data-blocked ones**: the queries are 
 
 **Decision:** map as above; build data-blocked metrics with empty states now. **Approved.**
 
+**Correction note (Phase 9 9c.4):** see `9c-manifest.md §4` for the corrected pending-invoice substrate; this section's original wording was superseded by empirical inspection of the actual invoice-table predicates (`vendor_invoices.status` + `payment_status`, `client_invoices.status` + `payment_status`). The original §7 text above is retained as the historical design-time record.
+
 ---
 
 ## Section 8 — Aggregate readers (the only new data-layer work)
