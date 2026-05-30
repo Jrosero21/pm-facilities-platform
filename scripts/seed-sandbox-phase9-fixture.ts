@@ -236,3 +236,43 @@ export function expectedDispatchSeconds(): number[] {
 export function expectedDispatch(): ReturnType<typeof summarizeSeconds> {
   return summarizeSeconds(expectedDispatchSeconds());
 }
+
+// ── Phase 10 batch 10j — VENDOR PORTAL FIXTURE EXTENSION ────────────────────
+// One vendor user, bound to the alphabetically-first seeded vendor (CoolAir).
+// All of SEED_TENANT / VENDORS / SEED_USERS are pure DECLARATIVE specs with NO
+// DB ids (ids are assigned at insert time: tenant/vendor via uuidv7, user via
+// better-auth's random id generator). So the binding here is by KEY, not id;
+// the seed resolves the bound vendor's id from its in-process vendorList, and
+// the harness resolves tenant/vendor/user ids from the DB at run time.
+//
+// Co-versioning contract (Phase 10g harness convention extended): seed +
+// fixture + harness commit together. Adding/modifying this block requires
+// touching scripts/seed-sandbox-phase9.ts and scripts/check-vendor-predicates.ts
+// in the same commit.
+
+export const SEED_VENDOR_USER = {
+  email: "vendor@phase9seed.test",
+  name: "Vendor User",
+  // Password reuses SEED_USER_PASSWORD; no separate const.
+  roleKey: "vendor_user",
+  // Vendor binding by VENDORS key (CoolAir = alphabetically first of the three
+  // seeded vendors). Rebinding requires only changing this key.
+  boundVendorKey: "coolair",
+} as const;
+
+/** Bound vendor's declarative name, derived from VENDORS by key. The harness
+ *  resolves this name → vendor id within SEED_TENANT (ids aren't in the fixture). */
+export function boundVendorName(): string {
+  const v = VENDORS.find((x) => x.key === SEED_VENDOR_USER.boundVendorKey);
+  if (!v) throw new Error(`boundVendorKey ${SEED_VENDOR_USER.boundVendorKey} not in VENDORS`);
+  return v.name;
+}
+
+/** Expected getVendorScope size for SEED_VENDOR_USER: bound to exactly one vendor. */
+export const EXPECTED_VENDOR_SCOPE_SIZE = 1;
+
+/** Expected non-DRAFT assignment count for the bound vendor under SEED_TENANT.
+ *  Empirically derived in 10j-construct Step 2: all 5 of CoolAir's seeded
+ *  assignments are ACCEPTED (zero DRAFT), so the DRAFT-excluding list reader
+ *  returns 5. Must move in lockstep if the seed's assignment status mix changes. */
+export const EXPECTED_VENDOR_LIST_COUNT = 5;

@@ -21,7 +21,7 @@ import { eq, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import {
   tenants, tenantUsers, userRoles, roles, users,
-  clients, clientLocations, vendors, vendorLocations,
+  clients, clientLocations, vendors, vendorLocations, vendorUsers,
   jobs, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
   vendorInvoices, clientInvoices,
   jobStatuses, priorities, trades, dispatchAssignmentStatuses,
@@ -30,6 +30,7 @@ import {
 import {
   SEED_TENANT, SEED_USERS, SEED_USER_PASSWORD,
   CLIENTS, VENDORS, OPEN_JOBS, CLOSED_JOBS, VENDOR_INVOICES, CLIENT_INVOICES,
+  SEED_VENDOR_USER,
 } from "./seed-sandbox-phase9-fixture";
 
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
@@ -175,6 +176,28 @@ async function main() {
     vendorList.push(vid);
     await db.insert(vendors).values({ id: vid, tenantId, name: v.name });
     await db.insert(vendorLocations).values({ id: uuidv7(), tenantId, vendorId: vid, name: `${v.name} HQ`, addressLine1: "10 Depot Rd", city: "Metropolis", stateProvince: "NY", postalCode: "10001" });
+  }
+
+  // ── Stage 3e.1b — Phase 10 (10j) vendor portal user + vendor_users mapping ──
+  // One vendor user bound to the alphabetically-first seeded vendor (CoolAir).
+  // Mirrors the Stage-3d user upsert (auth.api.signUpEmail + re-select by email;
+  // better-auth assigns the id). Grants tenant membership + vendor_user role,
+  // then maps the user to the bound vendor in vendor_users. The bound vendor id
+  // comes from this seed's in-process vendorList (the fixture holds no ids).
+  {
+    let vuRow = (await db.select({ id: users.id }).from(users).where(eq(users.email, SEED_VENDOR_USER.email)).limit(1))[0];
+    if (!vuRow) {
+      await auth.api.signUpEmail({ body: { email: SEED_VENDOR_USER.email, password: SEED_USER_PASSWORD, name: SEED_VENDOR_USER.name } });
+      vuRow = (await db.select({ id: users.id }).from(users).where(eq(users.email, SEED_VENDOR_USER.email)).limit(1))[0];
+      console.log(`[seed9d] vendor user created: ${SEED_VENDOR_USER.email}`);
+    } else {
+      console.log(`[seed9d] vendor user reused: ${SEED_VENDOR_USER.email}`);
+    }
+    await db.insert(tenantUsers).values({ tenantId, userId: vuRow.id, status: "active" });
+    await db.insert(userRoles).values({ userId: vuRow.id, roleId: roleByKey.get(SEED_VENDOR_USER.roleKey)!, tenantId });
+    const boundIdx = VENDORS.findIndex((v) => v.key === SEED_VENDOR_USER.boundVendorKey);
+    await db.insert(vendorUsers).values({ tenantId, userId: vuRow.id, vendorId: vendorList[boundIdx] });
+    console.log(`[seed9d] vendor_users mapping: ${SEED_VENDOR_USER.email} -> vendor ${vendorList[boundIdx]}`);
   }
 
   // ── Stage 3e.2 — jobs ──
