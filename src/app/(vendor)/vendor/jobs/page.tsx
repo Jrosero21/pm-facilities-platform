@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireVendor } from "@/server/auth-context";
 import { listVendorAssignments } from "@/server/vendor/list-assigned-jobs";
 
@@ -51,8 +52,13 @@ export default async function VendorJobsPage() {
             <tbody className="divide-y divide-neutral-100">
               {rows.map((row) => (
                 <tr key={row.assignmentId} className="hover:bg-neutral-50">
-                  <td className="px-4 py-2 font-medium text-neutral-900">
-                    #{row.jobNumber}
+                  <td className="px-4 py-2 font-medium">
+                    <Link
+                      href={`/vendor/jobs/${row.assignmentId}`}
+                      className="text-neutral-900 hover:underline"
+                    >
+                      #{row.jobNumber}
+                    </Link>
                   </td>
                   <td className="px-4 py-2 text-neutral-600">
                     <div className="text-neutral-900">{row.clientName}</div>
