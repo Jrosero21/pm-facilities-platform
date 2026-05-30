@@ -48,6 +48,14 @@ export function isVendorUser(ctx: RoleCtx): boolean {
   return hasAnyRole(ctx, ["vendor_user"]);
 }
 
+// ── Phase 11 batch 11c — CLIENT PORTAL identity predicate ──────────────────
+// The isVendorUser twin. requireClient (auth-context.ts) depends on it. Action
+// predicates (canActOnClientJob etc.) are write-surface concerns deferred to
+// 11f/11g — 11c needs only the identity predicate.
+export function isClientUser(ctx: RoleCtx): boolean {
+  return hasAnyRole(ctx, ["client_user"]);
+}
+
 export function canActOnAssignment(
   scope: Set<string>,
   assignment: AssignmentScopeShape,

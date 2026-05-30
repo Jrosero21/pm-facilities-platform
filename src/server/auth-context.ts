@@ -8,8 +8,9 @@ import { auth } from "@/server/auth";
 import { db } from "@/server/db";
 import { roles, tenants, tenantUsers, userRoles } from "@/server/schema";
 import { isAccountingRole } from "@/server/billing/role-gates";
-import { isVendorUser } from "@/server/role-predicates";
+import { isVendorUser, isClientUser } from "@/server/role-predicates";
 import { getVendorScope } from "@/server/vendor-scope";
+import { getClientScope } from "@/server/client-scope";
 
 export const ACTIVE_TENANT_COOKIE = "pm_active_tenant";
 
@@ -205,4 +206,40 @@ export async function requireVendor(): Promise<VendorAuthContext> {
     redirect("/vendor-no-access");
   }
   return { ...ctx, vendorScope };
+}
+
+/**
+ * Client portal guard. The requireVendor twin (Phase 11 11c). Composes
+ * requireTenant() + isClientUser + getClientScope.
+ *
+ * Redirects:
+ *   - /no-tenant if no active tenant (inherited from requireTenant)
+ *   - /client-no-access if the user is not a client_user, or if their client
+ *     scope is empty (no client_users mapping rows for this tenant)
+ *
+ * Returns ClientAuthContext: TenantAuthContext + a resolved clientScope set, so
+ * callers don't re-fetch the scope downstream. The /client-no-access page is a
+ * 11d concern (the (client) route group); this guard only holds the path.
+ *
+ * Bare-redirect convention matching requireVendor. No flash/cookie attached.
+ *
+ * Phase 11 batch 11c.
+ */
+export type ClientAuthContext = TenantAuthContext & {
+  clientScope: Set<string>;
+};
+
+export async function requireClient(): Promise<ClientAuthContext> {
+  const ctx = await requireTenant();
+  if (!isClientUser(ctx)) {
+    redirect("/client-no-access");
+  }
+  const clientScope = await getClientScope(
+    ctx.user.id,
+    ctx.activeTenant.tenantId,
+  );
+  if (clientScope.size === 0) {
+    redirect("/client-no-access");
+  }
+  return { ...ctx, clientScope };
 }
