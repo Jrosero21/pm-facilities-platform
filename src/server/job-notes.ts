@@ -60,8 +60,10 @@ export type CreateJobNoteInput = {
   visibility?: NoteVisibility;
   createdByUserId: string;
   // Provenance (Phase 10 Fork 4). Default 'operator'; the vendor note path
-  // (createVendorNote) passes 'vendor'. App-enforced — the column is varchar.
-  origin?: "operator" | "vendor";
+  // (createVendorNote) passes 'vendor'; the client note path (createClientNote,
+  // Phase 11 11g) passes 'client'. App-enforced — the column is varchar(16), so
+  // new origins widen this union without a migration (schema lock's documented intent).
+  origin?: "operator" | "vendor" | "client";
 };
 
 /**

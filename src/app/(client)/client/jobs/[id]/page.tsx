@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireClient } from "@/server/auth-context";
 import { getClientJobDetail } from "@/server/client/get-client-job-detail";
 import { listClientJobNotes } from "@/server/client/list-client-job-notes";
+import { ClientNoteForm } from "@/components/client/client-note-form";
 
 /**
  * Client work-order detail — Phase 11 batch 11e (read-only).
@@ -100,6 +101,9 @@ export default async function ClientJobDetailPage({
               </div>
             ))
           )}
+        </div>
+        <div className="mt-6">
+          <ClientNoteForm jobId={id} />
         </div>
       </section>
     </section>
