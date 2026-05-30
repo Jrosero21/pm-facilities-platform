@@ -204,6 +204,13 @@
       "when": 1780170130449,
       "tag": "0028_panoramic_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1780172296637,
+      "tag": "0029_warm_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }
