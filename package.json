@@ -20,7 +20,8 @@
     "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts",
     "db:seed:agent-config": "tsx --env-file=.env.local db/seeds/agent-config.ts",
     "db:check:analytics-readers": "tsx --env-file=.env.local --conditions=react-server scripts/check-analytics-readers.ts",
-    "db:check:vendor-predicates": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-predicates.ts"
+    "db:check:vendor-predicates": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-predicates.ts",
+    "db:check:client-portal": "tsx --env-file=.env.local --conditions=react-server scripts/check-client-portal.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",

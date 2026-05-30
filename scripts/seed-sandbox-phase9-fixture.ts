@@ -374,3 +374,74 @@ export const VENDOR_INVOICE_FIXTURE = {
   ],
   expectedSubtotal: "300.00",
 } as const;
+
+// ── Phase 11 batch 11p — CLIENT PORTAL FIXTURE EXTENSION ─────────────────────
+// One client user, bound to acme (the client owning the most seeded jobs) — the
+// IN-SCOPE org. globex is the OUT-OF-SCOPE deny target (also has jobs). The fixture
+// holds no DB ids (tenant/client via uuidv7, user via better-auth); the seed
+// resolves the bound client's id from its in-process clientId map, and the harness
+// resolves tenant/client/user ids from the DB at run time (by slug/name/email).
+//
+// Co-versioning contract (mirrors the Phase-10 vendor convention): seed + fixture +
+// scripts/check-client-portal.ts commit together. The isolation assertions REQUIRE
+// ≥2 clients with jobs (acme in-scope, globex out-of-scope) — both already present in
+// CLIENTS/OPEN_JOBS above.
+
+export const SEED_CLIENT_USER = {
+  email: "client@phase9seed.test",
+  name: "Client User",
+  // Password reuses SEED_USER_PASSWORD.
+  roleKey: "client_user",
+  boundClientKey: "acme",
+} as const;
+
+/** Bound client's declarative name, resolved by the harness to a client id within the tenant. */
+export function boundClientName(): string {
+  const c = CLIENTS.find((x) => x.key === SEED_CLIENT_USER.boundClientKey);
+  if (!c) throw new Error(`boundClientKey ${SEED_CLIENT_USER.boundClientKey} not in CLIENTS`);
+  return c.name;
+}
+
+/** An out-of-scope client with jobs (NOT bound to the seed client user) — the deny target. */
+export const OUT_OF_SCOPE_CLIENT_KEY = "globex";
+export function outOfScopeClientName(): string {
+  const c = CLIENTS.find((x) => x.key === OUT_OF_SCOPE_CLIENT_KEY);
+  if (!c) throw new Error(`OUT_OF_SCOPE_CLIENT_KEY ${OUT_OF_SCOPE_CLIENT_KEY} not in CLIENTS`);
+  return c.name;
+}
+
+/** Expected getClientScope size for SEED_CLIENT_USER: bound to exactly one client. */
+export const EXPECTED_CLIENT_SCOPE_SIZE = 1;
+
+// Sent proposals: one on an IN-SCOPE (acme) job, one on an OUT-OF-SCOPE (globex) job
+// — for SI-11i.1 accept isolation. n1=acme, n3=globex (verbatim from OPEN_JOBS above).
+// Direct-inserted at status='sent' (the acceptable state) with a set total (no line
+// items needed; recordProposalAcceptance reads total for its event). OQ-6: the client
+// reader surfaces total only.
+export const CLIENT_PROPOSAL_FIXTURE = {
+  inScopeJobKey: "n1",
+  outOfScopeJobKey: "n3",
+  inScopeTitle: "[11p-fixture] in-scope sent proposal",
+  outOfScopeTitle: "[11p-fixture] out-of-scope sent proposal",
+  total: "1500.00",
+} as const;
+
+// Client-visibility notes on the IN-SCOPE job (n1), spanning the visibility matrix so
+// the harness can assert listClientJobNotes' Fork-5 filter (SI-11d.1 note half). All
+// operator-authored (origin='operator'); the client read filter is visibility-driven
+// for non-client origins.
+export const CLIENT_NOTES_FIXTURE = [
+  { bodyMarker: "[11p-fixture] operator note client-visible", visibility: "client_visible" as const },
+  { bodyMarker: "[11p-fixture] operator internal-only note", visibility: "internal_only" as const },
+  { bodyMarker: "[11p-fixture] operator vendor-visible note", visibility: "vendor_visible" as const },
+  { bodyMarker: "[11p-fixture] operator client+vendor note", visibility: "client_and_vendor_visible" as const },
+] as const;
+
+/** The bodyMarkers a client SHOULD see on n1, per the listClientJobNotes filter:
+ *  client_visible + client_and_vendor_visible. internal_only + vendor_visible stay hidden. */
+export function expectedClientVisibleNoteMarkers(): string[] {
+  return [
+    "[11p-fixture] operator note client-visible",
+    "[11p-fixture] operator client+vendor note",
+  ];
+}

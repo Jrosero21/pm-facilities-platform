@@ -21,9 +21,10 @@ import { and, eq, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import {
   tenants, tenantUsers, userRoles, roles, users,
-  clients, clientLocations, vendors, vendorLocations, vendorUsers,
+  clients, clientLocations, clientUsers, vendors, vendorLocations, vendorUsers,
   jobs, jobNotes, jobAttachments, jobStatusHistory, jobVendorAssignments, vendorCheckIns,
   vendorInvoices, clientInvoices,
+  proposals, proposalLineItems, proposalApprovals,
   jobStatuses, priorities, trades, dispatchAssignmentStatuses,
   auditLogs, tenantJobSequences,
 } from "@/server/schema";
@@ -32,6 +33,7 @@ import {
   CLIENTS, VENDORS, OPEN_JOBS, CLOSED_JOBS, VENDOR_INVOICES, CLIENT_INVOICES,
   SEED_VENDOR_USER, VENDOR_NOTES_FIXTURE, VENDOR_PHOTO_PLACEHOLDERS_FIXTURE,
   VENDOR_INVOICE_FIXTURE,
+  SEED_CLIENT_USER, CLIENT_PROPOSAL_FIXTURE, CLIENT_NOTES_FIXTURE,
 } from "./seed-sandbox-phase9-fixture";
 
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
@@ -93,9 +95,16 @@ async function main() {
       await tx.delete(vendorCheckIns).where(eq(vendorCheckIns.tenantId, tid));
       await tx.delete(jobVendorAssignments).where(eq(jobVendorAssignments.tenantId, tid));
       await tx.delete(jobStatusHistory).where(eq(jobStatusHistory.tenantId, tid));
+      // Phase 11 (11p): proposals (child → parent) + client_users, before jobs/clients.
+      await tx.delete(proposalApprovals).where(eq(proposalApprovals.tenantId, tid));
+      await tx.delete(proposalLineItems).where(eq(proposalLineItems.tenantId, tid));
+      await tx.delete(proposals).where(eq(proposals.tenantId, tid));
+      await tx.delete(jobNotes).where(eq(jobNotes.tenantId, tid));
+      await tx.delete(jobAttachments).where(eq(jobAttachments.tenantId, tid));
       await tx.delete(vendorInvoices).where(eq(vendorInvoices.tenantId, tid));
       await tx.delete(clientInvoices).where(eq(clientInvoices.tenantId, tid));
       await tx.delete(jobs).where(eq(jobs.tenantId, tid));
+      await tx.delete(clientUsers).where(eq(clientUsers.tenantId, tid));
       await tx.delete(clientLocations).where(eq(clientLocations.tenantId, tid));
       await tx.delete(clients).where(eq(clients.tenantId, tid));
       await tx.delete(vendorLocations).where(eq(vendorLocations.tenantId, tid));
@@ -204,9 +213,33 @@ async function main() {
     console.log(`[seed9d] vendor_users mapping: ${SEED_VENDOR_USER.email} -> vendor ${vendorList[boundIdx]}`);
   }
 
+  // ── Stage 3e.1c — Phase 11 (11p) client portal user + client_users mapping ──
+  // One client user bound to acme (the in-scope org; globex stays out-of-scope for
+  // the isolation harness). Mirrors the vendor-user upsert: signUpEmail + re-select,
+  // tenant membership + client_user role, then the client_users mapping. The bound
+  // client id comes from this seed's in-process clientId map (the fixture holds no ids).
+  {
+    let cuRow = (await db.select({ id: users.id }).from(users).where(eq(users.email, SEED_CLIENT_USER.email)).limit(1))[0];
+    if (!cuRow) {
+      await auth.api.signUpEmail({ body: { email: SEED_CLIENT_USER.email, password: SEED_USER_PASSWORD, name: SEED_CLIENT_USER.name } });
+      cuRow = (await db.select({ id: users.id }).from(users).where(eq(users.email, SEED_CLIENT_USER.email)).limit(1))[0];
+      console.log(`[seed9d] client user created: ${SEED_CLIENT_USER.email}`);
+    } else {
+      console.log(`[seed9d] client user reused: ${SEED_CLIENT_USER.email}`);
+    }
+    await db.insert(tenantUsers).values({ tenantId, userId: cuRow.id, status: "active" });
+    await db.insert(userRoles).values({ userId: cuRow.id, roleId: roleByKey.get(SEED_CLIENT_USER.roleKey)!, tenantId });
+    const boundClientId = clientId.get(SEED_CLIENT_USER.boundClientKey)!;
+    await db.insert(clientUsers).values({ tenantId, userId: cuRow.id, clientId: boundClientId });
+    console.log(`[seed9d] client_users mapping: ${SEED_CLIENT_USER.email} -> client ${boundClientId}`);
+  }
+
   // ── Stage 3e.2 — jobs ──
   let jobNum = 0;
   const closedJobRefs: { jobId: string; clientId: string }[] = [];
+  // (11p) capture open job ids by key so the client-portal fixture (proposals +
+  // client notes) can attach to known in-scope (acme) / out-of-scope (globex) jobs.
+  const openJobId = new Map<string, string>();
 
   // 10k-actions: seed exactly ONE bound-vendor (CoolAir) assignment in SENT state
   // (sent_at set) so the harness can exercise acceptDispatch. The first CoolAir
@@ -217,6 +250,7 @@ async function main() {
   for (const j of OPEN_JOBS) {
     jobNum++;
     const jid = uuidv7();
+    openJobId.set(j.key, jid);
     const enteredSecsAgo = j.ageHours * 3600;
     const enteredAt = agoSql(enteredSecsAgo);
     await db.insert(jobs).values({
@@ -305,6 +339,34 @@ async function main() {
       })),
     });
     console.log(`[seed9d] vendor invoice: ${seedInv.id} (${VENDOR_INVOICE_FIXTURE.invoiceNumber}) on job ${noteJobId}`);
+  }
+
+  // ── Stage 3e.2c — Phase 11 (11p) client portal fixture ──
+  // Two status='sent' proposals (one on an in-scope acme job, one on an out-of-scope
+  // globex job) for SI-11i.1 accept isolation; client-visibility notes on the in-scope
+  // job for SI-11d.1 note-filter coverage. Direct inserts (status pre-set); proposals
+  // need no line items (recordProposalAcceptance reads the set total).
+  {
+    const inScopeJob = openJobId.get(CLIENT_PROPOSAL_FIXTURE.inScopeJobKey)!;
+    const outScopeJob = openJobId.get(CLIENT_PROPOSAL_FIXTURE.outOfScopeJobKey)!;
+    await db.insert(proposals).values({
+      id: uuidv7(), tenantId, jobId: inScopeJob, status: "sent",
+      title: CLIENT_PROPOSAL_FIXTURE.inScopeTitle, total: CLIENT_PROPOSAL_FIXTURE.total,
+      currency: "USD", sentAt: agoSql(3600), createdByUserId: adminId,
+    });
+    await db.insert(proposals).values({
+      id: uuidv7(), tenantId, jobId: outScopeJob, status: "sent",
+      title: CLIENT_PROPOSAL_FIXTURE.outOfScopeTitle, total: CLIENT_PROPOSAL_FIXTURE.total,
+      currency: "USD", sentAt: agoSql(3600), createdByUserId: adminId,
+    });
+    for (const n of CLIENT_NOTES_FIXTURE) {
+      await db.insert(jobNotes).values({
+        id: uuidv7(), tenantId, jobId: inScopeJob,
+        body: n.bodyMarker, visibility: n.visibility, origin: "operator",
+        createdByUserId: adminId,
+      });
+    }
+    console.log(`[seed9d] client portal: 2 sent proposals + ${CLIENT_NOTES_FIXTURE.length} client notes (in-scope job ${inScopeJob})`);
   }
 
   for (const cj of CLOSED_JOBS) {
