@@ -2,7 +2,20 @@ import { notFound } from "next/navigation";
 import { requireClient } from "@/server/auth-context";
 import { getClientJobDetail } from "@/server/client/get-client-job-detail";
 import { listClientJobNotes } from "@/server/client/list-client-job-notes";
+import { listClientJobProposals } from "@/server/client/list-client-job-proposals";
 import { ClientNoteForm } from "@/components/client/client-note-form";
+import { ProposalAccept } from "@/components/client/proposal-accept";
+
+function money(total: string, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+    }).format(Number(total));
+  } catch {
+    return `${total} ${currency}`;
+  }
+}
 
 /**
  * Client work-order detail — Phase 11 batch 11e (read-only).
@@ -31,6 +44,12 @@ export default async function ClientJobDetailPage({
   if (!detail) notFound();
 
   const notes = await listClientJobNotes(
+    ctx.activeTenant.tenantId,
+    id,
+    ctx.clientScope,
+  );
+
+  const proposals = await listClientJobProposals(
     ctx.activeTenant.tenantId,
     id,
     ctx.clientScope,
@@ -77,6 +96,41 @@ export default async function ClientJobDetailPage({
           </div>
         </dl>
       </section>
+
+      {proposals.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Proposals
+          </h2>
+          <div className="mt-4 space-y-3">
+            {proposals.map((p) => (
+              <div
+                key={p.id}
+                className="rounded-lg border border-neutral-200 bg-white p-4"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium text-neutral-900">
+                    {p.title ?? "Proposal"}
+                    {p.revisionNumber > 1 ? ` (rev ${p.revisionNumber})` : ""}
+                  </p>
+                  <p className="text-sm font-semibold text-neutral-900">
+                    {money(p.total, p.currency)}
+                  </p>
+                </div>
+                <p className="mt-1 text-xs text-neutral-500">
+                  {p.sentAt
+                    ? `Sent ${new Date(p.sentAt).toLocaleDateString()}`
+                    : ""}
+                  {p.validUntil
+                    ? ` · Valid until ${new Date(p.validUntil).toLocaleDateString()}`
+                    : ""}
+                </p>
+                <ProposalAccept jobId={id} proposalId={p.id} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
