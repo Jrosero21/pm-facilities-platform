@@ -225,6 +225,13 @@
       "when": 1780180021949,
       "tag": "0031_conscious_nehzno",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "5",
+      "when": 1780181581384,
+      "tag": "0032_exotic_swordsman",
+      "breakpoints": true
     }
   ]
 }

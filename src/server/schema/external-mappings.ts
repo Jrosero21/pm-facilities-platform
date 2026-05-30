@@ -11,7 +11,7 @@ import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
 import { jobStatuses, priorities } from "./job-reference";
-import { clientLocations } from "./clients";
+import { clients, clientLocations } from "./clients";
 import { externalSystems } from "./external-systems";
 
 // ── Phase 12 batch 12d (migration 0029) — EXTERNAL CODE-MAPPING SUBSTRATE ─────────────
@@ -154,6 +154,10 @@ export const externalLocationMappings = mysqlTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
     externalCode: varchar("external_code", { length: 255 }).notNull(),
+    // 12h.0b / D-12h.2: StoreId is per-CLIENT (multi-client platforms), so the
+    // mapping carries client_id and the unique key includes it. NOT NULL — safe
+    // because the table is empty in prod (added the same phase the table was created).
+    clientId: varchar("client_id", { length: 36 }).notNull(),
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
     direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -171,17 +175,71 @@ export const externalLocationMappings = mysqlTable(
       name: "elm_system_fk",
     }).onDelete("cascade"),
     foreignKey({
+      columns: [t.clientId],
+      foreignColumns: [clients.id],
+      name: "elm_client_fk",
+    }).onDelete("cascade"),
+    foreignKey({
       columns: [t.clientLocationId],
       foreignColumns: [clientLocations.id],
       name: "elm_location_fk",
     }).onDelete("cascade"),
-    // One external store = one mapping (per system).
-    uniqueIndex("external_location_mappings_system_code_unique").on(
+    // D-12h.2: one external store per CLIENT = one mapping (StoreId is per-client).
+    uniqueIndex("external_location_mappings_system_client_code_unique").on(
       t.externalSystemId,
+      t.clientId,
       t.externalCode,
     ),
     index("external_location_mappings_tenant_idx").on(t.tenantId),
     index("external_location_mappings_system_idx").on(t.externalSystemId),
+    index("external_location_mappings_client_idx").on(t.clientId),
     index("external_location_mappings_location_idx").on(t.clientLocationId),
+  ],
+);
+
+// ── Phase 12 batch 12h.0b (migration 0032) — EXTERNAL CLIENT MAPPING (D-12h.1) ─────────
+// Multi-client platforms (ServiceChannel/Corrigo) carry many clients on one connection.
+// Maps a platform client id (SC SubscriberId) → our internal client_id, per external_system,
+// tenant-scoped. This is the FIRST resolution step at ingest (12h-A.2 order): an unmapped
+// client parks the WO (IF-7). All FKs CASCADE; pre-named (ecm_ prefix, WP-12.2); explicit
+// FK-backing indexes (6d/6g).
+export const externalClientMappings = mysqlTable(
+  "external_client_mappings",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
+    externalCode: varchar("external_code", { length: 255 }).notNull(),
+    clientId: varchar("client_id", { length: 36 }).notNull(),
+    direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "ecm_tenant_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.externalSystemId],
+      foreignColumns: [externalSystems.id],
+      name: "ecm_system_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.clientId],
+      foreignColumns: [clients.id],
+      name: "ecm_client_fk",
+    }).onDelete("cascade"),
+    // One platform-client = one mapping (per system).
+    uniqueIndex("external_client_mappings_system_code_unique").on(
+      t.externalSystemId,
+      t.externalCode,
+    ),
+    index("external_client_mappings_tenant_idx").on(t.tenantId),
+    index("external_client_mappings_system_idx").on(t.externalSystemId),
+    index("external_client_mappings_client_idx").on(t.clientId),
   ],
 );
