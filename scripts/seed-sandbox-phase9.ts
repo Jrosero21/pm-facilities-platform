@@ -204,6 +204,12 @@ async function main() {
   let jobNum = 0;
   const closedJobRefs: { jobId: string; clientId: string }[] = [];
 
+  // 10k-actions: seed exactly ONE bound-vendor (CoolAir) assignment in SENT state
+  // (sent_at set) so the harness can exercise acceptDispatch. The first CoolAir
+  // assignment the round-robin lands on becomes SENT; the rest stay ACCEPTED.
+  const sentBoundVendorId = vendorList[VENDORS.findIndex((v) => v.key === SEED_VENDOR_USER.boundVendorKey)];
+  let sentSeeded = false;
+
   for (const j of OPEN_JOBS) {
     jobNum++;
     const jid = uuidv7();
@@ -224,13 +230,17 @@ async function main() {
     for (let a = 0; a < j.assignments; a++) {
       const aid = uuidv7();
       const asnCreated = agoSql(enteredSecsAgo - 3600); // +1h after entry → ttd interval = 3600s
+      const thisVendorId = vendorList[(jobNum + a) % vendorList.length];
+      const makeSent = !sentSeeded && thisVendorId === sentBoundVendorId;
       await db.insert(jobVendorAssignments).values({
-        id: aid, tenantId, jobId: jid, vendorId: vendorList[(jobNum + a) % vendorList.length],
-        currentStatusId: dispatchByCode.get("ACCEPTED")!,
+        id: aid, tenantId, jobId: jid, vendorId: thisVendorId,
+        currentStatusId: makeSent ? dispatchByCode.get("SENT")! : dispatchByCode.get("ACCEPTED")!,
+        sentAt: makeSent ? asnCreated : null,
         matchedTradeId: tradeByCode.get(j.tradeCode ?? "HVAC")!, matchedTradeWasPrimary: true,
         tightestGeoAtDispatch: "national", matchedGeoTypesAtDispatch: ["national"], complianceStatusAtDispatch: "no_data",
         createdByUserId: adminId, createdAt: asnCreated, updatedAt: asnCreated,
       });
+      if (makeSent) sentSeeded = true;
       if (a === 0 && j.checkIn) {
         await db.insert(vendorCheckIns).values({ tenantId, assignmentId: aid, occurredAt: asnCreated, recordedByUserId: adminId });
       }

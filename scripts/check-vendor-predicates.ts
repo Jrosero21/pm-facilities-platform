@@ -21,7 +21,13 @@
  * holds no DB ids (tenant/vendor via uuidv7, user via better-auth) — tenant,
  * vendor, and user ids are resolved from the DB at run time (by slug/name/email).
  *
- * Run: npm run db:check:vendor-predicates  (after the seed)
+ * DESTRUCTIVE (10k-actions): checkAssignmentActionsSmoke calls acceptDispatch,
+ * which permanently flips the seeded SENT assignment to ACCEPTED in the sandbox.
+ * This harness is one-shot post-seed — re-running it without re-running the seed
+ * first will fail the "exactly 1 SENT assignment seeded" assertion. (Full
+ * per-transition coverage with seed-reset-between-tests is banked: FB-10k.4.)
+ *
+ * Run: npm run db:check:vendor-predicates  (after the seed; one shot)
  */
 
 // -------- Sandbox guard + env swap --------
@@ -279,6 +285,148 @@ async function checkVendorAssignmentsListSmoke() {
   );
 }
 
+// -------- Impure + DESTRUCTIVE: acceptDispatch transition smoke (10k) --------
+// Exercises acceptDispatch happy path + 2 refusals against the seeded SENT
+// assignment. Permanently flips that assignment to ACCEPTED — see header note.
+async function checkAssignmentActionsSmoke() {
+  const VF = await import("./seed-sandbox-phase9-fixture");
+  const { acceptDispatch } = await import("@/server/vendor/assignment-actions");
+  const { db } = await import("@/server/db");
+  const {
+    tenants,
+    users,
+    vendors,
+    jobVendorAssignments,
+    dispatchAssignmentStatuses,
+    jobVendorAssignmentStatusHistory,
+  } = await import("@/server/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, VF.SEED_TENANT.slug));
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, VF.SEED_VENDOR_USER.email));
+  if (!tenant || !user) {
+    check("actions: seed tenant + vendor user resolved", false);
+    return;
+  }
+  const tenantId = tenant.id;
+
+  const [vendor] = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.tenantId, tenantId), eq(vendors.name, VF.boundVendorName())));
+  if (!vendor) {
+    check("actions: bound vendor resolved", false);
+    return;
+  }
+  const scope = new Set([vendor.id]);
+
+  const [sentStatus] = await db
+    .select({ id: dispatchAssignmentStatuses.id })
+    .from(dispatchAssignmentStatuses)
+    .where(eq(dispatchAssignmentStatuses.code, "SENT"));
+  const [acceptedStatus] = await db
+    .select({ id: dispatchAssignmentStatuses.id })
+    .from(dispatchAssignmentStatuses)
+    .where(eq(dispatchAssignmentStatuses.code, "ACCEPTED"));
+
+  // Seeded mix, BEFORE we mutate it.
+  const sentRows = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenantId),
+        eq(jobVendorAssignments.vendorId, vendor.id),
+        eq(jobVendorAssignments.currentStatusId, sentStatus.id),
+      ),
+    );
+  const acceptedRows = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenantId),
+        eq(jobVendorAssignments.vendorId, vendor.id),
+        eq(jobVendorAssignments.currentStatusId, acceptedStatus.id),
+      ),
+    );
+  check(
+    "actions: bound vendor has EXPECTED_SENT_ASSIGNMENT_COUNT SENT assignment(s)",
+    sentRows.length === VF.EXPECTED_SENT_ASSIGNMENT_COUNT,
+  );
+  check(
+    "actions: bound vendor has EXPECTED_ACCEPTED_ASSIGNMENT_COUNT ACCEPTED assignment(s)",
+    acceptedRows.length === VF.EXPECTED_ACCEPTED_ASSIGNMENT_COUNT,
+  );
+  if (sentRows.length === 0) return;
+  const sentAssignmentId = sentRows[0].id;
+
+  // -- happy path: SENT → ACCEPTED --
+  await acceptDispatch({
+    assignmentId: sentAssignmentId,
+    tenantId,
+    vendorScope: scope,
+    actorUserId: user.id,
+  });
+  const [afterRow] = await db
+    .select({ statusId: jobVendorAssignments.currentStatusId })
+    .from(jobVendorAssignments)
+    .where(eq(jobVendorAssignments.id, sentAssignmentId));
+  check(
+    "acceptDispatch transitions SENT -> ACCEPTED",
+    afterRow?.statusId === acceptedStatus.id,
+  );
+
+  const history = await db
+    .select({
+      from: jobVendorAssignmentStatusHistory.fromStatusId,
+      to: jobVendorAssignmentStatusHistory.toStatusId,
+    })
+    .from(jobVendorAssignmentStatusHistory)
+    .where(eq(jobVendorAssignmentStatusHistory.assignmentId, sentAssignmentId));
+  check("acceptDispatch writes a history row", history.length >= 1);
+  check(
+    "acceptDispatch history row has SENT -> ACCEPTED status ids",
+    history.some((h) => h.from === sentStatus.id && h.to === acceptedStatus.id),
+  );
+
+  // -- refusal: already ACCEPTED (status guard) --
+  let notInStatus = false;
+  try {
+    await acceptDispatch({
+      assignmentId: sentAssignmentId,
+      tenantId,
+      vendorScope: scope,
+      actorUserId: user.id,
+    });
+  } catch (err) {
+    notInStatus =
+      err instanceof Error && err.message === "ASSIGNMENT_NOT_IN_REQUIRED_STATUS";
+  }
+  check("acceptDispatch refuses a non-SENT assignment", notInStatus);
+
+  // -- refusal: scope mismatch (checked before status, so fires regardless) --
+  let scopeMismatch = false;
+  try {
+    await acceptDispatch({
+      assignmentId: sentAssignmentId,
+      tenantId,
+      vendorScope: new Set(["bogus-vendor-id"]),
+      actorUserId: user.id,
+    });
+  } catch (err) {
+    scopeMismatch =
+      err instanceof Error && err.message === "VENDOR_SCOPE_MISMATCH";
+  }
+  check("acceptDispatch refuses a scope mismatch", scopeMismatch);
+}
+
 // -------- Main --------
 async function main() {
   checkIsVendorUser();
@@ -287,6 +435,7 @@ async function main() {
   await checkGetVendorScope();
   await checkGetVendorScopeWithFixture();
   await checkVendorAssignmentsListSmoke();
+  await checkAssignmentActionsSmoke();
 
   console.log("");
   console.log(`[check-vendor-predicates] passed: ${passed}`);

@@ -272,7 +272,14 @@ export function boundVendorName(): string {
 export const EXPECTED_VENDOR_SCOPE_SIZE = 1;
 
 /** Expected non-DRAFT assignment count for the bound vendor under SEED_TENANT.
- *  Empirically derived in 10j-construct Step 2: all 5 of CoolAir's seeded
- *  assignments are ACCEPTED (zero DRAFT), so the DRAFT-excluding list reader
- *  returns 5. Must move in lockstep if the seed's assignment status mix changes. */
+ *  The bound vendor (CoolAir) has 5 seeded assignments: 1 SENT + 4 ACCEPTED
+ *  (10k-actions). Neither is DRAFT, so the DRAFT-excluding list reader returns 5.
+ *  Must move in lockstep if the seed's assignment status mix changes. */
 export const EXPECTED_VENDOR_LIST_COUNT = 5;
+
+// ── Phase 10 batch 10k-actions — transition-test status mix ──────────────────
+// One of the bound vendor's 5 assignments is seeded in SENT state (sent_at set)
+// so the harness can exercise acceptDispatch (SENT → ACCEPTED). The other 4 stay
+// ACCEPTED. These oracles let the harness assert the seeded mix before mutating it.
+export const EXPECTED_SENT_ASSIGNMENT_COUNT = 1;
+export const EXPECTED_ACCEPTED_ASSIGNMENT_COUNT = 4;
