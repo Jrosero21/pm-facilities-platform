@@ -11,6 +11,7 @@ import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
 import { jobStatuses, priorities } from "./job-reference";
+import { clientLocations } from "./clients";
 import { externalSystems } from "./external-systems";
 
 // ── Phase 12 batch 12d (migration 0029) — EXTERNAL CODE-MAPPING SUBSTRATE ─────────────
@@ -132,5 +133,55 @@ export const externalPriorityMappings = mysqlTable(
     index("external_priority_mappings_tenant_idx").on(t.tenantId),
     index("external_priority_mappings_system_idx").on(t.externalSystemId),
     index("external_priority_mappings_priority_idx").on(t.priorityId),
+  ],
+);
+
+// ── Phase 12 batch 12h.0 (migration 0031) — EXTERNAL LOCATION MAPPING (IF-2) ──────────
+// Targets the TENANT-SCOPED client_locations (locations belong to clients belong to
+// tenants) — so this carries tenant_id directly, like external_priority_mappings (F5).
+// Resolves a provider's store/location ref → an internal client_location_id (the ingest
+// gap IF-2: createJob needs an internal location id, the NormalizedWorkOrder has only a
+// string ref). external_code is varchar(255) (provider location ids can be longer/
+// alphanumeric than the 128-char code mappings). direction defaults 'both' — a location
+// ref is used inbound (resolve on ingest) AND outbound (reference on push). All FKs
+// CASCADE; pre-named (elm_ prefix, WP-12.2); explicit FK-backing indexes (6d/6g).
+export const externalLocationMappings = mysqlTable(
+  "external_location_mappings",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
+    externalCode: varchar("external_code", { length: 255 }).notNull(),
+    clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
+    direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "elm_tenant_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.externalSystemId],
+      foreignColumns: [externalSystems.id],
+      name: "elm_system_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.clientLocationId],
+      foreignColumns: [clientLocations.id],
+      name: "elm_location_fk",
+    }).onDelete("cascade"),
+    // One external store = one mapping (per system).
+    uniqueIndex("external_location_mappings_system_code_unique").on(
+      t.externalSystemId,
+      t.externalCode,
+    ),
+    index("external_location_mappings_tenant_idx").on(t.tenantId),
+    index("external_location_mappings_system_idx").on(t.externalSystemId),
+    index("external_location_mappings_location_idx").on(t.clientLocationId),
   ],
 );
