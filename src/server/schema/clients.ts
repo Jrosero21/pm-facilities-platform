@@ -88,3 +88,39 @@ export const clientLocations = mysqlTable(
     index("client_locations_status_idx").on(t.status),
   ],
 );
+
+// Client↔user linkage (Phase 11 Fork 1). Maps an auth user to a client org
+// within an aggregator tenant, scoping client-portal visibility. MANY-TO-MANY:
+// one user may be scoped to several client orgs; one client org has several
+// portal users. A client user ALSO holds a tenant_users membership + a
+// client_user role grant; this table adds the client-scope on top. The lean
+// vendor_users twin (11c A1 confirmed vendor_users carries no status column) —
+// all three FKs cascade; the unique (tenant,user,client) enforces one mapping
+// per triple; (tenant,client) backs operator-side "who can access this client".
+export const clientUsers = mysqlTable(
+  "client_users",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: varchar("client_id", { length: 36 })
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    uniqueIndex("client_users_tenant_user_client_unique").on(
+      t.tenantId,
+      t.userId,
+      t.clientId,
+    ),
+    index("client_users_tenant_client_idx").on(t.tenantId, t.clientId),
+  ],
+);
