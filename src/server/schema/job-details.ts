@@ -77,6 +77,11 @@ export const jobNotes = mysqlTable(
     visibility: mysqlEnum("visibility", visibilityEnum)
       .notNull()
       .default("internal_only"),
+    // Provenance discriminator (Phase 10 Fork 4). varchar (NOT enum) by lock:
+    // the two MVP values 'operator'/'vendor' are app-enforced, and future origins
+    // ('client', 'system') grow without a migration. DEFAULT 'operator' is correct
+    // for all pre-Phase-10 rows (no vendor portal existed — DoR-10b.2).
+    origin: varchar("origin", { length: 16 }).notNull().default("operator"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,

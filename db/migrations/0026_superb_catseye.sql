@@ -1,0 +1,1 @@
+ALTER TABLE `job_notes` ADD `origin` varchar(16) DEFAULT 'operator' NOT NULL;
