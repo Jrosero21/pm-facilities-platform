@@ -30,3 +30,38 @@ export function canSeeOperations(ctx: RoleCtx): boolean {
 export function canSeeFinancials(ctx: RoleCtx): boolean {
   return hasAnyRole(ctx, ["accounting", "tenant_admin"]);
 }
+
+// ── Phase 10 batch 10g — VENDOR PORTAL PREDICATES ──────────────────────────
+// PURE — composes over `hasAnyRole`; takes a resolved scope set
+// (from `getVendorScope` in `@/server/vendor-scope`) rather than reading
+// the DB. `canSubmitVendorInvoice` currently mirrors `canActOnAssignment`;
+// named separately so future tightening (e.g. require WORK_COMPLETE before
+// invoice submission) can land without a callsite rename.
+//
+// Tenant check is defense-in-depth: scope resolution already filters by
+// tenant, but the explicit tenantId param catches assignment leaks from
+// another tenant if upstream filtering were ever broken.
+
+type AssignmentScopeShape = { tenantId: string; vendorId: string };
+
+export function isVendorUser(ctx: RoleCtx): boolean {
+  return hasAnyRole(ctx, ["vendor_user"]);
+}
+
+export function canActOnAssignment(
+  scope: Set<string>,
+  assignment: AssignmentScopeShape,
+  tenantId: string,
+): boolean {
+  if (assignment.tenantId !== tenantId) return false;
+  return scope.has(assignment.vendorId);
+}
+
+export function canSubmitVendorInvoice(
+  scope: Set<string>,
+  assignment: AssignmentScopeShape,
+  tenantId: string,
+): boolean {
+  if (assignment.tenantId !== tenantId) return false;
+  return scope.has(assignment.vendorId);
+}
