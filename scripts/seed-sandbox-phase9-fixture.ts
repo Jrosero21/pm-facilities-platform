@@ -351,3 +351,26 @@ export function expectedVendorVisibleAttachmentMarkers(): string[] {
     "[10m-fixture] vendor placeholder photo 2 (with longer title for layout test)",
   ];
 }
+
+// ── Phase 10 batch 10n-construct — VENDOR INVOICE FIXTURE ────────────────────
+// One vendor_portal-source invoice on the bound vendor's earliest assignment,
+// seeded via recordVendorInvoice (the canonical writer) for shape parity with
+// real vendor-portal submissions. Two line items; subtotal = 2*75 + 1*150 = 300.
+export const VENDOR_INVOICE_FIXTURE = {
+  invoiceNumber: "[10n-fixture] INV-001",
+  lines: [
+    {
+      category: "labor" as const,
+      description: "[10n-fixture] labor line",
+      quantity: "2",
+      unitPrice: "75.00",
+    },
+    {
+      category: "materials" as const,
+      description: "[10n-fixture] materials line",
+      quantity: "1",
+      unitPrice: "150.00",
+    },
+  ],
+  expectedSubtotal: "300.00",
+} as const;

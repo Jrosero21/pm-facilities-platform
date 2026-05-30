@@ -631,6 +631,145 @@ async function checkVendorAttachmentsVisibilityFilter() {
   check("createVendorPhotoPlaceholder refuses scope mismatch", scopeRefusal);
 }
 
+// -------- Impure + DESTRUCTIVE: vendor invoice submission (10n) --------
+// Read-back (seeded fixture invoice) + write smoke (submitVendorInvoice lands a
+// real row via recordVendorInvoice — destructive) + empty/scope refusals.
+async function checkVendorInvoiceSubmission() {
+  const VF = await import("./seed-sandbox-phase9-fixture");
+  const { listVendorAssignmentInvoices } = await import(
+    "@/server/vendor/list-assignment-invoices"
+  );
+  const { submitVendorInvoice } = await import(
+    "@/server/vendor/submit-vendor-invoice"
+  );
+  const { db } = await import("@/server/db");
+  const { tenants, users, vendors, jobVendorAssignments, vendorInvoices } =
+    await import("@/server/schema");
+  const { and, eq } = await import("drizzle-orm");
+
+  const [tenant] = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.slug, VF.SEED_TENANT.slug));
+  const [vendorUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, VF.SEED_VENDOR_USER.email));
+  if (!tenant || !vendorUser) {
+    check("invoices: seed tenant + vendor user resolved", false);
+    return;
+  }
+  const [vendor] = await db
+    .select({ id: vendors.id })
+    .from(vendors)
+    .where(and(eq(vendors.tenantId, tenant.id), eq(vendors.name, VF.boundVendorName())));
+  if (!vendor) {
+    check("invoices: bound vendor resolved", false);
+    return;
+  }
+  const [asn] = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenant.id),
+        eq(jobVendorAssignments.vendorId, vendor.id),
+      ),
+    )
+    .orderBy(jobVendorAssignments.createdAt, jobVendorAssignments.id)
+    .limit(1);
+  if (!asn) {
+    check("invoices: bound vendor has an assignment", false);
+    return;
+  }
+  const scope = new Set([vendor.id]);
+
+  // -- read-back: seeded fixture invoice --
+  const invoices = await listVendorAssignmentInvoices(tenant.id, asn.id, scope);
+  const fx = invoices.find(
+    (inv) => inv.invoiceNumber === VF.VENDOR_INVOICE_FIXTURE.invoiceNumber,
+  );
+  check("invoices: fixture invoice present in read-back", !!fx);
+  check(
+    "invoices: fixture invoice source_type=vendor_portal",
+    fx?.sourceType === "vendor_portal",
+  );
+  check("invoices: fixture invoice status=received", fx?.status === "received");
+  check(
+    "invoices: fixture invoice subtotal matches expected",
+    String(fx?.subtotal) === VF.VENDOR_INVOICE_FIXTURE.expectedSubtotal,
+  );
+  check(
+    "invoices: empty scope returns []",
+    (await listVendorAssignmentInvoices(tenant.id, asn.id, new Set())).length === 0,
+  );
+
+  // -- write smoke (destructive) --
+  const writeResult = await submitVendorInvoice({
+    assignmentId: asn.id,
+    tenantId: tenant.id,
+    vendorScope: scope,
+    actorUserId: vendorUser.id,
+    invoiceNumber: "[10n-harness] write smoke",
+    lineItems: [
+      { category: "labor", description: "harness labor", quantity: "1", unitPrice: "50.00" },
+    ],
+  });
+  check(
+    "submitVendorInvoice returns an id",
+    typeof writeResult.id === "string" && writeResult.id.length > 0,
+  );
+  const [written] = await db
+    .select({
+      status: vendorInvoices.status,
+      sourceType: vendorInvoices.sourceType,
+      subtotal: vendorInvoices.subtotal,
+    })
+    .from(vendorInvoices)
+    .where(eq(vendorInvoices.id, writeResult.id));
+  check("submitVendorInvoice writes status=received", written?.status === "received");
+  check(
+    "submitVendorInvoice writes source_type=vendor_portal",
+    written?.sourceType === "vendor_portal",
+  );
+  check(
+    "submitVendorInvoice writes correct subtotal",
+    String(written?.subtotal) === "50.00",
+  );
+
+  // -- refusal: empty line items (DoR-10n.3) --
+  let emptyRefusal = false;
+  try {
+    await submitVendorInvoice({
+      assignmentId: asn.id,
+      tenantId: tenant.id,
+      vendorScope: scope,
+      actorUserId: vendorUser.id,
+      lineItems: [],
+    });
+  } catch (err) {
+    emptyRefusal =
+      err instanceof Error && err.message === "INVOICE_REQUIRES_LINE_ITEMS";
+  }
+  check("submitVendorInvoice refuses empty line items", emptyRefusal);
+
+  // -- refusal: scope mismatch --
+  let scopeRefusal = false;
+  try {
+    await submitVendorInvoice({
+      assignmentId: asn.id,
+      tenantId: tenant.id,
+      vendorScope: new Set(["bogus-vendor"]),
+      actorUserId: vendorUser.id,
+      lineItems: [{ category: "labor", description: "x", quantity: "1", unitPrice: "1" }],
+    });
+  } catch (err) {
+    scopeRefusal =
+      err instanceof Error && err.message === "VENDOR_SCOPE_MISMATCH";
+  }
+  check("submitVendorInvoice refuses scope mismatch", scopeRefusal);
+}
+
 // -------- Main --------
 async function main() {
   checkIsVendorUser();
@@ -642,6 +781,7 @@ async function main() {
   await checkAssignmentActionsSmoke();
   await checkVendorNotesVisibilityFilter();
   await checkVendorAttachmentsVisibilityFilter();
+  await checkVendorInvoiceSubmission();
 
   console.log("");
   console.log(`[check-vendor-predicates] passed: ${passed}`);

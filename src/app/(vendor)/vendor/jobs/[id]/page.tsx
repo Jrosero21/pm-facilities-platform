@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireVendor } from "@/server/auth-context";
 import { getVendorAssignmentDetail } from "@/server/vendor/get-vendor-assignment-detail";
 import { listVendorAssignmentNotes } from "@/server/vendor/list-assignment-notes";
 import { listVendorAssignmentAttachments } from "@/server/vendor/list-assignment-attachments";
+import { listVendorAssignmentInvoices } from "@/server/vendor/list-assignment-invoices";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
 import { VendorNoteForm } from "@/components/vendor/vendor-note-form";
@@ -55,6 +57,11 @@ export default async function VendorAssignmentDetailPage({
     ctx.vendorScope,
   );
   const attachments = await listVendorAssignmentAttachments(
+    ctx.activeTenant.tenantId,
+    detail.id,
+    ctx.vendorScope,
+  );
+  const invoices = await listVendorAssignmentInvoices(
     ctx.activeTenant.tenantId,
     detail.id,
     ctx.vendorScope,
@@ -208,6 +215,52 @@ export default async function VendorAssignmentDetailPage({
         </div>
         <div className="mt-6">
           <VendorPhotoPlaceholderForm assignmentId={detail.id} />
+        </div>
+      </section>
+
+      {/* Invoices — vendor-submitted invoices for this assignment (vendor_id IN
+          scope; explicit assignment_id makes the filter simple). Submission flows
+          through Phase 8's recordVendorInvoice; operator AP review is unchanged. */}
+      <section>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+            Invoices
+          </h2>
+          <Link
+            href={`/vendor/jobs/${detail.id}/invoices/new`}
+            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+          >
+            Submit invoice
+          </Link>
+        </div>
+        <div className="mt-4 space-y-3">
+          {invoices.length === 0 ? (
+            <p className="text-sm text-neutral-500">No invoices submitted yet.</p>
+          ) : (
+            invoices.map((inv) => (
+              <div
+                key={inv.id}
+                className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-3"
+              >
+                <div>
+                  <p className="text-sm font-medium text-neutral-900">
+                    {inv.invoiceNumber ?? "(no invoice #)"}
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    {new Date(inv.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                    {inv.status}
+                  </span>
+                  <p className="mt-1 text-sm font-medium text-neutral-900">
+                    {inv.currency} {inv.total}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </section>

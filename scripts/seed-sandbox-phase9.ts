@@ -31,6 +31,7 @@ import {
   SEED_TENANT, SEED_USERS, SEED_USER_PASSWORD,
   CLIENTS, VENDORS, OPEN_JOBS, CLOSED_JOBS, VENDOR_INVOICES, CLIENT_INVOICES,
   SEED_VENDOR_USER, VENDOR_NOTES_FIXTURE, VENDOR_PHOTO_PLACEHOLDERS_FIXTURE,
+  VENDOR_INVOICE_FIXTURE,
 } from "./seed-sandbox-phase9-fixture";
 
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
@@ -45,6 +46,9 @@ console.log(`[seed9d] sandbox target: ${SANDBOX_URL.replace(/.*@/, "...@")}`);
 
 const { db } = await import("@/server/db");
 const { auth } = await import("@/server/auth");
+// Dynamic (post-env-swap): recordVendorInvoice statically imports db, so importing
+// it before the swap would bind it to prod. Used by the 10n vendor-invoice fixture.
+const { recordVendorInvoice } = await import("@/server/billing/vendor-invoices");
 
 const childEnv = { ...process.env };
 function shell(cmd: string, extraEnv: Record<string, string> = {}) {
@@ -257,7 +261,7 @@ async function main() {
   {
     const coolVendorId = vendorList[VENDORS.findIndex((v) => v.key === SEED_VENDOR_USER.boundVendorKey)];
     const [firstCoolAsn] = await db
-      .select({ jobId: jobVendorAssignments.jobId })
+      .select({ id: jobVendorAssignments.id, jobId: jobVendorAssignments.jobId })
       .from(jobVendorAssignments)
       .where(and(eq(jobVendorAssignments.tenantId, tenantId), eq(jobVendorAssignments.vendorId, coolVendorId)))
       .orderBy(jobVendorAssignments.createdAt, jobVendorAssignments.id)
@@ -282,6 +286,25 @@ async function main() {
       });
     }
     console.log(`[seed9d] vendor photo placeholders: ${VENDOR_PHOTO_PLACEHOLDERS_FIXTURE.length} on job ${noteJobId}`);
+
+    // 10n: one vendor_portal-source invoice via the canonical writer (totals +
+    // NTE governance + billing event come for free; shape == real submissions).
+    const seedInv = await recordVendorInvoice({
+      tenantId,
+      jobId: noteJobId,
+      vendorId: coolVendorId,
+      assignmentId: firstCoolAsn.id,
+      sourceType: "vendor_portal",
+      invoiceNumber: VENDOR_INVOICE_FIXTURE.invoiceNumber,
+      createdByUserId: vendorUserId,
+      lineItems: VENDOR_INVOICE_FIXTURE.lines.map((l) => ({
+        category: l.category,
+        description: l.description,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      })),
+    });
+    console.log(`[seed9d] vendor invoice: ${seedInv.id} (${VENDOR_INVOICE_FIXTURE.invoiceNumber}) on job ${noteJobId}`);
   }
 
   for (const cj of CLOSED_JOBS) {
