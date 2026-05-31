@@ -31,6 +31,14 @@ export type MappingDirection = "inbound" | "outbound" | "both";
 export type NormalizedWorkOrder = {
   /** The provider's WO id → jobs.source_external_id + external_work_order_links.external_wo_id. */
   externalWoId: string;
+  /** Provider CLIENT code (e.g. ServiceChannel SubscriberId) → resolved to a client via
+   *  external_client_mappings (12h.0b). Required — client resolution is the first ingest
+   *  step; an unmapped client parks the WO (IF-7). */
+  externalClientCode: string;
+  /** Provider LOCATION code (LocationId/StoreId) → resolved to a client_location via
+   *  external_location_mappings, keyed WITHIN the resolved client (StoreId is per-client,
+   *  D-12h.2). Required — an unmapped location auto-creates a stub (SF-2). */
+  externalLocationCode: string;
   /** Provider status code → resolved to a job_status via external_status_mappings (12g). */
   externalStatusCode?: string;
   /** Provider trade code → resolved to a trade via external_trade_mappings (12g). */
@@ -39,8 +47,17 @@ export type NormalizedWorkOrder = {
   externalPriorityCode?: string;
   /** Free-text problem description → jobs.problem_description. */
   problemDescription?: string;
-  /** Provider location reference → resolved to a client_location by the ingest mapper (12h). */
-  clientLocationRef?: string;
+  // ── Location detail (SF-2) — the adapter fills these from the provider payload (a
+  // ServiceChannel WO carries the store address). The ingest mapper uses them to
+  // auto-create a client_location STUB when the location is unmapped; a genuinely-absent
+  // required field falls back to a hard-flagged [NEEDS REVIEW] placeholder (never invented).
+  // core consumes them; the adapter (12j) populates them.
+  locationName?: string;
+  addressLine1?: string;
+  city?: string;
+  stateProvince?: string;
+  postalCode?: string;
+  country?: string;
   /** The original payload, carried through for external_payload_logs (never re-shaped). */
   raw: unknown;
 };
