@@ -239,6 +239,13 @@
       "when": 1780239488032,
       "tag": "0033_perpetual_silk_fever",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1780247364613,
+      "tag": "0034_massive_valkyrie",
+      "breakpoints": true
     }
   ]
 }
