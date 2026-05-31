@@ -28,6 +28,12 @@ export type MappingResult<T> =
   | { matched: true; internalId: T }
   | { matched: false; externalCode: string };
 
+// Outbound resolution returns the EXTERNAL code (the reverse of MappingResult, which
+// returns an internal id) — so its matched field is honestly named `externalCode`.
+export type OutboundMappingResult =
+  | { matched: true; externalCode: string }
+  | { matched: false; jobStatusId: string };
+
 /** Direction filter (F4): inbound also matches 'both'; outbound also matches 'both'. */
 function directionValues(direction: ResolveDirection): ("inbound" | "outbound" | "both")[] {
   return direction === "inbound" ? ["inbound", "both"] : ["outbound", "both"];
@@ -53,6 +59,32 @@ export async function resolveStatus(opts: {
   return rows[0]
     ? { matched: true, internalId: rows[0].jobStatusId }
     : { matched: false, externalCode: opts.externalCode };
+}
+
+/**
+ * OUTBOUND status resolution: our internal job_status_id → the provider's external code
+ * (the reverse of resolveStatus). Used by the outbound push path (12i) to translate a
+ * job's current status into the code the external platform expects. Matches direction
+ * 'outbound'/'both'. Read-only; unmapped → matched:false (carries the unmapped jobStatusId).
+ */
+export async function resolveStatusOutbound(opts: {
+  externalSystemId: string;
+  jobStatusId: string;
+}): Promise<OutboundMappingResult> {
+  const rows = await db
+    .select({ externalCode: externalStatusMappings.externalCode })
+    .from(externalStatusMappings)
+    .where(
+      and(
+        eq(externalStatusMappings.externalSystemId, opts.externalSystemId),
+        eq(externalStatusMappings.jobStatusId, opts.jobStatusId),
+        inArray(externalStatusMappings.direction, directionValues("outbound")),
+      ),
+    )
+    .limit(1);
+  return rows[0]
+    ? { matched: true, externalCode: rows[0].externalCode }
+    : { matched: false, jobStatusId: opts.jobStatusId };
 }
 
 /** Resolve a provider trade code → trade_id. Global (no tenant). */

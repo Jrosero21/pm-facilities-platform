@@ -7,13 +7,11 @@ import {
   externalClientMappings,
   externalLocationMappings,
   externalWorkOrderLinks,
-  externalSyncRuns,
-  externalSyncEvents,
-  externalPayloadLogs,
 } from "@/server/schema";
 import { createJob } from "@/server/jobs";
 import { createLocation } from "@/server/client-locations";
 import { resolveWorkOrderCodes } from "./mapping";
+import { openRun, finalizeRun, logEvent, logPayload } from "./sync";
 import type { NormalizedWorkOrder } from "./types";
 
 // ── Phase 12 batch 12h-B — GENERIC INGEST ENGINE (the source-agnostic write crux) ─────
@@ -29,9 +27,10 @@ import type { NormalizedWorkOrder } from "./types";
 //
 // SYNC RUN: every ingest opens ONE external_sync_run (run_type='inbound_ingest') and
 // references its real id on every sync_event — external_sync_events.sync_run_id is NOT
-// NULL + FK→external_sync_runs (ese_run_fk CASCADE), so a fabricated run id would violate
-// the FK. The run is finalized (succeeded / partial / failed) before return. 12i will
-// generalize batch orchestration over this same run table; here it is one run per WO.
+// NULL + FK→external_sync_runs, so a fabricated run id would violate the FK. The run is
+// finalized (succeeded/partial/failed) before return. The run/event/payload primitives are
+// the SHARED helpers in core/sync.ts (12i-B IO-3 — inbound ingest + outbound push use the
+// same substrate); this refactor is behavior-preserving (same rows, same order).
 //
 // IF-6: external jobs land at NEW (createJob hardcodes it); the resolved mapped status is
 // RECORDED in the wo_created sync_event metadata for operator triage, NOT auto-applied (no
@@ -65,37 +64,20 @@ export async function ingestWorkOrder(
 ): Promise<IngestResult> {
   const { tenantId, externalSystemId, createdByUserId } = ctx;
 
-  // ── 0. Open the sync run (real id for every sync_event; finalized before return) ──
-  const syncRunId = uuidv7();
-  await db.insert(externalSyncRuns).values({
-    id: syncRunId,
+  // ── 0. Open the run (shared helper) + log the raw inbound payload (NEVER credentials) ──
+  const { runId: syncRunId } = await openRun({
     tenantId,
     externalSystemId,
     runType: "inbound_ingest",
-    // status defaults 'running'; startedAt defaults now.
   });
-
-  // Always record the raw inbound payload for this run (audit; NEVER credentials).
-  await db.insert(externalPayloadLogs).values({
-    id: uuidv7(),
+  await logPayload({
     tenantId,
     externalSystemId,
     syncRunId,
     direction: "inbound",
     externalWoId: wo.externalWoId,
-    payload: wo.raw as object,
+    payload: wo.raw,
   });
-
-  const finalizeRun = async (
-    status: "succeeded" | "partial" | "failed",
-    counts: Record<string, number>,
-    errorSummary?: string,
-  ) => {
-    await db
-      .update(externalSyncRuns)
-      .set({ status, finishedAt: new Date(), counts, errorSummary: errorSummary ?? null })
-      .where(eq(externalSyncRuns.id, syncRunId));
-  };
 
   try {
     // ── 1. RESOLVE CLIENT (IF-7: unmapped → park; no job, no auto-client) ──────────
@@ -112,9 +94,7 @@ export async function ingestWorkOrder(
       .limit(1);
     const clientMatch = clientRows[0];
     if (!clientMatch) {
-      const syncEventId = uuidv7();
-      await db.insert(externalSyncEvents).values({
-        id: syncEventId,
+      const { eventId: syncEventId } = await logEvent({
         tenantId,
         syncRunId,
         externalWoId: wo.externalWoId,
@@ -122,7 +102,7 @@ export async function ingestWorkOrder(
         outcome: "error",
         message: `unmapped client ${wo.externalClientCode}`,
       });
-      await finalizeRun("partial", { parked: 1 }, `unmapped client ${wo.externalClientCode}`);
+      await finalizeRun(syncRunId, "partial", { parked: 1 }, `unmapped client ${wo.externalClientCode}`);
       return {
         outcome: "parked_unmapped_client",
         externalClientCode: wo.externalClientCode,
@@ -150,17 +130,16 @@ export async function ingestWorkOrder(
         .update(externalWorkOrderLinks)
         .set({ lastSyncedAt: new Date() })
         .where(eq(externalWorkOrderLinks.id, existingLink.id));
-      await db.insert(externalSyncEvents).values({
-        id: uuidv7(),
+      await logEvent({
         tenantId,
         syncRunId,
         externalWoId: wo.externalWoId,
-        jobId: existingLink.jobId,
+        jobId: existingLink.jobId ?? undefined,
         eventType: "wo_updated",
         outcome: "skipped",
         message: "already linked — touched last_synced_at",
       });
-      await finalizeRun("succeeded", { skipped: 1 });
+      await finalizeRun(syncRunId, "succeeded", { skipped: 1 });
       return {
         outcome: "skipped_already_linked",
         jobId: existingLink.jobId ?? "",
@@ -265,8 +244,7 @@ export async function ingestWorkOrder(
     });
 
     // ── 7. sync_event (wo_created; resolved status RECORDED not applied — IF-6) ─────
-    await db.insert(externalSyncEvents).values({
-      id: uuidv7(),
+    await logEvent({
       tenantId,
       syncRunId,
       externalWoId: wo.externalWoId,
@@ -277,7 +255,7 @@ export async function ingestWorkOrder(
       metadata: { resolvedStatusId, flags, autoCreatedLocation },
     });
 
-    await finalizeRun("succeeded", { created: 1 });
+    await finalizeRun(syncRunId, "succeeded", { created: 1 });
 
     // ── 8. ──
     return { outcome: "ingested", jobId: job.id, linkId, syncRunId, autoCreatedLocation, flags };
@@ -285,19 +263,15 @@ export async function ingestWorkOrder(
     const message = err instanceof Error ? err.message : String(err);
     // Best-effort: record the failure on the run + an error event, then re-throw so the
     // caller sees it (the ewol unique / FK guards prevent partial-link corruption).
-    await db
-      .insert(externalSyncEvents)
-      .values({
-        id: uuidv7(),
-        tenantId,
-        syncRunId,
-        externalWoId: wo.externalWoId,
-        eventType: "error",
-        outcome: "error",
-        message: message.slice(0, 2000),
-      })
-      .catch(() => {});
-    await finalizeRun("failed", {}, message.slice(0, 2000)).catch(() => {});
+    await logEvent({
+      tenantId,
+      syncRunId,
+      externalWoId: wo.externalWoId,
+      eventType: "error",
+      outcome: "error",
+      message: message.slice(0, 2000),
+    }).catch(() => {});
+    await finalizeRun(syncRunId, "failed", {}, message.slice(0, 2000)).catch(() => {});
     throw err;
   }
 }
