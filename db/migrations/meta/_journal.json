@@ -232,6 +232,13 @@
       "when": 1780181581384,
       "tag": "0032_exotic_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1780239488032,
+      "tag": "0033_perpetual_silk_fever",
+      "breakpoints": true
     }
   ]
 }
