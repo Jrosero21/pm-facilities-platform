@@ -8,12 +8,17 @@ import {
   longtext,
   mysqlEnum,
   mysqlTable,
+  text,
   timestamp,
   varchar,
 } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
+import { clients, clientLocations } from "./clients";
+import { trades } from "./trades";
+import { priorities } from "./job-reference";
+import { jobs } from "./jobs";
 
 // ── Phase 13 batch 13c (migration 0033) — EMAIL-INGESTION CONFIG SUBSTRATE (Group 1) ──
 // The two config tables of the email-ingestion framework, with NO inbound-email
@@ -275,5 +280,118 @@ export const emailParseResults = mysqlTable(
     index("email_parse_results_email_idx").on(t.inboundEmailId),
     index("email_parse_results_rule_idx").on(t.matchedRuleId),
     index("email_parse_results_outcome_idx").on(t.tenantId, t.parseOutcome),
+  ],
+);
+
+// ── Phase 13 batch 13e (migration 0035) — EMAIL WORK-ORDER DRAFT (Group 3) ────────────
+// The reviewable draft before it becomes a job — the email analog of update_rewrite_drafts
+// (the draft→review→publish lifecycle) plus the ingest "park" state (IF-7). Isolated in its
+// own migration because it is the FK-heaviest table of the phase (9 FKs).
+//
+// DELETE-RULE DESIGN: only tenant + source email are HARD parents (CASCADE — a draft has no
+// meaning without them). Every other reference (parse result, client, location, trade,
+// priority, job, reviewer) is SET NULL: the draft is an AUDIT RECORD of what arrived, so
+// deleting a referenced entity must NULL the link, never delete the draft.
+//
+// PARTIAL RESOLUTION (OQ-13.1/OQ-13.5): all resolved_* are NULLABLE — a partially-resolved
+// draft is a 'pending_review' row with one or more resolved_* null. Partial is NOT a
+// draft_status value; the asymmetry (location auto-stubs SF-2, client parks IF-7) is handled
+// by the resolution layer, not the schema. created_job_id is set ONLY at approval (D-5).
+//
+// D-6: source_type is carried from the ingestion account onto the resulting job at approval.
+// 9 FKs ALL pre-named (ewod_*) — this table is the one most at risk of >64-char auto-names.
+
+const draftStatusEnum = [
+  "pending_review",
+  "approved",
+  "rejected",
+  "superseded",
+] as const;
+
+export const emailWorkOrderDrafts = mysqlTable(
+  "email_work_order_drafts",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    // CASCADE: a draft has no meaning without its source email (hard parent).
+    inboundEmailId: varchar("inbound_email_id", { length: 36 }).notNull(),
+    // SET NULL: the parse result is informational; the draft survives its loss.
+    parseResultId: varchar("parse_result_id", { length: 36 }),
+    draftStatus: mysqlEnum("draft_status", draftStatusEnum)
+      .notNull()
+      .default("pending_review"),
+    // D-6: carried onto the job's source_type at approval.
+    sourceType: mysqlEnum("source_type", sourceTypeEnum).notNull(),
+    problemDescription: text("problem_description"),
+    // ── resolved_* : ALL NULLABLE (partial resolution is the normal path) ──
+    resolvedClientId: varchar("resolved_client_id", { length: 36 }),
+    resolvedClientLocationId: varchar("resolved_client_location_id", { length: 36 }),
+    resolvedTradeId: varchar("resolved_trade_id", { length: 36 }),
+    resolvedPriorityId: varchar("resolved_priority_id", { length: 36 }),
+    // ── outcome links ──
+    createdJobId: varchar("created_job_id", { length: 36 }), // set only at approval (D-5).
+    reviewedByUserId: varchar("reviewed_by_user_id", { length: 36 }),
+    reviewedAt: datetime("reviewed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "ewod_tenant_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.inboundEmailId],
+      foreignColumns: [inboundEmails.id],
+      name: "ewod_email_fk",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.parseResultId],
+      foreignColumns: [emailParseResults.id],
+      name: "ewod_parse_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.resolvedClientId],
+      foreignColumns: [clients.id],
+      name: "ewod_client_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.resolvedClientLocationId],
+      foreignColumns: [clientLocations.id],
+      name: "ewod_location_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.resolvedTradeId],
+      foreignColumns: [trades.id],
+      name: "ewod_trade_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.resolvedPriorityId],
+      foreignColumns: [priorities.id],
+      name: "ewod_priority_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.createdJobId],
+      foreignColumns: [jobs.id],
+      name: "ewod_job_fk",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.reviewedByUserId],
+      foreignColumns: [users.id],
+      name: "ewod_reviewer_fk",
+    }).onDelete("set null"),
+    index("email_work_order_drafts_tenant_status_idx").on(t.tenantId, t.draftStatus),
+    index("email_work_order_drafts_tenant_idx").on(t.tenantId),
+    index("email_work_order_drafts_email_idx").on(t.inboundEmailId),
+    index("email_work_order_drafts_parse_idx").on(t.parseResultId),
+    index("email_work_order_drafts_client_idx").on(t.resolvedClientId),
+    index("email_work_order_drafts_location_idx").on(t.resolvedClientLocationId),
+    index("email_work_order_drafts_trade_idx").on(t.resolvedTradeId),
+    index("email_work_order_drafts_priority_idx").on(t.resolvedPriorityId),
+    index("email_work_order_drafts_job_idx").on(t.createdJobId),
+    index("email_work_order_drafts_reviewer_idx").on(t.reviewedByUserId),
   ],
 );
