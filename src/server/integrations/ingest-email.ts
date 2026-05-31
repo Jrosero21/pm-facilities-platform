@@ -14,8 +14,11 @@ import { getReader } from "@/lib/integrations/email";
 import type { EmailReaderInput, EmailSourceType } from "@/lib/integrations/email";
 import { getSystemUserId } from "@/server/integrations/system-user";
 import { createLocation } from "@/server/client-locations";
+import { createJob } from "@/server/jobs";
 import { resolveTrade, resolvePriority } from "@/lib/integrations/core/mapping";
 import { writeAuditLog } from "@/server/audit";
+
+type EmailWorkOrderDraftRow = typeof emailWorkOrderDrafts.$inferSelect;
 
 // ── Phase 13 batch 13g — EMAIL INGEST ENGINE (stored inbound_email → parse → draft) ───
 // Turns a STORED inbound_emails row into an email_parse_results row + an
@@ -326,4 +329,223 @@ export async function ingestEmail({
     });
     return { outcome: "failed", error: message.slice(0, 2000) };
   }
+}
+
+// ── Phase 13 batch 13h — DRAFT → JOB (approve/reject, D-5) ────────────────────────────
+// approveEmailDraft turns a reviewed email_work_order_drafts row into a real job via the
+// existing createJob (unchanged). Mirrors the Phase-12 acceptClientProposal/createReview
+// discipline: a SERVER DATA-LAYER fn that throws coded errors + trusts its caller for
+// authz (the operator gate — requireTenant/requireRole — lives in the 13i action wrapper,
+// never here). Tenant scoping is enforced on every read + the final update WHERE.
+//
+// IDENTITY (D-5): reviewed_by_user_id = the approving OPERATOR (passed in); the job's
+// createdByUserId = the SF-1 system user (email-origin provenance). Both preserved.
+//
+// CF-13.1 SEAM: createJobFromDraft (the shared inner helper) does READINESS + createJob.
+// The future autonomous path calls it directly after a confidence-threshold check, skipping
+// ONLY the human-approval gate (the one commented §2.5 line in approveEmailDraft).
+//
+// IF-4 ORDERING / CF-13.6 (orphan window): createJob runs its OWN transaction (counter lock
+// + 7-step), so it CANNOT be nested inside the draft-lock txn. The order is: lock+recheck
+// the draft (pending_review) → END that txn → createJob (own txn) → follow-up draft update
+// guarded by `draftStatus='pending_review'` in the WHERE. If that guard matches 0 rows the
+// draft changed under us after the job committed → the job exists but the draft wasn't
+// linked: we audit the orphan (email analog of IF-4/CF-12.5) rather than throw, since the
+// job is real. Accepted, documented limitation.
+
+// Coded errors (mirror createJob's throw-new-Error convention):
+//   DRAFT_NOT_FOUND, DRAFT_NOT_PENDING_REVIEW, DRAFT_CLIENT_UNRESOLVED, DRAFT_LOCATION_UNRESOLVED.
+
+/**
+ * Shared inner helper (the CF-13.1 seam): readiness-check a draft, then create its job via
+ * createJob (own txn, hardcodes NEW). NO human-approval gate here — both the operator path
+ * (approveEmailDraft) and the future autonomous path call this. Returns the new job id.
+ * Throws DRAFT_CLIENT_UNRESOLVED / DRAFT_LOCATION_UNRESOLVED if the draft isn't ready
+ * (the always-true state with stub readers — the operator resolves client/location first).
+ */
+async function createJobFromDraft(
+  draft: EmailWorkOrderDraftRow,
+  opts: { tenantId: string },
+): Promise<{ jobId: string }> {
+  // READINESS (shared by both entry points). createJob would throw CLIENT_NOT_FOUND on a
+  // null clientId; pre-check here for a useful, draft-specific error instead.
+  if (!draft.resolvedClientId) throw new Error("DRAFT_CLIENT_UNRESOLVED");
+  if (!draft.resolvedClientLocationId) throw new Error("DRAFT_LOCATION_UNRESOLVED");
+
+  // sourceExternalId = the source message's RFC822 Message-ID (nullable → null).
+  const inbound = (
+    await db
+      .select({ messageId: inboundEmails.messageId })
+      .from(inboundEmails)
+      .where(eq(inboundEmails.id, draft.inboundEmailId))
+      .limit(1)
+  )[0];
+  const messageId = inbound?.messageId ?? null;
+
+  const systemUserId = await getSystemUserId();
+
+  const job = await createJob({
+    tenantId: opts.tenantId,
+    clientId: draft.resolvedClientId,
+    clientLocationId: draft.resolvedClientLocationId,
+    primaryTradeId: draft.resolvedTradeId ?? undefined,
+    priorityId: draft.resolvedPriorityId ?? undefined,
+    problemDescription: draft.problemDescription?.trim() || "[email work order]",
+    sourceType: draft.sourceType, // 'email_ingestion' | 'forwarded_email' (D-6)
+    sourceExternalId: messageId,
+    createdByUserId: systemUserId, // email-origin provenance (D-5)
+  });
+
+  return { jobId: job.id };
+}
+
+/**
+ * Operator approves a pending email draft → creates the job. Lock+recheck the draft is
+ * still pending_review, then (IF-4 ordering) create the job in its own txn, then link the
+ * draft with a re-check-guarded update. reviewed_by_user_id = the operator.
+ *
+ * Throws: DRAFT_NOT_FOUND, DRAFT_NOT_PENDING_REVIEW, DRAFT_CLIENT_UNRESOLVED,
+ * DRAFT_LOCATION_UNRESOLVED.
+ */
+export async function approveEmailDraft({
+  tenantId,
+  draftId,
+  reviewedByUserId,
+}: {
+  tenantId: string;
+  draftId: string;
+  reviewedByUserId: string;
+}): Promise<{ jobId: string; draftId: string }> {
+  // 1. Lock + recheck the draft is pending_review (mirror createReview), then release the
+  //    lock — createJob needs its own txn and we must not nest.
+  const draft = await db.transaction(async (tx) => {
+    const locked = await tx
+      .select()
+      .from(emailWorkOrderDrafts)
+      .where(
+        and(
+          eq(emailWorkOrderDrafts.tenantId, tenantId),
+          eq(emailWorkOrderDrafts.id, draftId),
+        ),
+      )
+      .for("update");
+    const row = locked[0];
+    if (!row) throw new Error("DRAFT_NOT_FOUND");
+    if (row.draftStatus !== "pending_review") {
+      throw new Error("DRAFT_NOT_PENDING_REVIEW");
+    }
+    return row;
+  });
+
+  // 2. <<< §2.5 / CF-13.1 BOUNDARY: this is the human-approval gate. The future autonomous
+  //    path calls createJobFromDraft directly after a confidence-threshold check, skipping
+  //    ONLY this gate (the readiness-check + job build are shared in the helper). >>>
+
+  // 3. Create the job (its OWN txn — IF-4 ordering; not nested in the lock above).
+  const { jobId } = await createJobFromDraft(draft, { tenantId });
+
+  // 4. Follow-up link with a re-check guard (IF-4 / CF-13.6): only advance if STILL pending.
+  const result = await db
+    .update(emailWorkOrderDrafts)
+    .set({
+      createdJobId: jobId,
+      draftStatus: "approved",
+      reviewedByUserId,
+      reviewedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(emailWorkOrderDrafts.tenantId, tenantId),
+        eq(emailWorkOrderDrafts.id, draftId),
+        eq(emailWorkOrderDrafts.draftStatus, "pending_review"),
+      ),
+    );
+  // drizzle/mysql2 update → [ResultSetHeader, FieldPacket[]]; the count is [0].affectedRows
+  // (verified against drizzle-orm 0.45.2 mysql2 types).
+  const affected = result[0].affectedRows;
+  if (affected === 0) {
+    // The draft changed under us after the job committed (CF-13.6 orphan window). The job
+    // is real; record the orphan in audit rather than throw.
+    await writeAuditLog({
+      tenantId,
+      userId: reviewedByUserId,
+      action: "email_draft.approve_link_orphan",
+      targetType: "email_work_order_draft",
+      targetId: draftId,
+      metadata: { jobId },
+    });
+    return { jobId, draftId };
+  }
+
+  // 5. Audit the approval (operator action → audit_logs, userId = the real operator).
+  await writeAuditLog({
+    tenantId,
+    userId: reviewedByUserId,
+    action: "email_draft.approved",
+    targetType: "email_work_order_draft",
+    targetId: draftId,
+    metadata: { jobId, sourceType: draft.sourceType },
+  });
+
+  return { jobId, draftId };
+}
+
+/**
+ * Operator rejects a pending email draft (no job created). Lock+recheck pending_review,
+ * then mark rejected in the same txn. reviewed_by_user_id = the operator.
+ *
+ * Throws: DRAFT_NOT_FOUND, DRAFT_NOT_PENDING_REVIEW.
+ */
+export async function rejectEmailDraft({
+  tenantId,
+  draftId,
+  reviewedByUserId,
+  reason,
+}: {
+  tenantId: string;
+  draftId: string;
+  reviewedByUserId: string;
+  reason?: string;
+}): Promise<{ draftId: string }> {
+  await db.transaction(async (tx) => {
+    const locked = await tx
+      .select({ draftStatus: emailWorkOrderDrafts.draftStatus })
+      .from(emailWorkOrderDrafts)
+      .where(
+        and(
+          eq(emailWorkOrderDrafts.tenantId, tenantId),
+          eq(emailWorkOrderDrafts.id, draftId),
+        ),
+      )
+      .for("update");
+    const row = locked[0];
+    if (!row) throw new Error("DRAFT_NOT_FOUND");
+    if (row.draftStatus !== "pending_review") {
+      throw new Error("DRAFT_NOT_PENDING_REVIEW");
+    }
+    await tx
+      .update(emailWorkOrderDrafts)
+      .set({
+        draftStatus: "rejected",
+        reviewedByUserId,
+        reviewedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(emailWorkOrderDrafts.tenantId, tenantId),
+          eq(emailWorkOrderDrafts.id, draftId),
+        ),
+      );
+  });
+
+  await writeAuditLog({
+    tenantId,
+    userId: reviewedByUserId,
+    action: "email_draft.rejected",
+    targetType: "email_work_order_draft",
+    targetId: draftId,
+    metadata: { reason: reason ?? null },
+  });
+
+  return { draftId };
 }
