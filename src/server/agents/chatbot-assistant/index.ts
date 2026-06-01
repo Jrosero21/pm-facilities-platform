@@ -17,6 +17,11 @@ import {
   type VendorSummary,
   type NextActionRecommendation,
 } from "./operational-tools";
+import {
+  draftClientUpdateTool,
+  draftVendorFollowUpTool,
+  type DraftToolResult,
+} from "./draft-tools";
 
 // chatbot_assistant_v1 — the read/draft operations assistant (Phase 16). The agent registers
 // in AGENT_REGISTRY (registry.ts) and runs through the frozen shared runner
@@ -43,6 +48,9 @@ export type AssistantTools = {
   flagInvoiceAnomalies: (input: { jobId?: string }) => Promise<InvoiceAnomaliesResult>;
   summarizeVendorPerformance: (input: { vendorId: string }) => Promise<VendorSummary>;
   recommendNextAction: (input: { jobId: string }) => Promise<NextActionRecommendation>;
+  // tenant-scoped DRAFT writes (16f) — land pending_review; NO publish path
+  draftClientUpdate: (input: { jobId: string }) => Promise<DraftToolResult>;
+  draftVendorFollowUp: (input: { jobId: string }) => Promise<DraftToolResult>;
 };
 
 /** Bind all assistant tools to a run context (registerTool wraps each for auto-logging).
@@ -57,6 +65,9 @@ export function bindTools(ctx: RunContext): AssistantTools {
     flagInvoiceAnomalies: registerTool(ctx, flagInvoiceAnomaliesTool(ctx.tenantId)),
     summarizeVendorPerformance: registerTool(ctx, summarizeVendorPerformanceTool(ctx.tenantId)),
     recommendNextAction: registerTool(ctx, recommendNextActionTool(ctx.tenantId)),
+    // the only kind:"write" tools — capture both tenantId AND the run id (agent_run_id)
+    draftClientUpdate: registerTool(ctx, draftClientUpdateTool(ctx.tenantId, ctx.runId)),
+    draftVendorFollowUp: registerTool(ctx, draftVendorFollowUpTool(ctx.tenantId, ctx.runId)),
   };
 }
 
