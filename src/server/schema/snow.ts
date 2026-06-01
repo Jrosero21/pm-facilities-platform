@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   int,
+  mysqlEnum,
   mysqlTable,
   text,
   timestamp,
@@ -15,6 +16,7 @@ import { users } from "./auth";
 import { clients, clientLocations } from "./clients";
 import { trades } from "./trades";
 import { priorities } from "./job-reference";
+import { jobs } from "./jobs";
 
 // ── Phase 15 batch 15c (migration 0039) — SNOW OPERATIONS · PROGRAM + SITE LAYER ───────
 // Snow is the EVENT-triggered batch engine (the PM time-triggered engine's structural twin).
@@ -177,5 +179,149 @@ export const snowServiceTriggers = mysqlTable(
     }).onDelete("cascade"),
     index("snow_service_triggers_tenant_idx").on(t.tenantId),
     index("snow_service_triggers_program_idx").on(t.snowProgramId),
+  ],
+);
+
+// ── Phase 15 batch 15c (migration 0040) — SNOW OPERATIONS · EVENT + FAN-OUT LAYER ──────
+// The event-triggered batch fan-out (the PM generate-visits structural twin at event scale):
+//   snow_events       — the BATCH-RUN HEADER (one storm; the pm_generation_runs analog, F15-G).
+//   snow_event_sites  — the MEMBERSHIP fan-out (which enrolled sites this storm hits; pm_visits
+//                       analog as the per-site batch artifact).
+//   snow_dispatches   — the per-site SPAWN/OUTCOME record (nullable job_id + skip_reason; F15-C).
+//                       NOT a parallel vendor-assignment table — the spawned job reuses the
+//                       existing Phase-5 dispatch workflow.
+//
+// FKs point only at 0039 tables + existing jobs (all on prod before 0040 runs). Hand-named
+// (WP-12.2). DELETE RULES (pm.ts precedent): tenant → CASCADE; parent-refs (program/event/site/
+// event_site) → CASCADE (the membership/outcome has no meaning without its parent);
+// declared_by_user_id → SET NULL (preserve the event if its declarer is removed).
+//
+// snow_dispatches.job_id → SET NULL: MATCHES pm_visits.job_id (live fk_pm_visits_job = SET NULL,
+// 15c Stage 0) — the spawn-record-to-job link behaves identically across PM and Snow. The
+// dispatch outcome row (incl. its skip_reason) survives a job deletion as historical record.
+
+const eventStatusEnum = ["declared", "dispatching", "complete", "cancelled"] as const;
+const dispatchStatusEnum = ["staged", "spawned", "skipped", "cancelled"] as const;
+
+// ── snow_events ── (BATCH-RUN HEADER — the storm; pm_generation_runs analog, F15-G)
+export const snowEvents = mysqlTable(
+  "snow_events",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    snowProgramId: varchar("snow_program_id", { length: 36 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(), // storm label, e.g. "Jan 12 Nor'easter"
+    eventStatus: mysqlEnum("event_status", eventStatusEnum)
+      .notNull()
+      .default("declared"),
+    declaredAt: timestamp("declared_at").notNull().defaultNow(),
+    declaredByUserId: varchar("declared_by_user_id", { length: 36 }),
+    // SOFT ref to snow_weather_observations (lands in 0041). No FK now — the target table does
+    // not exist yet; a forward FK would break the additive 0040 ordering. FK deferred to 0041 or
+    // left soft — confirm at 0041.
+    snowWeatherObservationId: varchar("snow_weather_observation_id", { length: 36 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_sevent_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.snowProgramId],
+      foreignColumns: [snowPrograms.id],
+      name: "fk_sevent_program",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.declaredByUserId],
+      foreignColumns: [users.id],
+      name: "fk_sevent_declared_by",
+    }).onDelete("set null"),
+    index("snow_events_tenant_idx").on(t.tenantId),
+    index("snow_events_program_idx").on(t.snowProgramId),
+    index("snow_events_status_idx").on(t.eventStatus),
+    index("snow_events_declared_by_idx").on(t.declaredByUserId),
+  ],
+);
+
+// ── snow_event_sites ── (MEMBERSHIP fan-out — which enrolled sites this storm hits; pm_visits analog)
+export const snowEventSites = mysqlTable(
+  "snow_event_sites",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    snowEventId: varchar("snow_event_id", { length: 36 }).notNull(),
+    snowSiteId: varchar("snow_site_id", { length: 36 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_ses_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.snowEventId],
+      foreignColumns: [snowEvents.id],
+      name: "fk_ses_event",
+    }).onDelete("cascade"), // membership dies with the event
+    foreignKey({
+      columns: [t.snowSiteId],
+      foreignColumns: [snowSites.id],
+      name: "fk_ses_site",
+    }).onDelete("cascade"), // membership dies with the site enrollment
+    index("snow_event_sites_tenant_idx").on(t.tenantId),
+    index("snow_event_sites_event_idx").on(t.snowEventId),
+    index("snow_event_sites_site_idx").on(t.snowSiteId),
+  ],
+);
+
+// ── snow_dispatches ── (per-site SPAWN/OUTCOME record — F15-C; the spawned job reuses Phase-5 dispatch)
+export const snowDispatches = mysqlTable(
+  "snow_dispatches",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    snowEventSiteId: varchar("snow_event_site_id", { length: 36 }).notNull(),
+    // Nullable: null until the per-site createJob succeeds (F15-C). SET NULL on job delete —
+    // matches pm_visits.job_id (Stage 0); the outcome row + skip_reason survive as history.
+    jobId: varchar("job_id", { length: 36 }),
+    dispatchStatus: mysqlEnum("dispatch_status", dispatchStatusEnum)
+      .notNull()
+      .default("staged"), // F15-A: stage-by-default
+    skipReason: text("skip_reason"), // set when status='skipped' (createJob err.message — skip-and-flag)
+    spawnedAt: timestamp("spawned_at"), // set when createJob succeeds
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_disp_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.snowEventSiteId],
+      foreignColumns: [snowEventSites.id],
+      name: "fk_disp_event_site",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.jobId],
+      foreignColumns: [jobs.id],
+      name: "fk_disp_job",
+    }).onDelete("set null"), // MATCHES pm_visits.job_id (Stage 0)
+    index("snow_dispatches_tenant_idx").on(t.tenantId),
+    index("snow_dispatches_event_site_idx").on(t.snowEventSiteId),
+    index("snow_dispatches_job_idx").on(t.jobId),
+    index("snow_dispatches_status_idx").on(t.dispatchStatus),
   ],
 );

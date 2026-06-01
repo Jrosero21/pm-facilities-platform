@@ -281,6 +281,13 @@
       "when": 1780284322583,
       "tag": "0039_tearful_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "5",
+      "when": 1780285264375,
+      "tag": "0040_gray_power_man",
+      "breakpoints": true
     }
   ]
 }
