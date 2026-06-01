@@ -295,6 +295,13 @@
       "when": 1780286019925,
       "tag": "0041_charming_william_stryker",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "5",
+      "when": 1780340759462,
+      "tag": "0042_wealthy_sumo",
+      "breakpoints": true
     }
   ]
 }

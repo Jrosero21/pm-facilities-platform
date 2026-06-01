@@ -70,6 +70,10 @@ export const clientLocations = mysqlTable(
     country: varchar("country", { length: 2 }).notNull().default("US"),
     latitude: decimal("latitude", { precision: 10, scale: 7 }),
     longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    // Phase 19 (0042) — IANA timezone seam for the business-hours SLA clock. Additive,
+    // nullable; data-model only — NO Phase-19 logic consumes it (backfill + clock logic
+    // banked CF-19.1).
+    timezone: varchar("timezone", { length: 64 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

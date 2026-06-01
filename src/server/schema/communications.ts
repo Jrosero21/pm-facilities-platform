@@ -2,6 +2,7 @@ import {
   datetime,
   foreignKey,
   index,
+  int,
   json,
   mysqlEnum,
   mysqlTable,
@@ -115,6 +116,12 @@ export const communicationLogs = mysqlTable(
     sentAt: datetime("sent_at"),
     deliveredAt: datetime("delivered_at"),
     readAt: datetime("read_at"),
+    // Phase 19 (0042) — live-send provider tracking. Additive, nullable/defaulted; the
+    // send adapter writes provider_message_id on success and last_error on failure;
+    // attempts counts send tries (idempotency/observability). No FK.
+    providerMessageId: varchar("provider_message_id", { length: 255 }),
+    attempts: int("attempts").notNull().default(0),
+    lastError: text("last_error"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
