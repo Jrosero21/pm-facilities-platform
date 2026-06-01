@@ -288,6 +288,13 @@
       "when": 1780285264375,
       "tag": "0040_gray_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "5",
+      "when": 1780286019925,
+      "tag": "0041_charming_william_stryker",
+      "breakpoints": true
     }
   ]
 }

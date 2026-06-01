@@ -4,6 +4,7 @@ import {
   foreignKey,
   index,
   int,
+  json,
   mysqlEnum,
   mysqlTable,
   text,
@@ -203,6 +204,52 @@ export const snowServiceTriggers = mysqlTable(
 const eventStatusEnum = ["declared", "dispatching", "complete", "cancelled"] as const;
 const dispatchStatusEnum = ["staged", "spawned", "skipped", "cancelled"] as const;
 
+// ── Phase 15 batch 15c (migration 0041) — SNOW OPERATIONS · CAPTURE + WEATHER PLACEHOLDER ──
+// snow_weather_observations — a PLACEHOLDER the manual event references (live weather feed
+//   defers, B-15.2). snow_service_logs — per-dispatch PROOF-OF-SERVICE capture (schema lands;
+//   the runtime that fills it defers, B-15.1 / CF-14.1 analog).
+//
+// ORDERING NOTE: snow_weather_observations is DEFINED HERE (before snow_events) — not appended
+// at the end — because snow_events.fk_sevent_weather (added below, decision A) references it.
+// drizzle evaluates the foreignKey() callback eagerly at module load, so the target table const
+// must exist first (the repo's parent-before-child convention). The MIGRATION is still additive
+// 0041 (this is purely TS declaration order; the generated SQL CREATEs the table then ALTERs
+// snow_events). snow_service_logs (references snow_dispatches, defined above) is appended at end.
+
+// ── snow_weather_observations ── (PLACEHOLDER — manual event references it; live feed defers, B-15.2)
+export const snowWeatherObservations = mysqlTable(
+  "snow_weather_observations",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    snowProgramId: varchar("snow_program_id", { length: 36 }), // optional program scoping
+    observedAt: timestamp("observed_at").notNull().defaultNow(),
+    // Placeholder; 'manual' is the only live source this phase (the weather feed defers).
+    source: varchar("source", { length: 64 }).notNull().default("manual"),
+    snowDepth: decimal("snow_depth", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
+    temperature: decimal("temperature", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_swobs_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.snowProgramId],
+      foreignColumns: [snowPrograms.id],
+      name: "fk_swobs_program",
+    }).onDelete("cascade"),
+    index("snow_weather_observations_tenant_idx").on(t.tenantId),
+    index("snow_weather_observations_program_idx").on(t.snowProgramId),
+  ],
+);
+
 // ── snow_events ── (BATCH-RUN HEADER — the storm; pm_generation_runs analog, F15-G)
 export const snowEvents = mysqlTable(
   "snow_events",
@@ -218,9 +265,9 @@ export const snowEvents = mysqlTable(
       .default("declared"),
     declaredAt: timestamp("declared_at").notNull().defaultNow(),
     declaredByUserId: varchar("declared_by_user_id", { length: 36 }),
-    // SOFT ref to snow_weather_observations (lands in 0041). No FK now — the target table does
-    // not exist yet; a forward FK would break the additive 0040 ordering. FK deferred to 0041 or
-    // left soft — confirm at 0041.
+    // Column landed soft in 0040 (target table didn't exist yet). 0041 completes it with the real
+    // FK fk_sevent_weather (decision A) → snow_weather_observations.id, ON DELETE SET NULL (an
+    // event survives deletion of the observation it referenced).
     snowWeatherObservationId: varchar("snow_weather_observation_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
@@ -240,6 +287,12 @@ export const snowEvents = mysqlTable(
       columns: [t.declaredByUserId],
       foreignColumns: [users.id],
       name: "fk_sevent_declared_by",
+    }).onDelete("set null"),
+    // 0041 decision A: complete the 0040 soft ref. SET NULL — an event outlives its observation.
+    foreignKey({
+      columns: [t.snowWeatherObservationId],
+      foreignColumns: [snowWeatherObservations.id],
+      name: "fk_sevent_weather",
     }).onDelete("set null"),
     index("snow_events_tenant_idx").on(t.tenantId),
     index("snow_events_program_idx").on(t.snowProgramId),
@@ -323,5 +376,48 @@ export const snowDispatches = mysqlTable(
     index("snow_dispatches_event_site_idx").on(t.snowEventSiteId),
     index("snow_dispatches_job_idx").on(t.jobId),
     index("snow_dispatches_status_idx").on(t.dispatchStatus),
+  ],
+);
+
+// ── snow_service_logs ── (per-dispatch PROOF-OF-SERVICE capture; schema only — runtime defers, B-15.1)
+// References snow_dispatches (defined above — backward ref). The capture runtime (mobile/field
+// fill of serviced_at/photo_refs/gps/notes) is DEFERRED this phase; only the schema lands now.
+export const snowServiceLogs = mysqlTable(
+  "snow_service_logs",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    snowDispatchId: varchar("snow_dispatch_id", { length: 36 }).notNull(),
+    servicedAt: timestamp("serviced_at"), // when service performed; nullable — capture runtime fills later
+    // MariaDB: json → longtext + json_valid CHECK. Parse at the read boundary (the repo json idiom).
+    photoRefs: json("photo_refs"),
+    gpsLat: decimal("gps_lat", { precision: 10, scale: 7 }),
+    gpsLng: decimal("gps_lng", { precision: 10, scale: 7 }),
+    notes: text("notes"),
+    loggedByUserId: varchar("logged_by_user_id", { length: 36 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_slog_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.snowDispatchId],
+      foreignColumns: [snowDispatches.id],
+      name: "fk_slog_dispatch",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.loggedByUserId],
+      foreignColumns: [users.id],
+      name: "fk_slog_logged_by",
+    }).onDelete("set null"),
+    index("snow_service_logs_tenant_idx").on(t.tenantId),
+    index("snow_service_logs_dispatch_idx").on(t.snowDispatchId),
+    index("snow_service_logs_logged_by_idx").on(t.loggedByUserId),
   ],
 );
