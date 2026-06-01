@@ -24,7 +24,8 @@
     "db:check:client-portal": "tsx --env-file=.env.local --conditions=react-server scripts/check-client-portal.ts",
     "db:check:external-integrations": "tsx --env-file=.env.local --conditions=react-server scripts/check-external-integrations.ts",
     "db:check:email-ingestion": "tsx --env-file=.env.local --conditions=react-server scripts/check-email-ingestion.ts",
-    "db:check:pm-generation": "tsx --env-file=.env.local --conditions=react-server scripts/check-pm-generation.ts"
+    "db:check:pm-generation": "tsx --env-file=.env.local --conditions=react-server scripts/check-pm-generation.ts",
+    "db:check:snow-dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-snow-dispatch.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
