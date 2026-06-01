@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import {
+  sendCommunicationAction,
   updateDeliveryStatusAction,
   type CommActionState,
 } from "@/app/(app)/jobs/communication-actions";
@@ -43,7 +44,13 @@ function TransitionButton({
   commId: string;
   to: DeliveryStatus;
 }) {
-  const action = updateDeliveryStatusAction.bind(null, jobId, commId, to);
+  // 'sent' routes through the REAL send path (provider adapter, capture-by-default); every
+  // other transition stays on the pure status flip. sendCommunicationAction is (jobId, commId)
+  // — it resolves+sends, so it takes no `to` arg.
+  const action =
+    to === "sent"
+      ? sendCommunicationAction.bind(null, jobId, commId)
+      : updateDeliveryStatusAction.bind(null, jobId, commId, to);
   const [state, formAction, pending] = useActionState<CommActionState, FormData>(action, null);
   return (
     <form action={formAction} className="inline">
@@ -52,7 +59,7 @@ function TransitionButton({
         disabled={pending}
         className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "…" : `Mark ${deliveryStatusLabel(to).toLowerCase()}`}
+        {pending ? "…" : to === "sent" ? "Send" : `Mark ${deliveryStatusLabel(to).toLowerCase()}`}
       </button>
       {state?.error && (
         <span role="alert" className="ml-2 text-xs text-red-600">

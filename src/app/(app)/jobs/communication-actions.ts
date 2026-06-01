@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
 import {
+  sendCommunication,
   shareNote,
   updateCommunicationDeliveryStatus,
   type ShareAudience,
@@ -69,5 +70,40 @@ export async function updateDeliveryStatusAction(
     throw err;
   }
   revalidatePath(`/jobs/${jobId}`);
+  return null;
+}
+
+// Phase 19c — operator-triggered REAL send via the provider adapter (capture-by-default).
+// Bound (jobId, commId). The send path (compose → provider.send() → flip sent/failed) lives
+// in sendCommunication; this wrapper is the operator entry point. The existing "Send" button
+// still calls the pure-flip updateDeliveryStatusAction — pointing the UI here is 19e.
+export async function sendCommunicationAction(
+  jobId: string,
+  commId: string,
+): Promise<CommActionState> {
+  const ctx = await requireTenant();
+  try {
+    await sendCommunication({
+      tenantId: ctx.activeTenant.tenantId,
+      commId,
+      actorUserId: ctx.user.id,
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "COMMUNICATION_NOT_FOUND":
+          return { error: "Communication not found." };
+        case "INVALID_DELIVERY_TRANSITION":
+          return { error: "This message can't be sent from its current state." };
+        case "MISSING_RECIPIENT":
+          return { error: "No recipient email on this message." };
+        case "UNRESOLVABLE_SEND_SOURCE":
+          return { error: "Couldn't resolve the message content to send." };
+      }
+    }
+    throw err;
+  }
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath("/notifications");
   return null;
 }
