@@ -253,6 +253,13 @@
       "when": 1780249573419,
       "tag": "0035_harsh_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1780272109791,
+      "tag": "0036_cuddly_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }
