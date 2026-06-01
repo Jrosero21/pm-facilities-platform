@@ -37,6 +37,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "job_scope_draft",
     testOnly: false,
   },
+  chatbot_assistant_v1: {
+    id: "chatbot_assistant_v1",
+    name: "Operations Assistant",
+    description:
+      "Read/draft operations assistant — answers questions over platform knowledge docs and tenant-scoped readers, and produces pending-review drafts (never sends). Tools are added in later Phase-16 slices; this slice registers the identity + the shared-runner wiring only.",
+    inputSourceTypes: ["job", "job_note", "vendor_update"], // the sources its (future) read/draft tools operate over
+    outputType: "assistant_response",
+    testOnly: false,
+  },
   test_stub_v1: {
     id: "test_stub_v1",
     name: "Test Stub Agent",
