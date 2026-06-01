@@ -6,6 +6,17 @@ import { db } from "@/server/db";
 import { jobAttachments } from "@/server/schema";
 import { getAssignmentDetail } from "@/server/dispatch";
 import { canActOnAssignment } from "@/server/role-predicates";
+import { getStorageProvider } from "@/lib/integrations/storage";
+
+// MIME → file extension (derived from content type, NOT the filename). The allowlist itself
+// is enforced at the action layer; this map covers the accepted image types.
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
 
 /**
  * Vendor creates a photo-placeholder attachment row on an assignment's parent
@@ -32,6 +43,10 @@ export async function createVendorPhotoPlaceholder(input: {
   vendorScope: Set<string>;
   actorUserId: string;
   title: string;
+  // Phase 20 (20b) — real bytes. Absent → the existing placeholder path (storage_key NULL).
+  // Present → put-to-storage FIRST, then insert; a failed put writes NO row (the safe residue
+  // is an orphan object, not an orphan row). The action layer enforces the MIME allowlist + size cap.
+  file?: { bytes: Buffer; contentType: string; size: number };
 }): Promise<{ id: string }> {
   const assignment = await getAssignmentDetail(input.tenantId, input.assignmentId);
   if (!assignment) throw new Error("ASSIGNMENT_NOT_FOUND");
@@ -45,6 +60,60 @@ export async function createVendorPhotoPlaceholder(input: {
     throw new Error("VENDOR_SCOPE_MISMATCH");
   }
 
+  // ── Real-upload branch: storage put BEFORE the DB insert ──────────────────────────────
+  if (input.file) {
+    const attachmentId = uuidv7();
+    const ext = MIME_EXT[input.file.contentType] ?? "bin";
+    const key = `tenant/${input.tenantId}/job/${assignment.jobId}/attachment/${attachmentId}.${ext}`;
+
+    const provider = getStorageProvider();
+    const put = await provider.put({
+      key,
+      bytes: input.file.bytes,
+      contentType: input.file.contentType,
+    });
+    if (!put.ok) throw new Error("STORAGE_PUT_FAILED"); // no row written on a failed put
+
+    await db.insert(jobAttachments).values({
+      id: attachmentId,
+      tenantId: input.tenantId,
+      jobId: assignment.jobId,
+      title: input.title,
+      attachmentType: "photo",
+      visibility: "internal_only",
+      uploadedByUserId: input.actorUserId,
+      storageKey: key,
+      checksum: put.checksum,
+      storageProvider: provider.name,
+      fileSizeBytes: put.size,
+      fileMimeType: input.file.contentType,
+      fileUrl: null, // served via presigned URL from storage_key (slice 4); no persisted URL.
+    });
+
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "job_attachment.uploaded",
+      targetType: "job_attachment",
+      targetId: attachmentId,
+      metadata: {
+        jobId: assignment.jobId,
+        assignmentId: input.assignmentId,
+        attachmentType: "photo",
+        placeholder: false,
+        size: put.size,
+        mime: input.file.contentType,
+        checksum: put.checksum,
+        storageProvider: provider.name,
+        actor: "vendor",
+        via: "vendor_portal",
+      },
+    });
+
+    return { id: attachmentId };
+  }
+
+  // ── Placeholder branch (unchanged): metadata-only row, storage_key/file_* NULL ────────
   const attachmentId = uuidv7();
   await db.insert(jobAttachments).values({
     id: attachmentId,
@@ -54,7 +123,7 @@ export async function createVendorPhotoPlaceholder(input: {
     attachmentType: "photo",
     visibility: "internal_only",
     uploadedByUserId: input.actorUserId,
-    // file_url / file_size_bytes / file_mime_type intentionally omitted → NULL
+    // file_url / file_size_bytes / file_mime_type / storage_key intentionally omitted → NULL
     // (the placeholder marker).
   });
 
