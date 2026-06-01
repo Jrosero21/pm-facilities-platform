@@ -122,6 +122,13 @@ export const jobAttachments = mysqlTable(
     fileUrl: varchar("file_url", { length: 1024 }),
     fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
     fileMimeType: varchar("file_mime_type", { length: 127 }),
+    // Phase 20 (0043) — real-bytes object-storage tracking. Additive, nullable; the upload
+    // path writes storage_key (the object key) + checksum (sha256) + storage_provider on a
+    // real upload. storage_key NULL is the new placeholder marker (existing rows stay valid
+    // placeholders). No FK.
+    storageKey: varchar("storage_key", { length: 1024 }),
+    checksum: varchar("checksum", { length: 255 }),
+    storageProvider: varchar("storage_provider", { length: 32 }),
     visibility: mysqlEnum("visibility", visibilityEnum)
       .notNull()
       .default("internal_only"),
