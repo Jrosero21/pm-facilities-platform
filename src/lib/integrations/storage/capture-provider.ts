@@ -36,6 +36,12 @@ export class CaptureStorageProvider implements StorageProvider {
   readonly name = "capture";
 
   async put(req: PutRequest): Promise<PutResult> {
+    // Test hook (capture-only): STORAGE_FORCE_FAIL=1 forces a failed put so the harness can
+    // exercise the writer's put-before-insert guard (no DB row on a failed put) without R2 or
+    // any network. Never set in production paths.
+    if (process.env.STORAGE_FORCE_FAIL === "1") {
+      return { ok: false, error: "FORCED_FAILURE" };
+    }
     const size = req.bytes.length;
     const checksum = createHash("sha256").update(req.bytes).digest("hex");
     captured.set(req.key, { bytes: req.bytes, contentType: req.contentType, size, checksum });

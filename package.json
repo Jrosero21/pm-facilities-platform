@@ -28,7 +28,8 @@
     "db:check:snow-dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-snow-dispatch.ts",
     "db:check:chatbot-assistant": "tsx --env-file=.env.local --conditions=react-server scripts/check-chatbot-assistant.ts",
     "db:check:operator-review": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-review.ts",
-    "db:check:notifications-send": "tsx --env-file=.env.local --conditions=react-server scripts/check-notifications-send.ts"
+    "db:check:notifications-send": "tsx --env-file=.env.local --conditions=react-server scripts/check-notifications-send.ts",
+    "db:check:vendor-edge": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-20.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
