@@ -6,11 +6,16 @@ import { createVendorPhotoPlaceholderAction } from "@/app/(vendor)/vendor/jobs/p
 type ActionState = { error?: string } | null;
 
 /**
- * Photo-placeholder creation form. No actual file upload — writes a
- * metadata-only job_attachments row with NULL file_url (Fork 7). The UI is
- * explicit about this to set expectations. Mirrors VendorNoteForm's shape.
+ * Photo attachment form. Title required; an optional image file (Phase 20 20b) is uploaded
+ * to object storage by the action. With no file selected, the existing metadata-only
+ * placeholder path runs (storage_key NULL). Mirrors VendorNoteForm's shape.
  *
- * Phase 10 batch 10m-construct.
+ * The file input offers mobile camera capture (capture="environment") with desktop file
+ * selection as the fallback; its name is `file` to match the action's FormData read. React
+ * server-action forms serialize File entries into the action's FormData (multipart is handled
+ * automatically when a File is present), so the bytes reach createVendorPhotoPlaceholderAction.
+ *
+ * Phase 10 batch 10m-construct; Phase 20 20b real-bytes.
  */
 export function VendorPhotoPlaceholderForm({
   assignmentId,
@@ -36,8 +41,20 @@ export function VendorPhotoPlaceholderForm({
           placeholder="e.g. Compressor nameplate before service"
           className="mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
         />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-neutral-700">
+          Photo (optional)
+        </label>
+        <input
+          type="file"
+          name="file"
+          accept="image/*"
+          capture="environment"
+          className="mt-1 block w-full text-sm text-neutral-700 file:mr-3 file:rounded-md file:border-0 file:bg-neutral-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-800"
+        />
         <p className="mt-1 text-xs text-neutral-500">
-          File upload coming soon — for now, attach a placeholder with a title.
+          JPG, PNG, WEBP, or HEIC up to 15 MB. Leave empty to attach a title-only placeholder.
         </p>
       </div>
       <button
@@ -45,7 +62,7 @@ export function VendorPhotoPlaceholderForm({
         disabled={pending}
         className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {pending ? "Attaching…" : "Attach placeholder"}
+        {pending ? "Attaching…" : "Attach photo"}
       </button>
       {state?.error && (
         <p role="alert" className="mt-2 text-sm text-red-600">

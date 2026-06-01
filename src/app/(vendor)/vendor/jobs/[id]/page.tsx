@@ -4,6 +4,7 @@ import { requireVendor } from "@/server/auth-context";
 import { getVendorAssignmentDetail } from "@/server/vendor/get-vendor-assignment-detail";
 import { listVendorAssignmentNotes } from "@/server/vendor/list-assignment-notes";
 import { listVendorAssignmentAttachments } from "@/server/vendor/list-assignment-attachments";
+import { getVendorAttachmentUrl } from "@/server/vendor/get-vendor-attachment-url";
 import { listVendorAssignmentInvoices } from "@/server/vendor/list-assignment-invoices";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
@@ -60,6 +61,19 @@ export default async function VendorAssignmentDetailPage({
     ctx.activeTenant.tenantId,
     detail.id,
     ctx.vendorScope,
+  );
+  // Resolve a short-lived presigned URL per attachment at render time (server component).
+  // Reuses the same vendor scope gate; 'forbidden' rows are dropped from the render.
+  const attachmentsWithUrl = await Promise.all(
+    attachments.map(async (a) => ({
+      attachment: a,
+      served: await getVendorAttachmentUrl({
+        assignmentId: detail.id,
+        attachmentId: a.id,
+        tenantId: ctx.activeTenant.tenantId,
+        vendorScope: ctx.vendorScope,
+      }),
+    })),
   );
   const invoices = await listVendorAssignmentInvoices(
     ctx.activeTenant.tenantId,
@@ -191,26 +205,48 @@ export default async function VendorAssignmentDetailPage({
           Photos
         </h2>
         <div className="mt-4 space-y-3">
-          {attachments.length === 0 ? (
+          {attachmentsWithUrl.length === 0 ? (
             <p className="text-sm text-neutral-500">No photos attached yet.</p>
           ) : (
-            attachments.map((a) => (
-              <div
-                key={a.id}
-                className="rounded-lg border border-neutral-200 bg-white p-3"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
-                    {a.fileUrl ? "Uploaded" : "Placeholder"}
-                  </span>
-                  <span className="text-xs text-neutral-500">
-                    {a.authorName ?? "Unknown"} ·{" "}
-                    {new Date(a.createdAt).toLocaleString()}
-                  </span>
+            attachmentsWithUrl.map(({ attachment: a, served }) =>
+              // 'forbidden' rows are not rendered (do not show out-of-scope/missing).
+              served.kind === "forbidden" ? null : (
+                <div
+                  key={a.id}
+                  className="rounded-lg border border-neutral-200 bg-white p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-700">
+                      {served.kind === "url"
+                        ? "Photo"
+                        : served.kind === "unavailable"
+                          ? "Image unavailable"
+                          : "Placeholder"}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      {a.authorName ?? "Unknown"} ·{" "}
+                      {new Date(a.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-neutral-700">{a.title}</p>
+                  {served.kind === "url" && (
+                    <a
+                      href={served.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={served.url}
+                        alt={a.title}
+                        className="max-h-48 rounded-md border border-neutral-200 object-cover"
+                      />
+                    </a>
+                  )}
                 </div>
-                <p className="mt-2 text-sm text-neutral-700">{a.title}</p>
-              </div>
-            ))
+              ),
+            )
           )}
         </div>
         <div className="mt-6">
