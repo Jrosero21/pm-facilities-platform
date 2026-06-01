@@ -315,3 +315,80 @@ export const pmAssets = mysqlTable(
     index("pm_assets_location_idx").on(t.clientLocationId),
   ],
 );
+
+// ── Phase 14 batch 14c (migration 0038) — PM CHECKLIST (template / instance, F6) ───────
+// pm_visit_checklists = the TEMPLATE (a checklist line defined at the PROGRAM level);
+// pm_visit_results = the INSTANCE (a per-visit filled answer for one template item). Mirrors
+// scope_templates → job_scope_steps (Phase 7). PKs = uuidv7 varchar(36); FKs pre-named (WP-12.2).
+// DELETE RULES: tenant_id → CASCADE; pm_program_id → CASCADE (template dies with its program);
+// pm_visit_id → CASCADE (results die with their visit); pm_visit_checklist_id → CASCADE (a result
+// has no meaning without the template item it answers).
+
+const resultEnum = ["done", "skipped", "na"] as const;
+
+// ── pm_visit_checklists (TEMPLATE — program-level definition) ──
+export const pmVisitChecklists = mysqlTable(
+  "pm_visit_checklists",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    pmProgramId: varchar("pm_program_id", { length: 36 }).notNull(), // the template lives on the program
+    itemText: varchar("item_text", { length: 512 }).notNull(), // e.g. "Replace HVAC filter"
+    sortOrder: int("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_pm_checklists_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmProgramId],
+      foreignColumns: [pmPrograms.id],
+      name: "fk_pm_checklists_program",
+    }).onDelete("cascade"),
+    index("pm_visit_checklists_tenant_idx").on(t.tenantId),
+    index("pm_visit_checklists_program_idx").on(t.pmProgramId),
+  ],
+);
+
+// ── pm_visit_results (INSTANCE — per-visit filled answer for one template item) ──
+export const pmVisitResults = mysqlTable(
+  "pm_visit_results",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    pmVisitId: varchar("pm_visit_id", { length: 36 }).notNull(),
+    pmVisitChecklistId: varchar("pm_visit_checklist_id", { length: 36 }).notNull(), // which template item
+    result: mysqlEnum("result", resultEnum), // null = not yet recorded
+    notes: text("notes"),
+    completedAt: datetime("completed_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_pm_results_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmVisitId],
+      foreignColumns: [pmVisits.id],
+      name: "fk_pm_results_visit",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmVisitChecklistId],
+      foreignColumns: [pmVisitChecklists.id],
+      name: "fk_pm_results_checklist",
+    }).onDelete("cascade"),
+    index("pm_visit_results_tenant_idx").on(t.tenantId),
+    index("pm_visit_results_visit_idx").on(t.pmVisitId),
+    index("pm_visit_results_checklist_idx").on(t.pmVisitChecklistId),
+  ],
+);

@@ -267,6 +267,13 @@
       "when": 1780273960863,
       "tag": "0037_talented_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "5",
+      "when": 1780274778324,
+      "tag": "0038_amusing_ser_duncan",
+      "breakpoints": true
     }
   ]
 }
