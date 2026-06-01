@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { agentDecisions, updateRewriteDrafts } from "@/server/schema";
+import { agentDecisions, clients, jobs, updateRewriteDrafts } from "@/server/schema";
 import { writeAuditLog } from "@/server/audit";
 
 export type UpdateRewriteDraftRow = typeof updateRewriteDrafts.$inferSelect;
@@ -165,6 +165,61 @@ export async function listDraftsForJobDetailed(
       ),
     )
     .where(and(eq(updateRewriteDrafts.tenantId, tenantId), eq(updateRewriteDrafts.jobId, jobId)))
+    .orderBy(desc(updateRewriteDrafts.createdAt));
+  return rows.map((r) => ({ ...r, decisionMetadata: parseJsonColumn(r.decisionMetadata) }));
+}
+
+// A queue row carries its job label (job_number + client name) so the tenant-wide
+// review queue can show context + link to /jobs/{id} without a single jobId prop.
+export type DraftQueueItem = DraftListItemDetailed & {
+  jobNumber: number;
+  clientName: string;
+};
+
+/**
+ * Tenant-wide actionable draft queue (Phase 18b) — the cross-job mirror of
+ * listDraftsForJobDetailed. Same agent_decisions leftJoin (confidence/rationale/
+ * stripped-items) MINUS the jobId filter, PLUS a job + client join for the row
+ * label. Returns the actionable set (pending_review + approved); the component
+ * splits by status into the triage and publish lanes. Newest first.
+ * urd_tenant_status_idx (tenant_id, status) backs the WHERE.
+ */
+export async function listPendingReviewDraftsDetailed(
+  tenantId: string,
+): Promise<DraftQueueItem[]> {
+  const rows = await db
+    .select({
+      id: updateRewriteDrafts.id,
+      jobId: updateRewriteDrafts.jobId,
+      agentRunId: updateRewriteDrafts.agentRunId,
+      sourceType: updateRewriteDrafts.sourceType,
+      sourceId: updateRewriteDrafts.sourceId,
+      draftContent: updateRewriteDrafts.draftContent,
+      status: updateRewriteDrafts.status,
+      publishedCommunicationId: updateRewriteDrafts.publishedCommunicationId,
+      createdAt: updateRewriteDrafts.createdAt,
+      confidence: agentDecisions.confidence,
+      rationale: agentDecisions.reasoning,
+      decisionMetadata: agentDecisions.metadata,
+      jobNumber: jobs.jobNumber,
+      clientName: clients.name,
+    })
+    .from(updateRewriteDrafts)
+    .leftJoin(
+      agentDecisions,
+      and(
+        eq(agentDecisions.agentRunId, updateRewriteDrafts.agentRunId),
+        eq(agentDecisions.decisionType, "rewrite_proposal"),
+      ),
+    )
+    .innerJoin(jobs, eq(jobs.id, updateRewriteDrafts.jobId))
+    .innerJoin(clients, eq(clients.id, jobs.clientId))
+    .where(
+      and(
+        eq(updateRewriteDrafts.tenantId, tenantId),
+        inArray(updateRewriteDrafts.status, ["pending_review", "approved"]),
+      ),
+    )
     .orderBy(desc(updateRewriteDrafts.createdAt));
   return rows.map((r) => ({ ...r, decisionMetadata: parseJsonColumn(r.decisionMetadata) }));
 }

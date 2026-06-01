@@ -74,6 +74,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <Link href="/jobs" className="text-neutral-600 hover:text-neutral-900">
             Jobs
           </Link>
+          <Link href="/review" className="text-neutral-600 hover:text-neutral-900">
+            Review
+          </Link>
         </nav>
       </header>
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>

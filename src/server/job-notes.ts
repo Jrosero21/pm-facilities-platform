@@ -4,9 +4,9 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
-import { jobNotes, users } from "@/server/schema";
+import { clients, jobNotes, jobs, users } from "@/server/schema";
 import { getJob } from "@/server/jobs";
-import type { NoteVisibility } from "@/components/note-visibility-badge";
+import { isNoteVisibility, type NoteVisibility } from "@/components/note-visibility-badge";
 
 export type JobNoteRow = typeof jobNotes.$inferSelect;
 
@@ -39,6 +39,43 @@ export async function listJobNotes(tenantId: string, jobId: string) {
 }
 
 export type JobNoteListItem = Awaited<ReturnType<typeof listJobNotes>>[number];
+
+/**
+ * Tenant-wide vendor-updates inbox (Phase 18c, FB-10a.3) — the cross-job mirror
+ * of listJobNotes restricted to vendor-origin notes. Same users leftJoin for
+ * authorName, PLUS a job + client join for the row label (#jobNumber · client),
+ * matching 18b's DraftQueueItem labeling. Non-archived, newest first. PULL only.
+ * Note: no (tenant_id, origin) index exists — a tenant-prefix scan filtered on
+ * origin; banked as a soft perf item (job_notes_tenant_job_idx is the only index).
+ */
+export async function listVendorUpdates(tenantId: string) {
+  return db
+    .select({
+      id: jobNotes.id,
+      jobId: jobNotes.jobId,
+      body: jobNotes.body,
+      visibility: jobNotes.visibility,
+      origin: jobNotes.origin,
+      createdAt: jobNotes.createdAt,
+      authorName: users.name,
+      jobNumber: jobs.jobNumber,
+      clientName: clients.name,
+    })
+    .from(jobNotes)
+    .leftJoin(users, eq(jobNotes.createdByUserId, users.id))
+    .innerJoin(jobs, eq(jobs.id, jobNotes.jobId))
+    .innerJoin(clients, eq(clients.id, jobs.clientId))
+    .where(
+      and(
+        eq(jobNotes.tenantId, tenantId),
+        eq(jobNotes.origin, "vendor"),
+        ne(jobNotes.status, "archived"),
+      ),
+    )
+    .orderBy(desc(jobNotes.createdAt));
+}
+
+export type VendorUpdateItem = Awaited<ReturnType<typeof listVendorUpdates>>[number];
 
 /** One note by id, tenant-scoped. Null if missing/cross-tenant. */
 export async function getJobNote(
@@ -107,4 +144,59 @@ export async function createJobNote(
     .limit(1);
   if (!rows[0]) throw new Error("Note insert succeeded but row could not be reloaded.");
   return rows[0];
+}
+
+// FB-10l.2 promotion targets — the ONLY visibilities promoteNoteVisibility may set.
+// This keeps the writer a PROMOTION writer (operator shares a note outward), not a
+// general set-any-visibility mutator. internal_only / requires_review / vendor_visible
+// are NOT valid promotion targets here.
+const PROMOTION_TARGETS = ["client_visible", "client_and_vendor_visible"] as const;
+
+/**
+ * Operator-gated visibility promotion (Phase 18c, FB-10l.2) — flip a note's
+ * visibility to a client-facing value + write the audit record. The one net-new
+ * write of Phase 18. Operator authorization pattern: tenant-scoped via getJobNote
+ * (NOTE_NOT_FOUND), NOT the vendor-scope check. Single-row UPDATE (updated_at fires
+ * via onUpdateNow), audit OUTSIDE any txn (R-4.5), mirroring createJobNote.
+ *
+ * FORK 1 (locked): flip + audit ONLY. NO outbound — no communication_logs, no
+ * client_update_logs, no notification. The send path is Phase 19's.
+ *
+ * Throws: NOTE_NOT_FOUND, INVALID_PROMOTION_TARGET.
+ */
+export async function promoteNoteVisibility(input: {
+  tenantId: string;
+  noteId: string;
+  toVisibility: string;
+  actorUserId: string;
+}): Promise<JobNoteRow> {
+  const note = await getJobNote(input.tenantId, input.noteId);
+  if (!note) throw new Error("NOTE_NOT_FOUND");
+
+  if (
+    !isNoteVisibility(input.toVisibility) ||
+    !(PROMOTION_TARGETS as readonly string[]).includes(input.toVisibility)
+  ) {
+    throw new Error("INVALID_PROMOTION_TARGET");
+  }
+  const to = input.toVisibility as NoteVisibility;
+  const from = note.visibility;
+
+  await db
+    .update(jobNotes)
+    .set({ visibility: to })
+    .where(and(eq(jobNotes.tenantId, input.tenantId), eq(jobNotes.id, input.noteId)));
+
+  await writeAuditLog({
+    tenantId: input.tenantId,
+    userId: input.actorUserId,
+    action: "job_note.visibility_promoted",
+    targetType: "job_note",
+    targetId: input.noteId,
+    metadata: { jobId: note.jobId, from, to },
+  });
+
+  const updated = await getJobNote(input.tenantId, input.noteId);
+  if (!updated) throw new Error("Note update succeeded but row could not be reloaded.");
+  return updated;
 }

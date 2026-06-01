@@ -26,7 +26,8 @@
     "db:check:email-ingestion": "tsx --env-file=.env.local --conditions=react-server scripts/check-email-ingestion.ts",
     "db:check:pm-generation": "tsx --env-file=.env.local --conditions=react-server scripts/check-pm-generation.ts",
     "db:check:snow-dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-snow-dispatch.ts",
-    "db:check:chatbot-assistant": "tsx --env-file=.env.local --conditions=react-server scripts/check-chatbot-assistant.ts"
+    "db:check:chatbot-assistant": "tsx --env-file=.env.local --conditions=react-server scripts/check-chatbot-assistant.ts",
+    "db:check:operator-review": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-review.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
