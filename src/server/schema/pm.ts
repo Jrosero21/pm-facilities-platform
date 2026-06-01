@@ -16,6 +16,7 @@ import { users } from "./auth";
 import { clients, clientLocations } from "./clients";
 import { trades } from "./trades";
 import { priorities } from "./job-reference";
+import { jobs } from "./jobs";
 
 // ── Phase 14 batch 14c (migration 0036) — PREVENTATIVE-MAINTENANCE CORE ────────────────
 // PM is a fan-out engine: one program → a recurring schedule → an explicit subset of a
@@ -173,5 +174,144 @@ export const pmScheduleLocations = mysqlTable(
     index("pm_schedule_locations_tenant_idx").on(t.tenantId),
     index("pm_schedule_locations_schedule_idx").on(t.pmScheduleId),
     index("pm_schedule_locations_location_idx").on(t.clientLocationId),
+  ],
+);
+
+// ── Phase 14 batch 14c (migration 0037) — PM OCCURRENCE substrate ──────────────────────
+// The fan-out output: pm_generation_runs (the F2 batch-event record with requested/generated/
+// skipped counts), pm_visits (one scheduled occurrence per location — F5: SPAWNS a job, linked
+// via job_id nullable-until-spawned), and pm_assets (a LIGHTWEIGHT reference only — B-14.5, NOT
+// EAM lifecycle). pm_generation_runs is declared BEFORE pm_visits so pm_visits' FK target exists.
+//
+// PKs = uuidv7 varchar(36) (the locked 0036 convention, matches all live tables). FKs pre-named
+// (WP-12.2). DELETE RULES (per the 0036 precedent):
+//   tenant_id → CASCADE everywhere.
+//   pm_generation_runs.pm_schedule_id → CASCADE (a run has no value without its schedule);
+//     created_by_user_id → SET NULL (SYSTEM user for auto runs; preserve the run if the user is removed).
+//   pm_visits.pm_schedule_id → CASCADE; client_location_id → CASCADE (membership-bound);
+//     pm_generation_run_id → SET NULL (preserve the visit if a run record is purged — audit-survive);
+//     job_id → SET NULL (F5: the spawned job is independent; deleting it must not delete the visit
+//     occurrence — the email_work_order_drafts.created_job_id SET-NULL precedent exactly).
+//   pm_assets: client_location_id → CASCADE (an asset has no meaning without its location).
+
+const generationStatusEnum = ["generated", "skipped", "pending_review"] as const;
+
+// ── pm_generation_runs (the F2 batch-event record) — declared before pm_visits (FK target) ──
+export const pmGenerationRuns = mysqlTable(
+  "pm_generation_runs",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    pmScheduleId: varchar("pm_schedule_id", { length: 36 }).notNull(),
+    requestedCount: int("requested_count").notNull().default(0), // locations the fan-out attempted
+    generatedCount: int("generated_count").notNull().default(0), // visits/jobs created
+    skippedCount: int("skipped_count").notNull().default(0), // skip-and-flag failures (F2)
+    runAt: datetime("run_at").notNull(),
+    createdByUserId: varchar("created_by_user_id", { length: 36 }), // SYSTEM for auto runs
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_pm_gen_runs_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmScheduleId],
+      foreignColumns: [pmSchedules.id],
+      name: "fk_pm_gen_runs_schedule",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.createdByUserId],
+      foreignColumns: [users.id],
+      name: "fk_pm_gen_runs_created_by",
+    }).onDelete("set null"),
+    index("pm_generation_runs_tenant_idx").on(t.tenantId),
+    index("pm_generation_runs_schedule_idx").on(t.pmScheduleId),
+    index("pm_generation_runs_created_by_idx").on(t.createdByUserId),
+  ],
+);
+
+// ── pm_visits (one scheduled occurrence per location; F5 spawns a job) ──
+export const pmVisits = mysqlTable(
+  "pm_visits",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    pmScheduleId: varchar("pm_schedule_id", { length: 36 }).notNull(),
+    clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
+    pmGenerationRunId: varchar("pm_generation_run_id", { length: 36 }), // which batch produced it
+    dueAt: datetime("due_at").notNull(),
+    generationStatus: mysqlEnum("generation_status", generationStatusEnum).notNull(),
+    skipReason: varchar("skip_reason", { length: 512 }), // F2 skip-and-flag detail; null unless skipped
+    jobId: varchar("job_id", { length: 36 }), // F5 spawn link; null until spawned
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_pm_visits_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmScheduleId],
+      foreignColumns: [pmSchedules.id],
+      name: "fk_pm_visits_schedule",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.clientLocationId],
+      foreignColumns: [clientLocations.id],
+      name: "fk_pm_visits_location",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.pmGenerationRunId],
+      foreignColumns: [pmGenerationRuns.id],
+      name: "fk_pm_visits_run",
+    }).onDelete("set null"),
+    foreignKey({
+      columns: [t.jobId],
+      foreignColumns: [jobs.id],
+      name: "fk_pm_visits_job",
+    }).onDelete("set null"),
+    index("pm_visits_tenant_idx").on(t.tenantId),
+    index("pm_visits_schedule_idx").on(t.pmScheduleId),
+    index("pm_visits_location_idx").on(t.clientLocationId),
+    index("pm_visits_run_idx").on(t.pmGenerationRunId),
+    index("pm_visits_job_idx").on(t.jobId),
+    index("pm_visits_tenant_status_idx").on(t.tenantId, t.generationStatus),
+  ],
+);
+
+// ── pm_assets (LIGHTWEIGHT reference only — B-14.5, NOT EAM lifecycle) ──
+export const pmAssets = mysqlTable(
+  "pm_assets",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 }).notNull(),
+    clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull(),
+    assetType: varchar("asset_type", { length: 128 }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tenantId],
+      foreignColumns: [tenants.id],
+      name: "fk_pm_assets_tenant",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [t.clientLocationId],
+      foreignColumns: [clientLocations.id],
+      name: "fk_pm_assets_location",
+    }).onDelete("cascade"),
+    index("pm_assets_tenant_idx").on(t.tenantId),
+    index("pm_assets_location_idx").on(t.clientLocationId),
   ],
 );
