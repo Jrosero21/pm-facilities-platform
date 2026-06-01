@@ -14,3 +14,5 @@ pnpm-debug.log*
 
 # Claude Code tooling state (local)
 .claude/
+
+/pmsr.md
