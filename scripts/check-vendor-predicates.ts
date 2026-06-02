@@ -372,7 +372,7 @@ async function checkAssignmentActionsSmoke() {
     assignmentId: sentAssignmentId,
     tenantId,
     vendorScope: scope,
-    actorUserId: user.id,
+    actor: { kind: "user", userId: user.id },
   });
   const [afterRow] = await db
     .select({ statusId: jobVendorAssignments.currentStatusId })
@@ -403,7 +403,7 @@ async function checkAssignmentActionsSmoke() {
       assignmentId: sentAssignmentId,
       tenantId,
       vendorScope: scope,
-      actorUserId: user.id,
+      actor: { kind: "user", userId: user.id },
     });
   } catch (err) {
     notInStatus =
@@ -418,7 +418,7 @@ async function checkAssignmentActionsSmoke() {
       assignmentId: sentAssignmentId,
       tenantId,
       vendorScope: new Set(["bogus-vendor-id"]),
-      actorUserId: user.id,
+      actor: { kind: "user", userId: user.id },
     });
   } catch (err) {
     scopeMismatch =
@@ -589,7 +589,7 @@ async function checkVendorAttachmentsVisibilityFilter() {
     assignmentId: asn.id,
     tenantId: tenant.id,
     vendorScope: scope,
-    actorUserId: vendorUser.id,
+    actor: { kind: "user", userId: vendorUser.id },
     title: "[10m-harness] write smoke",
   });
   check(
@@ -621,7 +621,7 @@ async function checkVendorAttachmentsVisibilityFilter() {
       assignmentId: asn.id,
       tenantId: tenant.id,
       vendorScope: new Set(["bogus-vendor-id"]),
-      actorUserId: vendorUser.id,
+      actor: { kind: "user", userId: vendorUser.id },
       title: "[10m-harness] should not land",
     });
   } catch (err) {
@@ -709,7 +709,7 @@ async function checkVendorInvoiceSubmission() {
     assignmentId: asn.id,
     tenantId: tenant.id,
     vendorScope: scope,
-    actorUserId: vendorUser.id,
+    actor: { kind: "user", userId: vendorUser.id },
     invoiceNumber: "[10n-harness] write smoke",
     lineItems: [
       { category: "labor", description: "harness labor", quantity: "1", unitPrice: "50.00" },
@@ -744,7 +744,7 @@ async function checkVendorInvoiceSubmission() {
       assignmentId: asn.id,
       tenantId: tenant.id,
       vendorScope: scope,
-      actorUserId: vendorUser.id,
+      actor: { kind: "user", userId: vendorUser.id },
       lineItems: [],
     });
   } catch (err) {
@@ -760,7 +760,7 @@ async function checkVendorInvoiceSubmission() {
       assignmentId: asn.id,
       tenantId: tenant.id,
       vendorScope: new Set(["bogus-vendor"]),
-      actorUserId: vendorUser.id,
+      actor: { kind: "user", userId: vendorUser.id },
       lineItems: [{ category: "labor", description: "x", quantity: "1", unitPrice: "1" }],
     });
   } catch (err) {

@@ -70,7 +70,7 @@ export async function submitVendorInvoiceAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       invoiceNumber:
         typeof invoiceNumber === "string" && invoiceNumber.length > 0
           ? invoiceNumber

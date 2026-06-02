@@ -56,7 +56,7 @@ export async function createVendorPhotoPlaceholderAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       title: titleRaw.trim(),
       file,
     });

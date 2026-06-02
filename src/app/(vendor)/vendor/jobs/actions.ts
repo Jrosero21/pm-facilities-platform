@@ -44,7 +44,7 @@ export async function acceptDispatchAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
     });
   } catch (err) {
     return toResult(err);
@@ -63,7 +63,7 @@ export async function declineDispatchAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       reason: reason ?? null,
     });
   } catch (err) {
@@ -91,7 +91,7 @@ export async function confirmEtaAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       etaStartAt: start,
       etaEndAt: end,
       note: note ?? null,
@@ -112,7 +112,7 @@ export async function confirmScheduleAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
     });
   } catch (err) {
     return toResult(err);
@@ -131,7 +131,7 @@ export async function markOnSiteAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       note: note ?? null,
     });
   } catch (err) {
@@ -151,7 +151,7 @@ export async function markWorkCompleteAction(
       assignmentId,
       tenantId: ctx.activeTenant.tenantId,
       vendorScope: ctx.vendorScope,
-      actorUserId: ctx.user.id,
+      actor: { kind: "user", userId: ctx.user.id },
       note: note ?? null,
     });
   } catch (err) {

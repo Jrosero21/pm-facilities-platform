@@ -11,6 +11,7 @@ import {
   auditLogs,
 } from "@/server/schema";
 import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
+import { type VendorActor, LINKLESS_ACTOR_LABEL } from "@/server/vendor/types";
 
 // ── Phase 10 batch 10k-actions — VENDOR ASSIGNMENT TRANSITIONS ──────────────
 // Six vendor-driven status transitions, server-only. Each mirrors sendDispatch
@@ -46,7 +47,7 @@ type BaseInput = {
   assignmentId: string;
   tenantId: string;
   vendorScope: Set<string>;
-  actorUserId: string;
+  actor: VendorActor;
 };
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -97,12 +98,17 @@ async function performTransition(
       .set({ currentStatusId: to.id, ...(opts.extraSet ?? {}) })
       .where(eq(jobVendorAssignments.id, input.assignmentId));
 
+    // Author/audit attribution: registered user carries the user id; a linkless (no-account)
+    // vendor carries NULL author + the token (status_history is assignment-scoped, so it needs
+    // no source_token_id — only notes/photos do).
+    const changedByUserId = input.actor.kind === "user" ? input.actor.userId : null;
+
     await tx.insert(jobVendorAssignmentStatusHistory).values({
       tenantId: input.tenantId,
       assignmentId: input.assignmentId,
       fromStatusId: from.id,
       toStatusId: to.id,
-      changedByUserId: input.actorUserId,
+      changedByUserId,
       note: opts.note ?? null,
     });
 
@@ -110,7 +116,8 @@ async function performTransition(
 
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId,
-      userId: input.actorUserId,
+      userId: input.actor.kind === "user" ? input.actor.userId : null,
+      actorLabel: input.actor.kind === "linkless" ? LINKLESS_ACTOR_LABEL : null,
       action: auditAction,
       targetType: "job_vendor_assignment",
       targetId: input.assignmentId,
@@ -118,7 +125,8 @@ async function performTransition(
         jobId: assignment.jobId,
         vendorId: assignment.vendorId,
         actor: "vendor",
-        via: "vendor_portal",
+        via: input.actor.kind === "user" ? "vendor_portal" : "magic_link",
+        ...(input.actor.kind === "linkless" ? { tokenId: input.actor.tokenId } : {}),
         ...(opts.auditMetadata ?? {}),
       },
     });
@@ -174,7 +182,7 @@ export async function confirmEta(
           etaStartAt: input.etaStartAt,
           etaEndAt: input.etaEndAt ?? null,
           note: input.note ?? null,
-          confirmedByUserId: input.actorUserId,
+          confirmedByUserId: input.actor.kind === "user" ? input.actor.userId : null,
         });
       },
     },
@@ -208,7 +216,7 @@ export async function markOnSite(
           assignmentId: input.assignmentId,
           occurredAt: sql`now()`,
           note: input.note ?? null,
-          recordedByUserId: input.actorUserId,
+          recordedByUserId: input.actor.kind === "user" ? input.actor.userId : null,
         });
       },
     },
@@ -233,7 +241,7 @@ export async function markWorkComplete(
           assignmentId: input.assignmentId,
           occurredAt: sql`now()`,
           note: input.note ?? null,
-          recordedByUserId: input.actorUserId,
+          recordedByUserId: input.actor.kind === "user" ? input.actor.userId : null,
         });
       },
     },

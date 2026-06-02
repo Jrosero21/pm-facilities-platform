@@ -6,6 +6,7 @@ import {
 } from "@/server/billing/vendor-invoices";
 import { getAssignmentDetail } from "@/server/dispatch";
 import { canSubmitVendorInvoice } from "@/server/role-predicates";
+import { type VendorActor } from "@/server/vendor/types";
 
 /**
  * Vendor submits an invoice via the vendor portal.
@@ -31,7 +32,7 @@ export async function submitVendorInvoice(input: {
   assignmentId: string;
   tenantId: string;
   vendorScope: Set<string>;
-  actorUserId: string;
+  actor: VendorActor;
   invoiceNumber?: string;
   invoiceDate?: Date;
   notes?: string;
@@ -77,7 +78,10 @@ export async function submitVendorInvoice(input: {
     invoiceNumber: input.invoiceNumber ?? null,
     invoiceDate: input.invoiceDate ?? null,
     notes: input.notes ?? null,
-    createdByUserId: input.actorUserId,
+    // Registered vendor → user author; linkless → NULL author. (Invoice is NOT exposed on the
+    // link surface in slice 4, so the linkless branch is unreachable here; mapped for the
+    // uniform actor shape. No source_token_id — vendor_invoices has no author-filtered reader.)
+    createdByUserId: input.actor.kind === "user" ? input.actor.userId : null,
     lineItems,
   });
 }

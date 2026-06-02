@@ -3,6 +3,7 @@ import "server-only";
 import { getAssignmentDetail } from "@/server/dispatch";
 import { canActOnAssignment } from "@/server/role-predicates";
 import { createJobNote } from "@/server/job-notes";
+import { type VendorActor, LINKLESS_ACTOR_LABEL } from "@/server/vendor/types";
 
 /**
  * Vendor creates a note on an assignment's parent job.
@@ -19,7 +20,7 @@ export async function createVendorNote(input: {
   assignmentId: string;
   tenantId: string;
   vendorScope: Set<string>;
-  actorUserId: string;
+  actor: VendorActor;
   body: string;
 }) {
   const assignment = await getAssignmentDetail(input.tenantId, input.assignmentId);
@@ -38,7 +39,11 @@ export async function createVendorNote(input: {
     jobId: assignment.jobId,
     body: input.body,
     visibility: "internal_only",
-    createdByUserId: input.actorUserId,
     origin: "vendor",
+    // Registered vendor → user author, no token. Linkless → NULL author + token provenance
+    // (so the token surface reads it back by assignment) + the linkless audit label.
+    createdByUserId: input.actor.kind === "user" ? input.actor.userId : null,
+    sourceTokenId: input.actor.kind === "linkless" ? input.actor.tokenId : null,
+    auditActorLabel: input.actor.kind === "linkless" ? LINKLESS_ACTOR_LABEL : null,
   });
 }

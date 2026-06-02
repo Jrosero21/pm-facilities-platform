@@ -164,7 +164,7 @@ async function main() {
     console.log("\n[1] upload happy path (capture backend)");
     resetCaptured();
     const up = await createVendorPhotoPlaceholder({
-      assignmentId: a1, tenantId: tAId, vendorScope: scope1, actorUserId: user1,
+      assignmentId: a1, tenantId: tAId, vendorScope: scope1, actor: { kind: "user", userId: user1 },
       title: "Before service", file: { bytes: PNG, contentType: "image/png", size: PNG.length },
     });
     createdAttachmentIds.push(up.id);
@@ -181,7 +181,7 @@ async function main() {
     // ════════ 2. PLACEHOLDER PATH ════════
     console.log("\n[2] placeholder path (no file)");
     resetCaptured();
-    const ph = await createVendorPhotoPlaceholder({ assignmentId: a1, tenantId: tAId, vendorScope: scope1, actorUserId: user1, title: "Placeholder only" });
+    const ph = await createVendorPhotoPlaceholder({ assignmentId: a1, tenantId: tAId, vendorScope: scope1, actor: { kind: "user", userId: user1 }, title: "Placeholder only" });
     createdAttachmentIds.push(ph.id);
     const [rowPh] = await db.select().from(jobAttachments).where(eq(jobAttachments.id, ph.id));
     check("2a: storage_key NULL (placeholder)", rowPh.storageKey === null);
@@ -221,7 +221,7 @@ async function main() {
     process.env.STORAGE_FORCE_FAIL = "1";
     let threwPutFailed = false;
     try {
-      await createVendorPhotoPlaceholder({ assignmentId: a1, tenantId: tAId, vendorScope: scope1, actorUserId: user1, title: "should not persist", file: { bytes: PNG, contentType: "image/png", size: PNG.length } });
+      await createVendorPhotoPlaceholder({ assignmentId: a1, tenantId: tAId, vendorScope: scope1, actor: { kind: "user", userId: user1 }, title: "should not persist", file: { bytes: PNG, contentType: "image/png", size: PNG.length } });
     } catch (e) {
       threwPutFailed = (e as Error).message === "STORAGE_PUT_FAILED";
     } finally {

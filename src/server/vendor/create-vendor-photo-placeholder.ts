@@ -7,6 +7,7 @@ import { jobAttachments } from "@/server/schema";
 import { getAssignmentDetail } from "@/server/dispatch";
 import { canActOnAssignment } from "@/server/role-predicates";
 import { getStorageProvider } from "@/lib/integrations/storage";
+import { type VendorActor, LINKLESS_ACTOR_LABEL } from "@/server/vendor/types";
 
 // MIME → file extension (derived from content type, NOT the filename). The allowlist itself
 // is enforced at the action layer; this map covers the accepted image types.
@@ -41,7 +42,7 @@ export async function createVendorPhotoPlaceholder(input: {
   assignmentId: string;
   tenantId: string;
   vendorScope: Set<string>;
-  actorUserId: string;
+  actor: VendorActor;
   title: string;
   // Phase 20 (20b) — real bytes. Absent → the existing placeholder path (storage_key NULL).
   // Present → put-to-storage FIRST, then insert; a failed put writes NO row (the safe residue
@@ -59,6 +60,13 @@ export async function createVendorPhotoPlaceholder(input: {
   ) {
     throw new Error("VENDOR_SCOPE_MISMATCH");
   }
+
+  // Attribution (registered user vs linkless token), applied uniformly to both branches.
+  const uploadedByUserId = input.actor.kind === "user" ? input.actor.userId : null;
+  const sourceTokenId = input.actor.kind === "linkless" ? input.actor.tokenId : null;
+  const auditActorLabel = input.actor.kind === "linkless" ? LINKLESS_ACTOR_LABEL : null;
+  const auditVia = input.actor.kind === "user" ? "vendor_portal" : "magic_link";
+  const auditTokenMeta = input.actor.kind === "linkless" ? { tokenId: input.actor.tokenId } : {};
 
   // ── Real-upload branch: storage put BEFORE the DB insert ──────────────────────────────
   if (input.file) {
@@ -81,7 +89,8 @@ export async function createVendorPhotoPlaceholder(input: {
       title: input.title,
       attachmentType: "photo",
       visibility: "internal_only",
-      uploadedByUserId: input.actorUserId,
+      uploadedByUserId,
+      sourceTokenId,
       storageKey: key,
       checksum: put.checksum,
       storageProvider: provider.name,
@@ -92,7 +101,8 @@ export async function createVendorPhotoPlaceholder(input: {
 
     await writeAuditLog({
       tenantId: input.tenantId,
-      userId: input.actorUserId,
+      userId: uploadedByUserId,
+      actorLabel: auditActorLabel,
       action: "job_attachment.uploaded",
       targetType: "job_attachment",
       targetId: attachmentId,
@@ -106,7 +116,8 @@ export async function createVendorPhotoPlaceholder(input: {
         checksum: put.checksum,
         storageProvider: provider.name,
         actor: "vendor",
-        via: "vendor_portal",
+        via: auditVia,
+        ...auditTokenMeta,
       },
     });
 
@@ -122,14 +133,16 @@ export async function createVendorPhotoPlaceholder(input: {
     title: input.title,
     attachmentType: "photo",
     visibility: "internal_only",
-    uploadedByUserId: input.actorUserId,
+    uploadedByUserId,
+    sourceTokenId,
     // file_url / file_size_bytes / file_mime_type / storage_key intentionally omitted → NULL
     // (the placeholder marker).
   });
 
   await writeAuditLog({
     tenantId: input.tenantId,
-    userId: input.actorUserId,
+    userId: uploadedByUserId,
+    actorLabel: auditActorLabel,
     action: "job_attachment.placeholder_created",
     targetType: "job_attachment",
     targetId: attachmentId,
@@ -139,7 +152,8 @@ export async function createVendorPhotoPlaceholder(input: {
       attachmentType: "photo",
       placeholder: true,
       actor: "vendor",
-      via: "vendor_portal",
+      via: auditVia,
+      ...auditTokenMeta,
     },
   });
 

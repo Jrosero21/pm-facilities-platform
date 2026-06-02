@@ -95,12 +95,18 @@ export type CreateJobNoteInput = {
   jobId: string;
   body: string;
   visibility?: NoteVisibility;
-  createdByUserId: string;
+  // Widened to nullable (Phase 21): a linkless (no-account) vendor note carries NULL author +
+  // source_token_id provenance. Operator/client callers still pass a string — unchanged.
+  createdByUserId: string | null;
   // Provenance (Phase 10 Fork 4). Default 'operator'; the vendor note path
   // (createVendorNote) passes 'vendor'; the client note path (createClientNote,
   // Phase 11 11g) passes 'client'. App-enforced — the column is varchar(16), so
   // new origins widen this union without a migration (schema lock's documented intent).
   origin?: "operator" | "vendor" | "client";
+  // Phase 21 — linkless provenance + audit actor label. Both optional/null for registered
+  // (operator/client/registered-vendor) callers, so their row + audit are byte-identical.
+  sourceTokenId?: string | null;
+  auditActorLabel?: string | null;
 };
 
 /**
@@ -126,15 +132,20 @@ export async function createJobNote(
     visibility: input.visibility ?? "internal_only",
     origin: input.origin ?? "operator",
     createdByUserId: input.createdByUserId,
+    sourceTokenId: input.sourceTokenId ?? null,
   });
 
   await writeAuditLog({
     tenantId: input.tenantId,
     userId: input.createdByUserId,
+    actorLabel: input.auditActorLabel ?? null,
     action: "job_note.created",
     targetType: "job_note",
     targetId: id,
-    metadata: { jobId: input.jobId },
+    metadata: {
+      jobId: input.jobId,
+      ...(input.sourceTokenId ? { sourceTokenId: input.sourceTokenId } : {}),
+    },
   });
 
   const rows = await db
