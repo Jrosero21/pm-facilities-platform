@@ -316,6 +316,13 @@
       "when": 1780359678843,
       "tag": "0044_premium_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "5",
+      "when": 1780372981123,
+      "tag": "0045_broken_hulk",
+      "breakpoints": true
     }
   ]
 }
