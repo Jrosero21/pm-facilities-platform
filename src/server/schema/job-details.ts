@@ -12,6 +12,7 @@ import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
+import { magicLinkTokens } from "./magic-links";
 
 const statusEnum = ["active", "inactive", "archived"] as const;
 
@@ -87,6 +88,14 @@ export const jobNotes = mysqlTable(
       () => users.id,
       { onDelete: "set null" },
     ),
+    // Phase 21 (0044) — provenance for linkless (no-account) vendor writes. NULL for
+    // registered-vendor / operator writes (created_by_user_id carries author then); set to the
+    // magic-link token when a tokenless vendor wrote the row, so the token surface can scope
+    // reads by assignment without an author. FK set null.
+    sourceTokenId: varchar("source_token_id", { length: 36 }).references(
+      () => magicLinkTokens.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
@@ -134,6 +143,14 @@ export const jobAttachments = mysqlTable(
       .default("internal_only"),
     uploadedByUserId: varchar("uploaded_by_user_id", { length: 36 }).references(
       () => users.id,
+      { onDelete: "set null" },
+    ),
+    // Phase 21 (0044) — provenance for linkless (no-account) vendor uploads. NULL for
+    // registered-vendor uploads (uploaded_by_user_id carries author then); set to the
+    // magic-link token when a tokenless vendor uploaded, so the token surface can scope reads
+    // by assignment without an author (preserving Phase-20 cross-vendor isolation). FK set null.
+    sourceTokenId: varchar("source_token_id", { length: 36 }).references(
+      () => magicLinkTokens.id,
       { onDelete: "set null" },
     ),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),

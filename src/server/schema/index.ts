@@ -16,6 +16,7 @@ export * from "./dispatch-reference";
 export * from "./dispatch-assignments";
 export * from "./dispatch-comms";
 export * from "./dispatch-presence";
+export * from "./magic-links";
 export * from "./communications";
 export * from "./portal-updates";
 export * from "./agents-substrate";
