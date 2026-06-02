@@ -323,6 +323,13 @@
       "when": 1780372981123,
       "tag": "0045_broken_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "5",
+      "when": 1780427498391,
+      "tag": "0046_groovy_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }
