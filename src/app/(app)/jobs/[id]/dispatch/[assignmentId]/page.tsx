@@ -4,6 +4,9 @@ import { requireTenant } from "@/server/auth-context";
 import { getAssignmentDetail } from "@/server/dispatch";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { SendDispatchButton } from "@/components/send-dispatch-button";
+import { VendorLinkSection } from "@/components/vendor-link-section";
+import { getVendorContact } from "@/server/vendor-contacts";
+import { listAssignmentTokens } from "@/server/magic-links/list-assignment-tokens";
 import {
   complianceLabel,
   geoMatchLabel,
@@ -40,6 +43,12 @@ export default async function AssignmentDetailPage({
   const a = await getAssignmentDetail(tenantId, assignmentId);
   // Guard: assignment must exist AND belong to the job in the URL.
   if (!a || a.jobId !== id) notFound();
+
+  // Vendor-link controls: is there a deliverable recipient email, and the existing tokens.
+  const recipientEmail = a.vendorContactId
+    ? (await getVendorContact(tenantId, a.vendorContactId))?.email ?? null
+    : null;
+  const linkTokens = await listAssignmentTokens(tenantId, assignmentId);
 
   const facts: { label: string; value: string | null }[] = [
     { label: "Vendor", value: a.vendorName },
@@ -129,6 +138,13 @@ export default async function AssignmentDetailPage({
           </p>
         </div>
       )}
+
+      <VendorLinkSection
+        jobId={id}
+        assignmentId={assignmentId}
+        tokens={linkTokens}
+        hasRecipientEmail={recipientEmail !== null}
+      />
     </div>
   );
 }
