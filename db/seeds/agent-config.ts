@@ -75,40 +75,50 @@ const REWRITER_POLICY = { requiresReview: true };
 
 // All agents seeded here share the model footprint + variant; one row each in the two
 // *_defaults tables. (Q-7.x: split into per-agent seed files when a 3rd agent lands.)
-type AgentSeed = { agentId: string; systemPrompt: string; policy: Record<string, unknown> };
+// systemPrompt is OPTIONAL: a rule-based / LLM-free agent (dispatch_router_v1) has NO prompt
+// template — it seeds a policy default ONLY, never an ai_prompt_template_defaults row (that
+// table's system_prompt is NOT NULL; a fake prompt would misrepresent a rule-based agent).
+type AgentSeed = { agentId: string; systemPrompt?: string; policy: Record<string, unknown> };
 const AGENT_SEEDS: AgentSeed[] = [
   { agentId: AGENT_ID, systemPrompt: SCOPE_SYSTEM_PROMPT, policy: POLICY },
   { agentId: "update_rewriter_v1", systemPrompt: REWRITER_SYSTEM_PROMPT, policy: REWRITER_POLICY },
+  // Phase 23 23d — dispatch_router_v1: rule-based Tier-2 auto-dispatch. POLICY DEFAULT ONLY
+  // (no prompt). Resolves fail-safe-gated from birth: { requiresReview: true }, byte-matching
+  // the other two defaults. Enforcement (disposition / auto-advance) is a later batch.
+  { agentId: "dispatch_router_v1", policy: { requiresReview: true } },
 ];
 
 async function main() {
   console.log("[seed:agent-config] starting");
 
   for (const cfg of AGENT_SEEDS) {
-    // ai_prompt_template_defaults (F1: UNIQUE(agent_id, variant)) — idempotent.
-    const existingPrompt = await db
-      .select({ id: aiPromptTemplateDefaults.id })
-      .from(aiPromptTemplateDefaults)
-      .where(
-        and(
-          eq(aiPromptTemplateDefaults.agentId, cfg.agentId),
-          eq(aiPromptTemplateDefaults.variant, VARIANT),
-        ),
-      )
-      .limit(1);
+    // ai_prompt_template_defaults (F1: UNIQUE(agent_id, variant)) — idempotent. SKIPPED for
+    // a rule-based agent (no systemPrompt): it has no prompt template to seed.
     let promptInserted = 0;
-    if (existingPrompt.length === 0) {
-      await db.insert(aiPromptTemplateDefaults).values({
-        agentId: cfg.agentId,
-        variant: VARIANT,
-        version: 1,
-        status: "active",
-        systemPrompt: cfg.systemPrompt,
-        userPromptTemplate: null,
-        modelHint: MODEL_HINT,
-        temperature: TEMPERATURE,
-      });
-      promptInserted = 1;
+    if (cfg.systemPrompt !== undefined) {
+      const existingPrompt = await db
+        .select({ id: aiPromptTemplateDefaults.id })
+        .from(aiPromptTemplateDefaults)
+        .where(
+          and(
+            eq(aiPromptTemplateDefaults.agentId, cfg.agentId),
+            eq(aiPromptTemplateDefaults.variant, VARIANT),
+          ),
+        )
+        .limit(1);
+      if (existingPrompt.length === 0) {
+        await db.insert(aiPromptTemplateDefaults).values({
+          agentId: cfg.agentId,
+          variant: VARIANT,
+          version: 1,
+          status: "active",
+          systemPrompt: cfg.systemPrompt,
+          userPromptTemplate: null,
+          modelHint: MODEL_HINT,
+          temperature: TEMPERATURE,
+        });
+        promptInserted = 1;
+      }
     }
 
     // agent_policy_defaults (F1: UNIQUE(agent_id)) — idempotent.
@@ -128,8 +138,10 @@ async function main() {
       policyInserted = 1;
     }
 
+    const promptStatus =
+      cfg.systemPrompt === undefined ? "n/a (rule-based)" : promptInserted ? "inserted" : "already present";
     console.log(
-      `[seed:agent-config] ${cfg.agentId} — prompt: ${promptInserted ? "inserted" : "already present"}; ` +
+      `[seed:agent-config] ${cfg.agentId} — prompt: ${promptStatus}; ` +
         `policy: ${policyInserted ? "inserted" : "already present"}`,
     );
   }

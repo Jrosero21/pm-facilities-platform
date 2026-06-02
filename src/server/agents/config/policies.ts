@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
-import { agentPolicies, agentPolicyDefaults } from "@/server/schema";
+import { agentPolicies, agentPolicyDefaults, tenantAutonomySettings } from "@/server/schema";
 import { SingleActiveInvariantViolated, ActivationTargetMismatch } from "./errors";
 
 // ── Phase 7 batch 7c — agent_policies resolver + F3 activate ──────────────────────────
@@ -13,8 +13,14 @@ import { SingleActiveInvariantViolated, ActivationTargetMismatch } from "./error
 
 export type ResolvedPolicy = {
   requiresReview: boolean;
+  // POLICY HALF only (Phase 23 23d): true requires BOTH an explicit policy opt-in
+  // (parsed.autonomyEnabled === true) AND no kill switch. The ceiling half (committed-$ /
+  // token meters) is a LATER batch — until it lands, autonomyEnabled does NOT yet imply an
+  // agent may auto-execute, and no enforcement branch reads it (disposition stays
+  // queued_for_review this batch).
+  autonomyEnabled: boolean;
   raw: unknown;
-  source: "tenant_client" | "tenant" | "default" | "fallback";
+  source: "kill_switch" | "tenant_client" | "tenant" | "default" | "fallback";
 };
 
 // R-6.19: MariaDB json() is physically longtext; mysql2 returns it as a STRING and Drizzle
@@ -31,7 +37,11 @@ function toResolved(rawPolicy: unknown, source: ResolvedPolicy["source"]): Resol
     }
   }
   const requiresReview = (parsed as { requiresReview?: unknown } | null)?.requiresReview !== false;
-  return { requiresReview, raw: parsed, source };
+  // POLICY HALF of autonomyEnabled — explicit-true required, mirroring the requiresReview
+  // fail-safe discipline (anything other than literal `true` keeps autonomy OFF). No ceiling
+  // check here (later batch). Phase 23 23d seeds nothing that sets this, so it resolves false.
+  const autonomyEnabled = (parsed as { autonomyEnabled?: unknown } | null)?.autonomyEnabled === true;
+  return { requiresReview, autonomyEnabled, raw: parsed, source };
 }
 
 /**
@@ -43,6 +53,22 @@ export async function resolveAgentPolicy(
   agentId: string,
   clientId: string | null = null,
 ): Promise<ResolvedPolicy> {
+  // 0. KILL SWITCH (§2.4) — the tenant's non-overridable layer, ABOVE all policy. The first
+  // reader of tenant_autonomy_settings (single-row lookup on tas_tenant_unique). If the row
+  // exists AND kill_switch is true, autonomy is globally OFF for this tenant: return gated
+  // immediately, for ANY agent, winning over every policy row below. A MISSING row means
+  // only "no kill switch set" — it does NOT enable autonomy and does NOT bypass anything; we
+  // fall through to the normal fail-safe-gated ladder. One extra independent query by design
+  // (the singleton db, no tx — uncached, like the rest of this resolver).
+  const ks = await db
+    .select({ killSwitch: tenantAutonomySettings.killSwitch })
+    .from(tenantAutonomySettings)
+    .where(eq(tenantAutonomySettings.tenantId, tenantId))
+    .limit(1);
+  if (ks[0]?.killSwitch) {
+    return { requiresReview: true, autonomyEnabled: false, raw: null, source: "kill_switch" };
+  }
+
   // 1. per-client-per-agent
   if (clientId) {
     const r = await db
@@ -84,7 +110,7 @@ export async function resolveAgentPolicy(
   if (r3[0]) return toResolved(r3[0].policy, "default");
 
   // 4. fail-safe
-  return { requiresReview: true, raw: null, source: "fallback" };
+  return { requiresReview: true, autonomyEnabled: false, raw: null, source: "fallback" };
 }
 
 /**

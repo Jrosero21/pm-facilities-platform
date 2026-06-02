@@ -46,6 +46,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "assistant_response",
     testOnly: false,
   },
+  dispatch_router_v1: {
+    id: "dispatch_router_v1",
+    name: "Dispatch Router",
+    description:
+      "Rule-based Tier-2 vendor auto-dispatch (Phase 22 mechanism, Phase 23 governed). Picks the top floor-filtered, preference-then-rank candidate and drafts a dispatch; governed by agent_policies + the tenant autonomy kill-switch. No LLM, no prompt template.",
+    inputSourceTypes: ["job"],
+    outputType: "dispatch_draft",
+    testOnly: false,
+  },
   test_stub_v1: {
     id: "test_stub_v1",
     name: "Test Stub Agent",
