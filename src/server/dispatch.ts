@@ -192,7 +192,9 @@ export type CreateDispatchInput = {
   scheduledStartAt?: Date | null;
   scheduledEndAt?: Date | null;
   dispatchScope?: string | null;
-  createdByUserId: string;
+  // string for a human operator; null for a system actor (Phase 22 auto-dispatch).
+  // All three write targets (assignment / status-history / audit) are nullable.
+  createdByUserId: string | null;
 };
 
 /**
