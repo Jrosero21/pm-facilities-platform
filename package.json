@@ -30,7 +30,8 @@
     "db:check:operator-review": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-review.ts",
     "db:check:notifications-send": "tsx --env-file=.env.local --conditions=react-server scripts/check-notifications-send.ts",
     "db:check:vendor-edge": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-20.ts",
-    "db:check:magic-link": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-21.ts"
+    "db:check:magic-link": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-21.ts",
+    "db:check:dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-22.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
