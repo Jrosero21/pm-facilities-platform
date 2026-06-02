@@ -36,10 +36,19 @@ export type VendorCandidate = {
   geoMatchTypes: GeoMatchType[];
   tightestGeoMatch: GeoMatchType;
   complianceStatus: ComplianceMatchStatus;
+  // Phase 22 (additive): the location's preferred rank for this vendor+trade —
+  // lower = stronger preference; null = not on the location's preferred list.
+  // Ordering signal only; it never filters the candidate set.
+  preferenceRank: number | null;
 };
 
 export type MatchFacets = {
   tenantId: string;
+  // Phase 22 (additive): scope for the per-location blocklist + preferred-vendor
+  // lookups. clientId is the blocklist's always-set anchor; clientLocationId
+  // scopes both the blocklist (location vs client-wide) and the preferred list.
+  clientId: string;
+  clientLocationId: string;
   tradeId: string;
   city: string;
   state: string;
@@ -60,7 +69,8 @@ const GEO_RANK_TO_TYPE: Record<number, GeoMatchType> = {
 export async function findCandidateVendorsForJobByFacets(
   facets: MatchFacets,
 ): Promise<VendorCandidate[]> {
-  const { tenantId, tradeId, city, state, postal } = facets;
+  const { tenantId, clientId, clientLocationId, tradeId, city, state, postal } =
+    facets;
   const stateUpper = state.trim().toUpperCase();
   // Qualified outer reference. Drizzle renders a bare vendors.id column
   // unqualified inside SELECT-list sql fragments, which is ambiguous against a
@@ -110,6 +120,15 @@ export async function findCandidateVendorsForJobByFacets(
       complianceStatus: sql<string>`CASE WHEN EXISTS (
         SELECT 1 FROM vendor_compliance vc WHERE vc.vendor_id = ${vid} AND vc.status = 'active'
       ) THEN 'ok' ELSE 'no_data' END`,
+      // Phase 22 (additive): the location's preferred rank for this vendor+trade.
+      // MIN(priority) → strongest rank if listed at several priorities; NULL when
+      // not preferred. Preference IS per-trade (trade clause present). This is an
+      // ordering signal only — it never appears in the WHERE, so it never filters.
+      preferenceRank: sql<number | null>`COALESCE((
+        SELECT MIN(p.priority) FROM location_preferred_vendors p
+        WHERE p.vendor_id = ${vid} AND p.status = 'active'
+          AND p.tenant_id = ${tenantId} AND p.client_location_id = ${clientLocationId} AND p.trade_id = ${tradeId}
+      ), NULL)`.as("preferenceRank"),
     })
     .from(vendors)
     .where(
@@ -131,9 +150,23 @@ export async function findCandidateVendorsForJobByFacets(
           SELECT 1 FROM vendor_compliance vc
           WHERE vc.vendor_id = ${vid} AND vc.status = 'active' AND vc.compliance_status IN ('expired','non_compliant')
         )`,
+        // Phase 22: not-blocklisted (exclusion-before-preference). A block is a
+        // COMPANY exclusion — it bars the vendor regardless of the job's trade, so
+        // there is NO trade clause. client_location_id NULL = a client-wide ban
+        // (all the client's locations); set = this-location-only.
+        sql`NOT EXISTS (
+          SELECT 1 FROM location_blocked_vendors b
+          WHERE b.vendor_id = ${vid} AND b.status = 'active'
+            AND b.tenant_id = ${tenantId} AND b.client_id = ${clientId}
+            AND (b.client_location_id IS NULL OR b.client_location_id = ${clientLocationId})
+        )`,
       ),
     )
-    .orderBy(sql`primaryTradeMatch DESC, tightestGeoRank ASC, ${vendors.name} ASC`);
+    // Phase 22: preference LEADS (preferred vendors first, lower priority wins);
+    // the existing three keys are the unchanged tiebreak tail.
+    .orderBy(
+      sql`(preferenceRank IS NULL) ASC, preferenceRank ASC, primaryTradeMatch DESC, tightestGeoRank ASC, ${vendors.name} ASC`,
+    );
 
   return rows.map((r) => {
     const hasVendorWide = Number(r.hasVendorWideTrade) > 0;
@@ -152,6 +185,7 @@ export async function findCandidateVendorsForJobByFacets(
       geoMatchTypes,
       tightestGeoMatch: GEO_RANK_TO_TYPE[Number(r.tightestGeoRank)],
       complianceStatus: r.complianceStatus as ComplianceMatchStatus,
+      preferenceRank: r.preferenceRank == null ? null : Number(r.preferenceRank),
     };
   });
 }
@@ -170,6 +204,8 @@ export async function findCandidateVendorsForJob(
   if (!location) return [];
   return findCandidateVendorsForJobByFacets({
     tenantId,
+    clientId: job.clientId,
+    clientLocationId: job.clientLocationId,
     tradeId: job.primaryTradeId,
     city: location.city,
     state: location.stateProvince,
