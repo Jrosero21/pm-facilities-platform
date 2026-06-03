@@ -77,6 +77,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           <Link href="/review" className="text-neutral-600 hover:text-neutral-900">
             Review
           </Link>
+          <Link href="/agents" className="text-neutral-600 hover:text-neutral-900">
+            AI Agents
+          </Link>
           <Link href="/notifications" className="text-neutral-600 hover:text-neutral-900">
             Notifications
           </Link>
