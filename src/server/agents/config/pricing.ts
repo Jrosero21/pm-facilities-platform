@@ -27,6 +27,14 @@ const MODEL_PRICES: Record<string, ModelPrice> = {
     inputPerToken: "0.000003", // $3.00 per 1M input tokens
     outputPerToken: "0.000015", // $15.00 per 1M output tokens
   },
+  // Phase 24 track B — OpenAI default. Prices from third-party trackers as of Jun 2026
+  // ($2.50 / 1M input, $15.00 / 1M output); CONFIRM against OpenAI's official pricing page
+  // when OPENAI_API_KEY is added. The exact model is swappable here (one line) without code
+  // change — OpenAI cost flows through agentCostByAgent via priceFor() on this key.
+  "openai/gpt-5.4": {
+    inputPerToken: "0.0000025", // $2.50 per 1M input tokens
+    outputPerToken: "0.000015", // $15.00 per 1M output tokens
+  },
 };
 
 /**

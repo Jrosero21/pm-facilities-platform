@@ -1,9 +1,9 @@
 import "server-only";
 
 import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
+import { buildProviderModel } from "@/server/agents/providers";
 import { buildUserPrompt } from "./prompt";
 import type { JobNoteRow } from "@/server/job-notes";
 import type { JobDetail } from "@/server/jobs";
@@ -77,8 +77,12 @@ export async function generateRewrite(input: {
 }): Promise<RewriteOutcome> {
   if (input.routing.mode === "mock") return mockRewrite();
 
-  // gateway → string model; direct → the anthropic() provider model (bare id).
-  const model = input.routing.mode === "gateway" ? input.routing.modelId : anthropic(input.routing.modelId);
+  // gateway → string model; direct → the registry-built provider model (anthropic today,
+  // provider-selectable in B2). Single call, single provider — no failover loop yet (B2).
+  const model =
+    input.routing.mode === "gateway"
+      ? input.routing.modelId
+      : buildProviderModel(input.routing.provider, input.routing.modelId);
   const result = await generateObject({
     model,
     schema: rewriteSchema,

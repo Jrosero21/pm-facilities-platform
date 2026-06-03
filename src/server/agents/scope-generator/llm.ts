@@ -1,9 +1,9 @@
 import "server-only";
 
 import { generateObject } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
 import { z } from "zod";
 import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
+import { buildProviderModel } from "@/server/agents/providers";
 import type { JobDetail } from "@/server/jobs";
 
 // ── Phase 7 batch 7c — scope generator LLM ────────────────────────────────────────────
@@ -93,7 +93,12 @@ export async function generateScope(input: {
 }): Promise<ScopeOutcome> {
   if (input.routing.mode === "mock") return mockScope();
 
-  const model = input.routing.mode === "gateway" ? input.routing.modelId : anthropic(input.routing.modelId);
+  // gateway → string model; direct → the registry-built provider model (anthropic today,
+  // provider-selectable in B2). Single call, single provider — no failover loop yet (B2).
+  const model =
+    input.routing.mode === "gateway"
+      ? input.routing.modelId
+      : buildProviderModel(input.routing.provider, input.routing.modelId);
   const result = await generateObject({
     model,
     schema: scopeSchema,

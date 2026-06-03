@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { ProviderName } from "./providers";
+
 // ── Phase 7 batch 7c — shared agent LLM routing (D4 extraction) ───────────────────────
 // Extracted from update-rewriter/llm.ts so every agent shares one routing decision (the
 // rewriter rewires to call this; behavior-preserving — verified by the D6 routing-parity
@@ -16,7 +18,11 @@ import "server-only";
 export type AgentRouting =
   | { mode: "mock" }
   | { mode: "gateway"; modelId: string; recordedModel: string }
-  | { mode: "direct"; modelId: string; recordedModel: string };
+  // Phase 24 track B — direct mode is now provider-parameterized. `provider` selects the SDK
+  // factory (via the provider registry) at the call site. Today's behavior = provider
+  // "anthropic" (byte-identical to the pre-B1 direct-Anthropic path); OpenAI selection arrives
+  // with the policy preference + failover loop in B2.
+  | { mode: "direct"; provider: ProviderName; modelId: string; recordedModel: string };
 
 export type RoutingOptions = {
   /** Agent-specific mock toggle env var, e.g. "REWRITER_MOCK" / "SCOPE_GEN_MOCK". */
@@ -43,7 +49,9 @@ export function resolveAgentRouting(opts: RoutingOptions): AgentRouting {
   }
   if (process.env.ANTHROPIC_API_KEY) {
     const modelId = process.env[opts.modelEnvVar] ?? opts.defaultDirectModel;
-    return { mode: "direct", modelId, recordedModel: `anthropic/${modelId}` };
+    // B1: direct always resolves provider "anthropic" (the only env-driven direct path today) —
+    // byte-identical to pre-B1. The `provider` field is the new plumbing for B2's preference.
+    return { mode: "direct", provider: "anthropic", modelId, recordedModel: `anthropic/${modelId}` };
   }
   return { mode: "mock" };
 }
