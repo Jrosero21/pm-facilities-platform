@@ -51,7 +51,6 @@
 export {}; // module isolation — keep this script's top-level `main()` out of the global scope
 // (a bare script's global `main()` collides with other harness scripts' — TS2393; CF-24.1).
 
-const RETENTION_DAYS = 180;
 const APPLY = process.argv.includes("--apply") || process.env.APPLY === "1";
 
 async function main() {
@@ -62,41 +61,27 @@ async function main() {
   }
   const dbName = url.match(/\/([^/?]+)(\?|$)/)?.[1] ?? "(unknown)";
 
+  const { db } = await import("@/server/db");
+  const { agentToolCalls, agentDecisions } = await import("@/server/schema");
+  // Eligibility predicate + counter are shared with the phase-24 harness (ONE implementation).
+  const { RETENTION_DAYS, toolCallsEligible, decisionsEligible, countEligibleAgentPayloads } =
+    await import("@/server/agents/retention");
+
   console.log("──────────────────────────────────────────────────────────────");
   console.log(`[retention] agent-payload retention — ${RETENTION_DAYS}-day policy`);
   console.log(`[retention] target DB: ${dbName}`);
   console.log(`[retention] mode: ${APPLY ? "APPLYING (will NULL aged payloads)" : "DRY RUN (no writes)"}`);
   console.log("──────────────────────────────────────────────────────────────");
 
-  const { and, count, isNotNull, sql } = await import("drizzle-orm");
-  const { db } = await import("@/server/db");
-  const { agentToolCalls, agentDecisions } = await import("@/server/schema");
-
-  // DB-side age threshold — evaluated against the DB's own created_at clock (never a JS Date).
-  const olderThan = (createdAt: typeof agentToolCalls.createdAt | typeof agentDecisions.createdAt) =>
-    sql`${createdAt} < NOW() - INTERVAL ${sql.raw(String(RETENTION_DAYS))} DAY`;
-
-  // Eligibility: aged AND still carrying a payload (idempotency — already-NULL rows skipped).
-  const toolCallsEligible = and(
-    olderThan(agentToolCalls.createdAt),
-    sql`(${agentToolCalls.toolInput} IS NOT NULL OR ${agentToolCalls.toolOutput} IS NOT NULL)`,
-  );
-  const decisionsEligible = and(olderThan(agentDecisions.createdAt), isNotNull(agentDecisions.metadata));
-
   if (!APPLY) {
-    // DRY RUN — count what WOULD be cleared; write nothing.
-    const tcCount = Number(
-      (await db.select({ n: count() }).from(agentToolCalls).where(toolCallsEligible))[0]?.n ?? 0,
-    );
-    const adCount = Number(
-      (await db.select({ n: count() }).from(agentDecisions).where(decisionsEligible))[0]?.n ?? 0,
-    );
+    // DRY RUN — count what WOULD be cleared (shared counter); write nothing.
+    const { toolCalls: tcCount, decisions: adCount, total } = await countEligibleAgentPayloads();
     console.log(`[retention] DRY RUN — eligible agent_tool_calls (tool_input/tool_output): ${tcCount}`);
     console.log(`[retention] DRY RUN — eligible agent_decisions (metadata): ${adCount}`);
     console.log(
-      tcCount + adCount === 0
+      total === 0
         ? "[retention] DRY RUN — nothing eligible; no-op. (Run with --apply when rows age past the window.)"
-        : `[retention] DRY RUN — re-run with --apply to NULL ${tcCount + adCount} payload row(s). NOTHING WAS WRITTEN.`,
+        : `[retention] DRY RUN — re-run with --apply to NULL ${total} payload row(s). NOTHING WAS WRITTEN.`,
     );
     return;
   }
