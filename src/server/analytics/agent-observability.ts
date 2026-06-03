@@ -22,6 +22,7 @@ import {
 } from "@/server/schema";
 import { priceFor } from "@/server/agents/config/pricing";
 import { summarizeSeconds } from "@/server/analytics/percentile";
+import { latestReviewPerDraft } from "@/server/analytics/correction-pairs";
 
 const DISPATCH_AGENT_ID = "dispatch_router_v1";
 
@@ -131,17 +132,14 @@ function classifyLatestReviews<T extends { draftId: string; decision: string; cr
   reviews: T[],
   editIsNull: (row: T) => boolean,
 ): ApproveAsIsCounts {
-  // newest first, then take the first seen per draft = the latest review for that draft
-  const sorted = [...reviews].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const latestByDraft = new Map<string, T>();
-  for (const r of sorted) {
-    if (!latestByDraft.has(r.draftId)) latestByDraft.set(r.draftId, r);
-  }
+  // latest-review-per-draft dedupe is the shared primitive (Phase 25 correction-pairs.ts) so the
+  // two readers can't drift on the rule; ordering is createdAt, owned there.
+  const latest = latestReviewPerDraft(reviews);
   let approvedAsIs = 0;
-  for (const r of latestByDraft.values()) {
+  for (const r of latest) {
     if (r.decision === "approve" && editIsNull(r)) approvedAsIs += 1;
   }
-  const reviewed = latestByDraft.size;
+  const reviewed = latest.length;
   return { reviewed, approvedAsIs, rate: reviewed === 0 ? 0 : approvedAsIs / reviewed };
 }
 

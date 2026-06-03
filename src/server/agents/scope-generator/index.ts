@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { scopeCorrectionPairs, selectFewShotPairs } from "@/server/analytics/correction-pairs";
 import { getJobDetailTool, createScopeDraftTool } from "./tools";
 import { generateScope, resolveScopeRouting } from "./llm";
 
@@ -61,8 +62,17 @@ export async function runScopeGenerator(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // Phase 25 feedback loop: mine this tenant's operator corrections (GOLD-first, cap 20, rejects
+    // excluded) and pass them as few-shot. Tenant-scoped, consistent with the reader. Skipped on the
+    // mock path. Near-empty today (sparse reviews) → the single-shot fallback inside generateScope;
+    // the machinery is what ships and sharpens as reviews accumulate (no fabricated data).
+    const fewShot =
+      routing.mode === "mock"
+        ? []
+        : selectFewShotPairs(await scopeCorrectionPairs(input.tenantId));
+
     // LLM transform (or deterministic mock). Provider preference + failover applied inside.
-    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature, failoverOrder });
+    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature, failoverOrder, fewShot });
     await logDecision(ctx, {
       decisionType: "scope_proposal",
       proposedAction: "Draft a scope of work from the problem description",

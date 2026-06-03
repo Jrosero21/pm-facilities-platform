@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { rewriterCorrectionPairs, selectFewShotPairs } from "@/server/analytics/correction-pairs";
 import {
   getJobNoteTool,
   getJobDetailTool,
@@ -75,10 +76,20 @@ export async function runRewriter(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // Phase 25 feedback loop: mine this tenant's operator corrections (GOLD-first, cap 20, rejects
+    // excluded) and pass them as few-shot. Tenant-scoped, consistent with the reader. Skipped on the
+    // mock path (deterministic stub never calls the LLM). Near-empty today (sparse reviews) → the
+    // single-shot fallback inside generateRewrite — the machinery is what ships and sharpens as
+    // reviews accumulate; we do NOT fabricate data to make it look richer.
+    const fewShot =
+      routing.mode === "mock"
+        ? []
+        : selectFewShotPairs(await rewriterCorrectionPairs(input.tenantId));
+
     // LLM transform (or deterministic mock under REWRITER_MOCK). Provider preference + failover
     // applied inside (direct-SDK path); the rewriter has no auto-execute path (§2.9 / R-6.15) and
     // ALWAYS queues for review.
-    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames, failoverOrder });
+    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames, failoverOrder, fewShot });
     await logDecision(ctx, {
       decisionType: "rewrite_proposal",
       proposedAction: "Draft a client-facing update from the source note",

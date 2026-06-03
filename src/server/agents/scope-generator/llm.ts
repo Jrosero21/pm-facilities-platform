@@ -4,6 +4,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
 import { buildCandidates, runWithFailover } from "@/server/agents/failover";
+import { buildFewShotMessages, type CorrectionPair } from "@/server/analytics/correction-pairs";
 import type { JobDetail } from "@/server/jobs";
 
 // ── Phase 7 batch 7c — scope generator LLM ────────────────────────────────────────────
@@ -93,20 +94,39 @@ export async function generateScope(input: {
   // B2: provider preference from the resolved policy JSON (resolved.raw.failoverOrder), threaded
   // by runScope. Absent/bad → today's single env-driven provider (fail-safe).
   failoverOrder?: unknown;
+  // Phase 25: operator-correction few-shot pairs (GOLD-first, selected by runScopeGenerator).
+  // Empty/absent → today's single-shot prompt (the invariant-preserving fallback).
+  fewShot?: CorrectionPair[];
 }): Promise<ScopeOutcome> {
   if (input.routing.mode === "mock") return mockScope();
+
+  // Few-shot prior turns from operator corrections (Phase 25). Empty → unchanged single-shot path.
+  const fewShotTurns = buildFewShotMessages(input.fewShot ?? []);
+  const userPrompt = buildScopeUserPrompt(input.job);
 
   // Ordered candidate chain from preference (allowlist+order, available providers only); else
   // the single env-driven base. Fail over to the next ONLY on a provider/transport error.
   const candidates = buildCandidates(input.routing, input.failoverOrder);
   return runWithFailover(candidates, async (candidate) => {
-    const result = await generateObject({
-      model: candidate.model,
-      schema: scopeSchema,
-      system: input.systemPrompt,
-      prompt: buildScopeUserPrompt(input.job),
-      temperature: input.temperature,
-    });
+    // System prompt, schema, temperature, and the failover wrap are unchanged. With corrections we
+    // prepend the few-shot turns before the real user prompt; with none we make the IDENTICAL
+    // single-shot call as before this phase (prompt: buildScopeUserPrompt(...)).
+    const result =
+      fewShotTurns.length > 0
+        ? await generateObject({
+            model: candidate.model,
+            schema: scopeSchema,
+            system: input.systemPrompt,
+            messages: [...fewShotTurns, { role: "user", content: userPrompt }],
+            temperature: input.temperature,
+          })
+        : await generateObject({
+            model: candidate.model,
+            schema: scopeSchema,
+            system: input.systemPrompt,
+            prompt: userPrompt,
+            temperature: input.temperature,
+          });
     return {
       object: result.object,
       usage: {

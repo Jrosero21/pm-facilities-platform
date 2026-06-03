@@ -34,7 +34,8 @@
     "db:check:dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-22.ts",
     "db:check:autonomy": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-23.ts",
     "db:retention:agent-payloads": "tsx --env-file=.env.local --conditions=react-server scripts/retention-agent-payloads.ts",
-    "db:check:observability": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-24.ts"
+    "db:check:observability": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-24.ts",
+    "db:check:feedback": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-25.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
