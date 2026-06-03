@@ -17,6 +17,7 @@ import { db } from "@/server/db";
 import {
   agentDecisions,
   agentRuns,
+  invoiceReviews,
   jobScopeReviews,
   updateRewriteReviews,
 } from "@/server/schema";
@@ -173,19 +174,36 @@ export async function scopeApproveAsIs(tenantId: string): Promise<ApproveAsIsCou
   return classifyLatestReviews(rows, (r) => r.editedSteps == null);
 }
 
+/** Invoice approve-as-is: approve AND edited_content IS NULL, latest review per draft. */
+export async function invoiceApproveAsIs(tenantId: string): Promise<ApproveAsIsCounts> {
+  const rows = await db
+    .select({
+      draftId: invoiceReviews.draftId,
+      decision: invoiceReviews.decision,
+      editedContent: invoiceReviews.editedContent,
+      createdAt: invoiceReviews.createdAt,
+    })
+    .from(invoiceReviews)
+    .where(eq(invoiceReviews.tenantId, tenantId))
+    .orderBy(desc(invoiceReviews.createdAt));
+  return classifyLatestReviews(rows, (r) => r.editedContent == null);
+}
+
 /**
  * Unified approve-as-is across agents. Agents with a draft/review table report their rate;
  * dispatch_router_v1 (and any agent without a review surface) reports applicable:false / zeros.
  */
 export async function agentApproveAsIs(tenantId: string): Promise<AgentApproveAsIsRow[]> {
-  const [rewriter, scope] = await Promise.all([
+  const [rewriter, scope, invoice] = await Promise.all([
     rewriterApproveAsIs(tenantId),
     scopeApproveAsIs(tenantId),
+    invoiceApproveAsIs(tenantId),
   ]);
   return [
     { agentId: "update_rewriter_v1", applicable: true, ...rewriter },
     { agentId: "scope_generator_v1", applicable: true, ...scope },
     { agentId: DISPATCH_AGENT_ID, applicable: false, reviewed: 0, approvedAsIs: 0, rate: 0 },
+    { agentId: "invoice_creator_v1", applicable: true, ...invoice },
   ];
 }
 

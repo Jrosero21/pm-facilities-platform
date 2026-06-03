@@ -23,6 +23,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   agentRuns,
+  invoiceDrafts,
+  invoiceReviews,
   jobScopeDrafts,
   jobScopeReviews,
   updateRewriteDrafts,
@@ -31,6 +33,7 @@ import {
 
 const REWRITER_AGENT_ID = "update_rewriter_v1";
 const SCOPE_AGENT_ID = "scope_generator_v1";
+const INVOICE_AGENT_ID = "invoice_creator_v1";
 
 /**
  * Latest-review-per-draft dedupe (the ONE shared primitive — Phase-24 retention-extraction
@@ -159,25 +162,55 @@ export async function scopeCorrectionPairs(tenantId: string): Promise<Correction
   return toPairs(SCOPE_AGENT_ID, rows);
 }
 
-export type AgentId = typeof REWRITER_AGENT_ID | typeof SCOPE_AGENT_ID;
+/**
+ * Invoice corrections: agent_runs → drafts → reviews. proposed_invoice/edited_content are JSON
+ * longtext; CAST AS CHAR returns the RAW stored string (bypassing drizzle's json() decoder) — no
+ * parsing here (mirrors scopeCorrectionPairs; an invoice draft is structured, not plain text).
+ */
+export async function invoiceCorrectionPairs(tenantId: string): Promise<CorrectionPair[]> {
+  const rows = await db
+    .select({
+      draftId: invoiceDrafts.id,
+      agentRunId: invoiceDrafts.agentRunId,
+      draftContent: sql<string>`CAST(${invoiceDrafts.proposedInvoice} AS CHAR)`,
+      editedContent: sql<string | null>`CAST(${invoiceReviews.editedContent} AS CHAR)`,
+      decision: invoiceReviews.decision,
+      reviewedAt: invoiceReviews.reviewedAt,
+      createdAt: invoiceReviews.createdAt,
+    })
+    .from(invoiceDrafts)
+    .innerJoin(
+      agentRuns,
+      and(eq(agentRuns.id, invoiceDrafts.agentRunId), eq(agentRuns.agentId, INVOICE_AGENT_ID)),
+    )
+    .innerJoin(invoiceReviews, eq(invoiceReviews.draftId, invoiceDrafts.id))
+    .where(eq(invoiceDrafts.tenantId, tenantId))
+    .orderBy(desc(invoiceReviews.createdAt));
+  return toPairs(INVOICE_AGENT_ID, rows);
+}
 
-/** Correction pairs for one agent (rewriter = text, scope = JSON). */
+export type AgentId = typeof REWRITER_AGENT_ID | typeof SCOPE_AGENT_ID | typeof INVOICE_AGENT_ID;
+
+/** Correction pairs for one agent (rewriter = text, scope + invoice = JSON). */
 export async function correctionPairsForAgent(
   tenantId: string,
   agentId: AgentId,
 ): Promise<CorrectionPair[]> {
-  return agentId === SCOPE_AGENT_ID
-    ? scopeCorrectionPairs(tenantId)
-    : rewriterCorrectionPairs(tenantId);
+  return agentId === INVOICE_AGENT_ID
+    ? invoiceCorrectionPairs(tenantId)
+    : agentId === SCOPE_AGENT_ID
+      ? scopeCorrectionPairs(tenantId)
+      : rewriterCorrectionPairs(tenantId);
 }
 
-/** All correction pairs across both in-scope LLM agents. */
+/** All correction pairs across the in-scope LLM agents. */
 export async function allCorrectionPairs(tenantId: string): Promise<CorrectionPair[]> {
-  const [rewriter, scope] = await Promise.all([
+  const [rewriter, scope, invoice] = await Promise.all([
     rewriterCorrectionPairs(tenantId),
     scopeCorrectionPairs(tenantId),
+    invoiceCorrectionPairs(tenantId),
   ]);
-  return [...rewriter, ...scope];
+  return [...rewriter, ...scope, ...invoice];
 }
 
 const DEFAULT_FEW_SHOT_CAP = 20;
