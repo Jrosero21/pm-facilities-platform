@@ -315,7 +315,12 @@ export async function createDispatch(
 export type SendDispatchInput = {
   tenantId: string;
   assignmentId: string;
-  actorUserId: string;
+  // Phase 23 23f-1 — THE AUTONOMY SEAM. Widened string → string | null: operators pass a
+  // real user id (unchanged); the auto-advance path (23f-2) passes null = system actor. All
+  // five sinks already accept NULL (assignment + job status-history changedByUserId, the two
+  // audit userId rows, jobEvents actorUserId — all nullable, FK ON DELETE SET NULL). No sink
+  // logic changes — they write whatever actorUserId is. Nothing auto-sends until 23f-2.
+  actorUserId: string | null;
 };
 
 export type SendDispatchResult = {

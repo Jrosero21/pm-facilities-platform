@@ -233,8 +233,11 @@ async function main() {
     // ════════ 8-10. AUTO-PICKER: DRAFT-GATE + IDEMPOTENCY + AUDIT ════════
     console.log("\n[8] AUTO-PICKER draft-gate");
     const r1 = await autoDispatchDraftForJob(tAId, jobA.id);
-    check("8a: auto-dispatch outcome === 'drafted'", r1.outcome === "drafted");
-    const assignmentId = r1.outcome === "drafted" ? r1.assignmentId : "";
+    // 23f-2: a default fail-safe-gated tenant now returns 'drafted_pending' (draft created,
+    // auto-advance gated) — the same physical DRAFT-GATE invariant Phase 22 asserted, under
+    // the governed vocabulary. (Vocabulary carry — flagged for the 23f-2 harness gate.)
+    check("8a: auto-dispatch outcome === 'drafted_pending' (gated, draft created)", r1.outcome === "drafted_pending");
+    const assignmentId = r1.outcome === "drafted_pending" ? r1.assignmentId : "";
     const statusRow = assignmentId
       ? (await db.select({ code: dispatchAssignmentStatuses.code })
           .from(jobVendorAssignments)
@@ -242,7 +245,7 @@ async function main() {
           .where(eq(jobVendorAssignments.id, assignmentId)))[0]
       : undefined;
     check("8b: created assignment status === 'DRAFT' (never SENT)", statusRow?.code === "DRAFT");
-    check("8c: drafted vendor is the top candidate (vendor_PREFERRED)", r1.outcome === "drafted" && r1.vendorId === vPREFERRED);
+    check("8c: drafted vendor is the top candidate (vendor_PREFERRED)", r1.outcome === "drafted_pending" && r1.vendorId === vPREFERRED);
 
     console.log("\n[9] IDEMPOTENCY");
     const r2 = await autoDispatchDraftForJob(tAId, jobA.id);

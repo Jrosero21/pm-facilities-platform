@@ -3,33 +3,49 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
-import { dispatchAssignmentStatuses, jobVendorAssignments } from "@/server/schema";
-import { createDispatch } from "@/server/dispatch";
+import { dispatchAssignmentStatuses, jobVendorAssignments, jobs } from "@/server/schema";
+import { createDispatch, sendDispatch } from "@/server/dispatch";
 import { findCandidateVendorsForJob } from "@/server/vendor-matching";
+import { openRun, closeRun, logDecision } from "@/server/agents/runner";
+import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config/guardrails";
 
-// Phase 22 (slice 4) — rule-based auto-dispatch, Tier 2. The deterministic
-// picker over the existing eligibility floor: it takes the TOP candidate of the
-// floor-filtered, preference-then-rank-ordered matcher output and CREATES A DRAFT.
-// No AI, no scoring (Tier 3 is Phase 27, data-blocked).
+const DISPATCH_AGENT_ID = "dispatch_router_v1";
+
+// Phase 22 (slice 4) → Phase 23 23f-2 — rule-based auto-dispatch, Tier 2, NOW GOVERNED.
+// The deterministic picker over the existing eligibility floor: TOP candidate of the
+// floor-filtered, preference-then-rank-ordered matcher output. No AI, no scoring.
 //
-// Gate-ability (V2 invariants 4 + 5): this STOPS at DRAFT. It reuses createDispatch
-// (always-DRAFT) and never calls sendDispatch — it cannot auto-send. Phase 23's
-// policy engine governs WHEN this runs and whether a draft may auto-advance; this
-// module wires NO trigger and is auto-invoked by nothing. It is a mechanism the
-// harness and the future policy engine call explicitly.
+// 23f-2 — THE FIRST PATH THAT CAN CAUSE AN AUTONOMOUS ACTION. The draft is ALWAYS created
+// (a draft commits nothing and is the operator's fallback). The GATE then decides whether to
+// AUTO-ADVANCE that draft DRAFT→SENT. Composition (all three must pass):
+//   permitted = resolveAgentPolicy(...).autonomyEnabled   // kill-switch step-0 + policy halves
+//             && withinTokenCeilings(tenantId).ok          // §2.4 token spend-breaker
+//             && withinSpendCeilings(tenantId, jobId).ok    // §2.4 committed-$ breaker (+ null-NTE block)
+// FAIL-SAFE-OFF DEFAULT (§2.1): the platform default policy is {requiresReview:true} with no
+// autonomyEnabled → permitted is false → the draft stays gated (drafted_pending). Nothing
+// auto-advances until a tenant explicitly sets autonomyEnabled:true AND clears the guardrails
+// AND the kill switch is off.
 //
-// Idempotency (invariant 6): a per-job guard refuses to draft when a non-terminal
-// assignment already exists, so it can't double-dispatch. Autonomy-never-silent
-// (invariant 2): every drafted action writes a job_vendor_assignment.auto_drafted
-// audit event (the NULL system actor alone is ambiguous).
+// PROVENANCE (Option A): a synthetic agent_runs row (triggerSource "auto_dispatch", token
+// cols NULL) carries the §2.9 decision — logDecision emits auto_executed (advanced) or
+// policy_blocked (gated). The Phase-22 auto_drafted audit event STAYS (additive).
+//
+// STILL NO LIVE TRIGGER: this is auto-invoked by NOTHING in app code (only the harness). The
+// job-creation trigger + first real-tenant enablement stay gated behind Phase 24 observability
+// (§2.3). 23f-2 makes the mechanism CAPABLE of auto-advancing when permitted; it wires no caller.
+//
+// Idempotency (invariant 6 / §2.6): TWO existing layers, no third added — (1) the step-a
+// per-job non-terminal guard prevents a second draft; (2) sendDispatch's ASSIGNMENT_NOT_DRAFT
+// guard makes a double-advance throw rather than double-send.
 
 export type AutoDispatchResult =
-  | {
-      outcome: "drafted";
-      assignmentId: string;
-      vendorId: string;
-      preferenceRank: number | null;
-    }
+  // Gated on purpose (manage-by-exception, §2.7) — draft created, NOT advanced. The default.
+  | { outcome: "drafted_pending"; assignmentId: string; vendorId: string; blockedBy: string }
+  // The autonomous action fired — draft advanced DRAFT→SENT.
+  | { outcome: "auto_advanced"; assignmentId: string; vendorId: string; jobStatusAdvanced: boolean }
+  // Permitted, but the send threw (real failure, not a gate) — draft exists, awaits a human.
+  | { outcome: "drafted_send_failed"; assignmentId: string; vendorId: string; error: string }
   | { outcome: "no_candidates" }
   | { outcome: "already_active"; existingAssignmentId?: string };
 
@@ -38,8 +54,10 @@ export type AutoDispatchResult =
  *   a. idempotency guard FIRST — short-circuit if a non-terminal assignment exists.
  *   b. run the matcher; empty candidate set → no_candidates (nothing created).
  *   c. take candidates[0] and create a DRAFT via createDispatch (NULL system actor).
- *   d. write the auto_drafted audit event.
- * Never sends; never scores. Returns a discriminated result for the caller to act on.
+ *   d. write the auto_drafted audit event (Phase 22, kept).
+ *   e. open a synthetic run, consult the governance gate, and EITHER auto-advance the draft
+ *      to SENT (auto_executed) OR leave it gated for operator review (policy_blocked).
+ * Returns a discriminated result for the caller to act on.
  */
 export async function autoDispatchDraftForJob(
   tenantId: string,
@@ -110,10 +128,107 @@ export async function autoDispatchDraftForJob(
     },
   });
 
-  return {
-    outcome: "drafted",
-    assignmentId: assignment.id,
+  // e. THE GOVERNANCE GATE + ENFORCEMENT. The draft above stays no matter what; the gate
+  // only decides whether to auto-advance it. Open a synthetic run FIRST so a BLOCK is also
+  // recorded (provenance for the not-permitted path, not just the executed one).
+  const jobRow = (
+    await db
+      .select({ clientId: jobs.clientId })
+      .from(jobs)
+      .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)))
+      .limit(1)
+  )[0];
+  const clientId = jobRow?.clientId ?? null;
+
+  const ctx = await openRun({
+    tenantId,
+    agentId: DISPATCH_AGENT_ID,
+    jobId,
+    triggerSource: "auto_dispatch",
+    inputSummary: `Auto-dispatch candidate vendor ${top.vendorId}`,
+  });
+
+  // Compose the three gates. resolveAgentPolicy applies the kill-switch step-0 + policy
+  // halves; the two guardrails are the §2.4 spend-breakers.
+  const resolved = await resolveAgentPolicy(tenantId, DISPATCH_AGENT_ID, clientId);
+  const token = await withinTokenCeilings(tenantId);
+  const spend = await withinSpendCeilings(tenantId, jobId);
+  const permitted = resolved.autonomyEnabled && token.ok && spend.ok;
+
+  const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
+  const decisionMeta = {
+    source: resolved.source,
+    tokenOk: token.ok,
+    spend,
     vendorId: top.vendorId,
     preferenceRank: top.preferenceRank,
   };
+
+  if (!permitted) {
+    // Which gate blocked — most-authoritative first (kill switch wins over everything).
+    const blockedBy = resolved.source === "kill_switch"
+      ? "kill_switch"
+      : !resolved.autonomyEnabled
+        ? "not_enabled"
+        : !token.ok
+          ? "token_ceiling"
+          : spend.candidateUnmeasurable
+            ? "unmeasurable_nte"
+            : !spend.ok
+              ? "spend_ceiling"
+              : "unknown";
+
+    // FIRST-EVER policy_blocked write. This is the EXPECTED gated path (§2.7), not an error:
+    // the run SUCCEEDED in reaching a decision; the draft stays for operator review.
+    await logDecision(ctx, {
+      decisionType: "auto_dispatch",
+      proposedAction: `Auto-advance dispatch draft ${assignment.id} (vendor ${top.vendorId}) DRAFT→SENT`,
+      reasoning: `Blocked by ${blockedBy}; draft retained for operator review.`,
+      policyCheck,
+      disposition: "policy_blocked",
+      metadata: { ...decisionMeta, blockedBy },
+    });
+    await closeRun(ctx, { status: "succeeded", outputSummary: `Gated: ${blockedBy}` });
+    return { outcome: "drafted_pending", assignmentId: assignment.id, vendorId: top.vendorId, blockedBy };
+  }
+
+  // PERMITTED → the autonomous action: advance DRAFT→SENT as the NULL system actor (23f-1
+  // widening). sendDispatch's ASSIGNMENT_NOT_DRAFT is the idempotency floor on a double-advance.
+  try {
+    const sent = await sendDispatch({ tenantId, assignmentId: assignment.id, actorUserId: null });
+    // FIRST-EVER auto_executed write.
+    await logDecision(ctx, {
+      decisionType: "auto_dispatch",
+      proposedAction: `Auto-advance dispatch draft ${assignment.id} (vendor ${top.vendorId}) DRAFT→SENT`,
+      reasoning: "Within policy + guardrails; auto-advanced to SENT.",
+      policyCheck,
+      disposition: "auto_executed",
+      metadata: { ...decisionMeta, jobStatusAdvanced: sent.jobStatusAdvanced },
+    });
+    await closeRun(ctx, { status: "succeeded", outputSummary: "Auto-advanced DRAFT→SENT" });
+    return {
+      outcome: "auto_advanced",
+      assignmentId: assignment.id,
+      vendorId: top.vendorId,
+      jobStatusAdvanced: sent.jobStatusAdvanced,
+    };
+  } catch (err) {
+    // Permitted, but the send THREW — a real execution failure, NOT a policy block. The
+    // draft now exists and awaits a human, so the honest disposition is queued_for_review
+    // (the draft's resulting state = pending operator). We pair it with run.status="failed"
+    // + errorMessage so it is unambiguously distinguishable from a normal gated
+    // queued_for_review (which closes status="succeeded"): policy_blocked would falsely
+    // imply policy stopped it; auto_executed would falsely claim success.
+    const message = err instanceof Error ? err.message : String(err);
+    await logDecision(ctx, {
+      decisionType: "auto_dispatch",
+      proposedAction: `Auto-advance dispatch draft ${assignment.id} (vendor ${top.vendorId}) DRAFT→SENT`,
+      reasoning: `Auto-send attempted but failed: ${message}. Draft awaits operator.`,
+      policyCheck,
+      disposition: "queued_for_review",
+      metadata: { ...decisionMeta, sendError: message },
+    });
+    await closeRun(ctx, { status: "failed", errorMessage: message });
+    return { outcome: "drafted_send_failed", assignmentId: assignment.id, vendorId: top.vendorId, error: message };
+  }
 }
