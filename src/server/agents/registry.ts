@@ -37,6 +37,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "job_scope_draft",
     testOnly: false,
   },
+  invoice_creator_v1: {
+    id: "invoice_creator_v1",
+    name: "Invoice Creator",
+    description:
+      "Drafts a reviewable, marked-up client invoice from a submitted vendor invoice on a completed job (§2.9). LLM writes line-item phrasing only; all amounts derive from the vendor invoice and markup rules.",
+    inputSourceTypes: ["job", "vendor_invoice"], // reads the job context + the source AP invoice
+    outputType: "invoice_draft",
+    testOnly: false,
+  },
   chatbot_assistant_v1: {
     id: "chatbot_assistant_v1",
     name: "Operations Assistant",

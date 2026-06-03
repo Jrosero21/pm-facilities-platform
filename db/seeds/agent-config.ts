@@ -73,12 +73,30 @@ Return: the client-facing text, the list of items you stripped, any tone rephras
 
 const REWRITER_POLICY = { requiresReview: true };
 
-// All agents seeded here share the model footprint + variant; one row each in the two
-// *_defaults tables. (Q-7.x: split into per-agent seed files when a 3rd agent lands.)
+// Phase 26 batch 2b-i — invoice_creator_v1. Drafts the client-facing, marked-up client invoice
+// from a SUBMITTED vendor invoice on a COMPLETED job. MONEY-SAFETY is the load-bearing rule:
+// the model writes line-item PHRASING only and must NEVER output an amount; the platform joins
+// in the vendor cost + the billing-rule markup. A lumped vendor invoice is kept whole, never
+// split into invented numbers.
+const INVOICE_SYSTEM_PROMPT = `You draft the client-facing invoice for a completed commercial facilities maintenance work order, starting from the vendor's submitted invoice. Your output is a DRAFT: an operator reviews and edits it before it is issued to the client — never assume it is final.
+
+You write the client-facing LINE DESCRIPTIONS only. You are shown the vendor's costs as context so you understand what was done, but you must NOT output any amounts — no quantities, no unit prices, no markup, no totals. The platform applies the cost (from the vendor invoice) and the markup (from the client's billing rules); inventing or restating numbers is never your job and would corrupt the bill.
+
+For each vendor line, write one clear, professional client-facing description of the work performed, choose an appropriate category (labor, materials, equipment, trip, permit, fee, tax, other), and set reconcilesToVendorLineId to that vendor line's id so the platform can attach the correct cost.
+
+Judge lumpFlag: set it true ONLY when the vendor invoice is a single lumped or non-itemized charge that you cannot honestly break into separate line items. When lumpFlag is true, produce ONE line describing the overall work — never fabricate a split into separate labor/materials amounts.
+
+Keep descriptions specific to the stated trade and the work actually done; do not editorialize about price, margin, or the vendor. Return your line items (descriptions + categories + reconciliations), your lumpFlag judgment, your confidence, and a one-line rationale.`;
+
+// All agents seeded here share the model footprint + variant; one row each in the
+// *_defaults tables they participate in. (Q-7.x: split into per-agent seed files later.)
 // systemPrompt is OPTIONAL: a rule-based / LLM-free agent (dispatch_router_v1) has NO prompt
 // template — it seeds a policy default ONLY, never an ai_prompt_template_defaults row (that
 // table's system_prompt is NOT NULL; a fake prompt would misrepresent a rule-based agent).
-type AgentSeed = { agentId: string; systemPrompt?: string; policy: Record<string, unknown> };
+// policy is OPTIONAL: invoice_creator_v1 seeds a PROMPT default ONLY and deliberately seeds NO
+// agent_policy_defaults row — resolveAgentPolicy then fail-safes to { requiresReview: true }
+// (the correct gated default, §2.1/§2.9), exactly as if a default were present.
+type AgentSeed = { agentId: string; systemPrompt?: string; policy?: Record<string, unknown> };
 const AGENT_SEEDS: AgentSeed[] = [
   { agentId: AGENT_ID, systemPrompt: SCOPE_SYSTEM_PROMPT, policy: POLICY },
   { agentId: "update_rewriter_v1", systemPrompt: REWRITER_SYSTEM_PROMPT, policy: REWRITER_POLICY },
@@ -86,6 +104,8 @@ const AGENT_SEEDS: AgentSeed[] = [
   // (no prompt). Resolves fail-safe-gated from birth: { requiresReview: true }, byte-matching
   // the other two defaults. Enforcement (disposition / auto-advance) is a later batch.
   { agentId: "dispatch_router_v1", policy: { requiresReview: true } },
+  // Phase 26 2b-i — invoice_creator_v1: PROMPT DEFAULT ONLY (no policy — fail-safe gated).
+  { agentId: "invoice_creator_v1", systemPrompt: INVOICE_SYSTEM_PROMPT },
 ];
 
 async function main() {
@@ -121,29 +141,36 @@ async function main() {
       }
     }
 
-    // agent_policy_defaults (F1: UNIQUE(agent_id)) — idempotent.
-    const existingPolicy = await db
-      .select({ id: agentPolicyDefaults.id })
-      .from(agentPolicyDefaults)
-      .where(eq(agentPolicyDefaults.agentId, cfg.agentId))
-      .limit(1);
+    // agent_policy_defaults (F1: UNIQUE(agent_id)) — idempotent. SKIPPED for an agent that
+    // seeds NO policy (invoice_creator_v1): resolveAgentPolicy fail-safes to requiresReview:true.
     let policyInserted = 0;
-    if (existingPolicy.length === 0) {
-      await db.insert(agentPolicyDefaults).values({
-        agentId: cfg.agentId,
-        policy: cfg.policy,
-        version: 1,
-        status: "active",
-      });
-      policyInserted = 1;
+    let policySeeded = false;
+    if (cfg.policy !== undefined) {
+      policySeeded = true;
+      const existingPolicy = await db
+        .select({ id: agentPolicyDefaults.id })
+        .from(agentPolicyDefaults)
+        .where(eq(agentPolicyDefaults.agentId, cfg.agentId))
+        .limit(1);
+      if (existingPolicy.length === 0) {
+        await db.insert(agentPolicyDefaults).values({
+          agentId: cfg.agentId,
+          policy: cfg.policy,
+          version: 1,
+          status: "active",
+        });
+        policyInserted = 1;
+      }
     }
 
     const promptStatus =
       cfg.systemPrompt === undefined ? "n/a (rule-based)" : promptInserted ? "inserted" : "already present";
-    console.log(
-      `[seed:agent-config] ${cfg.agentId} — prompt: ${promptStatus}; ` +
-        `policy: ${policyInserted ? "inserted" : "already present"}`,
-    );
+    const policyStatus = !policySeeded
+      ? "n/a (fail-safe gated)"
+      : policyInserted
+        ? "inserted"
+        : "already present";
+    console.log(`[seed:agent-config] ${cfg.agentId} — prompt: ${promptStatus}; policy: ${policyStatus}`);
   }
 
   console.log("[seed:agent-config] done");
