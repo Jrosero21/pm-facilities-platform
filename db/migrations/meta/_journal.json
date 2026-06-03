@@ -330,6 +330,13 @@
       "when": 1780427498391,
       "tag": "0046_groovy_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1780504593735,
+      "tag": "0047_military_lucky_pierre",
+      "breakpoints": true
     }
   ]
 }

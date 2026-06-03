@@ -31,6 +31,7 @@ export * from "./proposals";
 export * from "./change-orders";
 export * from "./vendor-invoices";
 export * from "./client-invoices";
+export * from "./agents-invoice";
 export * from "./payments";
 export * from "./billing-events";
 export * from "./external-systems";
