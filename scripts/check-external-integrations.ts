@@ -14,6 +14,9 @@
  * Run: npm run db:check:external-integrations   (after re-seeding sandbox)
  */
 
+export {}; // module isolation — keep this script's top-level `main()` out of the global scope
+// (a bare script's global `main()` collides with other harness scripts' — TS2393; CF-24.1).
+
 // -------- Sandbox guard + env swap (BEFORE any DB-touching import) --------
 const originalUrl = process.env.DATABASE_URL;
 if (!originalUrl) {

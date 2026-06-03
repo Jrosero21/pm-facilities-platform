@@ -48,6 +48,9 @@
  *   pnpm db:retention:agent-payloads -- --apply # APPLY — NULL the aged payloads
  */
 
+export {}; // module isolation — keep this script's top-level `main()` out of the global scope
+// (a bare script's global `main()` collides with other harness scripts' — TS2393; CF-24.1).
+
 const RETENTION_DAYS = 180;
 const APPLY = process.argv.includes("--apply") || process.env.APPLY === "1";
 
