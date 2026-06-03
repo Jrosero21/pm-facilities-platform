@@ -3,7 +3,7 @@ import "server-only";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
-import { buildProviderModel } from "@/server/agents/providers";
+import { buildCandidates, runWithFailover } from "@/server/agents/failover";
 import { buildUserPrompt } from "./prompt";
 import type { JobNoteRow } from "@/server/job-notes";
 import type { JobDetail } from "@/server/jobs";
@@ -74,28 +74,31 @@ export async function generateRewrite(input: {
   note: JobNoteRow;
   job: JobDetail;
   vendorNames: string[];
+  // B2: provider preference from the resolved policy JSON (resolved.raw.failoverOrder), threaded
+  // by runRewriter. Absent/bad → today's single env-driven provider (fail-safe).
+  failoverOrder?: unknown;
 }): Promise<RewriteOutcome> {
   if (input.routing.mode === "mock") return mockRewrite();
 
-  // gateway → string model; direct → the registry-built provider model (anthropic today,
-  // provider-selectable in B2). Single call, single provider — no failover loop yet (B2).
-  const model =
-    input.routing.mode === "gateway"
-      ? input.routing.modelId
-      : buildProviderModel(input.routing.provider, input.routing.modelId);
-  const result = await generateObject({
-    model,
-    schema: rewriteSchema,
-    system: input.systemPrompt,
-    prompt: buildUserPrompt({ note: input.note, job: input.job, vendorNames: input.vendorNames }),
-    temperature: input.temperature,
+  // Ordered candidate chain from preference (allowlist+order, available providers only); else
+  // the single env-driven base. Fail over to the next ONLY on a provider/transport error.
+  const candidates = buildCandidates(input.routing, input.failoverOrder);
+  return runWithFailover(candidates, async (candidate) => {
+    const result = await generateObject({
+      model: candidate.model,
+      schema: rewriteSchema,
+      system: input.systemPrompt,
+      prompt: buildUserPrompt({ note: input.note, job: input.job, vendorNames: input.vendorNames }),
+      temperature: input.temperature,
+    });
+    return {
+      object: result.object,
+      usage: {
+        inputTokens: result.usage.inputTokens ?? 0,
+        outputTokens: result.usage.outputTokens ?? 0,
+      },
+      // truthful: the model that ACTUALLY ran (the succeeding candidate).
+      model: candidate.recordedModel,
+    };
   });
-  return {
-    object: result.object,
-    usage: {
-      inputTokens: result.usage.inputTokens ?? 0,
-      outputTokens: result.usage.outputTokens ?? 0,
-    },
-    model: input.routing.recordedModel,
-  };
 }

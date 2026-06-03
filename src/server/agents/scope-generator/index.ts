@@ -53,15 +53,16 @@ export async function runScopeGenerator(input: {
       if (prompt.temperature != null) temperature = Number(prompt.temperature);
     }
 
-    // LLM transform (or deterministic mock).
-    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature });
-
-    // Policy governs disposition. Resolve by the job's client (the ladder supports per-client
-    // overrides; Phase 7 seeds only the default → fail-safe to requiresReview). §2.9 / R-6.15:
-    // the scope agent has NO auto-execute path in Phase 7 — it ALWAYS queues for review
-    // regardless of policy; the resolver is wired so per-client/auto-execute policies plug in
-    // later without touching the agent. (auto_executed is in the enum but never emitted here.)
+    // Resolve policy BEFORE the transform — it governs disposition (below) AND now carries the
+    // B2 provider preference (resolved.raw.failoverOrder) threaded into generateScope. Resolve by
+    // the job's client (the ladder supports per-client overrides). The resolver fail-safes (bad
+    // JSON → raw null), so an absent/bad preference → today's single env-driven provider. §2.9 /
+    // R-6.15: the scope agent has NO auto-execute path — it ALWAYS queues for review.
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
+    const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
+
+    // LLM transform (or deterministic mock). Provider preference + failover applied inside.
+    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature, failoverOrder });
     await logDecision(ctx, {
       decisionType: "scope_proposal",
       proposedAction: "Draft a scope of work from the problem description",

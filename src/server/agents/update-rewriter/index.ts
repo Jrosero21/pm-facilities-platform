@@ -68,15 +68,17 @@ export async function runRewriter(input: {
       if (prompt.temperature != null) temperature = Number(prompt.temperature);
     }
 
-    // LLM transform (or deterministic mock under REWRITER_MOCK).
-    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames });
-
-    // decision — policy governs disposition; the rewriter has no auto-execute path (§2.9 /
-    // R-6.15), so it ALWAYS queues for review. The resolver is wired (fail-safe to
-    // requiresReview) so per-client/auto-execute policies plug in later without touching the
-    // agent. policy_check reflects the resolved policy — byte-identical strings to the old
-    // inline literal ("requires_review" / "queued_for_review").
+    // Resolve policy BEFORE the transform — it governs disposition (below) AND now carries the
+    // B2 provider preference (resolved.raw.failoverOrder) threaded into generateRewrite. The
+    // resolver fail-safes (requiresReview true; bad JSON → raw null), so an absent/bad preference
+    // → today's single env-driven provider. policy_check strings are byte-identical to before.
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
+    const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
+
+    // LLM transform (or deterministic mock under REWRITER_MOCK). Provider preference + failover
+    // applied inside (direct-SDK path); the rewriter has no auto-execute path (§2.9 / R-6.15) and
+    // ALWAYS queues for review.
+    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames, failoverOrder });
     await logDecision(ctx, {
       decisionType: "rewrite_proposal",
       proposedAction: "Draft a client-facing update from the source note",

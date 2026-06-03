@@ -3,7 +3,7 @@ import "server-only";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { resolveAgentRouting, type AgentRouting } from "@/server/agents/llm-routing";
-import { buildProviderModel } from "@/server/agents/providers";
+import { buildCandidates, runWithFailover } from "@/server/agents/failover";
 import type { JobDetail } from "@/server/jobs";
 
 // ── Phase 7 batch 7c — scope generator LLM ────────────────────────────────────────────
@@ -90,28 +90,31 @@ export async function generateScope(input: {
   systemPrompt: string;
   job: JobDetail;
   temperature: number;
+  // B2: provider preference from the resolved policy JSON (resolved.raw.failoverOrder), threaded
+  // by runScope. Absent/bad → today's single env-driven provider (fail-safe).
+  failoverOrder?: unknown;
 }): Promise<ScopeOutcome> {
   if (input.routing.mode === "mock") return mockScope();
 
-  // gateway → string model; direct → the registry-built provider model (anthropic today,
-  // provider-selectable in B2). Single call, single provider — no failover loop yet (B2).
-  const model =
-    input.routing.mode === "gateway"
-      ? input.routing.modelId
-      : buildProviderModel(input.routing.provider, input.routing.modelId);
-  const result = await generateObject({
-    model,
-    schema: scopeSchema,
-    system: input.systemPrompt,
-    prompt: buildScopeUserPrompt(input.job),
-    temperature: input.temperature,
+  // Ordered candidate chain from preference (allowlist+order, available providers only); else
+  // the single env-driven base. Fail over to the next ONLY on a provider/transport error.
+  const candidates = buildCandidates(input.routing, input.failoverOrder);
+  return runWithFailover(candidates, async (candidate) => {
+    const result = await generateObject({
+      model: candidate.model,
+      schema: scopeSchema,
+      system: input.systemPrompt,
+      prompt: buildScopeUserPrompt(input.job),
+      temperature: input.temperature,
+    });
+    return {
+      object: result.object,
+      usage: {
+        inputTokens: result.usage.inputTokens ?? 0,
+        outputTokens: result.usage.outputTokens ?? 0,
+      },
+      // truthful: the model that ACTUALLY ran (the succeeding candidate).
+      model: candidate.recordedModel,
+    };
   });
-  return {
-    object: result.object,
-    usage: {
-      inputTokens: result.usage.inputTokens ?? 0,
-      outputTokens: result.usage.outputTokens ?? 0,
-    },
-    model: input.routing.recordedModel,
-  };
 }
