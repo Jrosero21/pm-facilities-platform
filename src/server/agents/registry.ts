@@ -46,6 +46,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "invoice_draft",
     testOnly: false,
   },
+  proposal_generator_v1: {
+    id: "proposal_generator_v1",
+    name: "Proposal Generator",
+    description:
+      "Drafts a reviewable, number-free internal proposal (line-item phrasing + scope language) from a job's context (§2.9). The operator authors the dollar figures at the review gate; on publish the NTE send-gate decides client- vs internal-kind. The LLM never emits an amount.",
+    inputSourceTypes: ["job"], // reads current-job context only
+    outputType: "proposal_draft",
+    testOnly: false,
+  },
   chatbot_assistant_v1: {
     id: "chatbot_assistant_v1",
     name: "Operations Assistant",

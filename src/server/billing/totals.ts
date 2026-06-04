@@ -68,14 +68,17 @@ function sumStrings(values: string[]): string {
 }
 
 // ── AR line math (proposal / change_order / client_invoice) — cost basis + markup uplift ──
-type ArLineInput = {
+// EXPORTED (Phase 27): the proposal-generator publish path computes the proposal TOTAL with this
+// SAME primitive to feed the NTE send-gate (kind decision), so the gate basis is byte-identical to
+// the figure recalculateProposalTotals later persists — one source of money math, never duplicated.
+export type ArLineInput = {
   id: string;
   quantity: string;
   unitPrice: string;
   markupPercent: string | null;
   taxAmount: string;
 };
-function computeArLines(lines: ArLineInput[]): {
+export function computeArLines(lines: ArLineInput[]): {
   perLine: { id: string; extendedAmount: string; markupAmount: string }[];
   subtotal: string;
   markupTotal: string;

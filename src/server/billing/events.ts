@@ -37,6 +37,7 @@ export const BILLING_EVENT_TYPES = [
   "proposal.declined",
   "proposal.withdrawn",
   "proposal.superseded",
+  "proposal.internal_billed", // Phase 27 — the NTE-gated internal proposal reached its terminal billed state
   "change_order.submitted",
   "change_order.approved",
   "change_order.declined",
