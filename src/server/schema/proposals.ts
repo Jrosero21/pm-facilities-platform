@@ -37,7 +37,12 @@ const proposalStatusEnum = [
   "expired",
   "superseded",
   "withdrawn",
+  "internal_billed", // Phase 27: terminal state of an APPROVED internal proposal (client path untouched)
 ] as const;
+
+// Phase 27 — proposal KIND axis. 'client' = the existing client-facing commercial doc
+// (the default preserves all pre-27 rows). 'internal' = the operator-only AI-drafted proposal.
+const proposalKindEnum = ["client", "internal"] as const;
 
 export const proposals = mysqlTable(
   "proposals",
@@ -52,6 +57,8 @@ export const proposals = mysqlTable(
     supersedesProposalId: varchar("supersedes_proposal_id", { length: 36 }),
     revisionNumber: int("revision_number").notNull().default(1),
     status: mysqlEnum("status", proposalStatusEnum).notNull().default("draft"),
+    // Phase 27 — NOT NULL default 'client' so all 121 existing rows remain client-facing.
+    kind: mysqlEnum("kind", proposalKindEnum).notNull().default("client"),
     title: varchar("title", { length: 255 }),
     scopeSnapshot: text("scope_snapshot"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
@@ -74,6 +81,8 @@ export const proposals = mysqlTable(
     foreignKey({ columns: [t.createdByUserId], foreignColumns: [users.id], name: "prop_created_by_fk" }).onDelete("set null"),
     index("prop_tenant_job_idx").on(t.tenantId, t.jobId),
     index("prop_tenant_status_idx").on(t.tenantId, t.status),
+    // Phase 27 — covers the kind-gated readers (client seal, close.ts open-proposals, listProposalsForJob).
+    index("prop_tenant_kind_status_idx").on(t.tenantId, t.kind, t.status),
     index("prop_parent_idx").on(t.parentProposalId),
   ],
 );

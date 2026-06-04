@@ -337,6 +337,13 @@
       "when": 1780504593735,
       "tag": "0047_military_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "5",
+      "when": 1780532538515,
+      "tag": "0048_glorious_iron_patriot",
+      "breakpoints": true
     }
   ]
 }
