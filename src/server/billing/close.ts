@@ -159,6 +159,7 @@ export async function getBillingCloseReadiness(
   const openProposals = Number(
     (await db.select({ c: count() }).from(proposals).where(and(
       eq(proposals.tenantId, tenantId), eq(proposals.jobId, jobId),
+      eq(proposals.kind, "client"), // Phase 27 — internal proposals aren't an open client-readiness concern
       inArray(proposals.status, ["draft", "sent", "viewed"]),
     )))[0]?.c ?? 0,
   );

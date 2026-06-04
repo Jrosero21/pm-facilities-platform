@@ -14,6 +14,13 @@ const STATUS_STYLE: Record<string, string> = {
   withdrawn: "bg-neutral-100 text-neutral-500",
   expired: "bg-amber-100 text-amber-700",
   superseded: "bg-neutral-100 text-neutral-500",
+  internal_billed: "bg-teal-100 text-teal-700", // Phase 27 — terminal internal proposal
+};
+
+// Phase 27 — operators see BOTH kinds in one list (D1); the badge distinguishes them.
+const KIND_STYLE: Record<string, string> = {
+  client: "bg-sky-100 text-sky-700",
+  internal: "bg-purple-100 text-purple-700",
 };
 
 export function ProposalList({ proposals, jobId }: { proposals: ProposalRow[]; jobId: string }) {
@@ -50,6 +57,9 @@ export function ProposalList({ proposals, jobId }: { proposals: ProposalRow[]; j
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="text-sm font-medium text-neutral-900">${p.total}</span>
+                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${KIND_STYLE[p.kind] ?? "bg-neutral-100 text-neutral-700"}`}>
+                    {p.kind === "internal" ? "Internal" : "Client"}
+                  </span>
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[p.status] ?? "bg-neutral-100 text-neutral-700"}`}>
                     {p.status}
                   </span>

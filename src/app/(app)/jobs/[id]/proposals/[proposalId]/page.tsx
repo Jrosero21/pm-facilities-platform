@@ -14,6 +14,7 @@ const STATUS_STYLE: Record<string, string> = {
   withdrawn: "bg-neutral-100 text-neutral-500",
   expired: "bg-amber-100 text-amber-700",
   superseded: "bg-neutral-100 text-neutral-500",
+  internal_billed: "bg-teal-100 text-teal-700", // Phase 27 — terminal internal proposal
 };
 
 export default async function ProposalDetailPage({

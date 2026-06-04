@@ -65,7 +65,7 @@ export function ProposalActions({
   const isDraft = status === "draft";
   const isPending = status === "sent" || status === "viewed";
   const isAccepted = status === "accepted";
-  const isTerminal = status === "declined" || status === "withdrawn" || status === "expired" || status === "superseded";
+  const isTerminal = status === "declined" || status === "withdrawn" || status === "expired" || status === "superseded" || status === "internal_billed";
 
   return (
     <div className="flex flex-wrap items-start gap-2">

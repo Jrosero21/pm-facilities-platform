@@ -22,8 +22,9 @@ export type ClientJobProposalRow = {
  * clientScope.has(clientId)); returns [] if the job is not in scope so proposals
  * for another client's job never leak.
  *
- * status='sent' ONLY (J4): the acceptable set. Drafts (operator workspace),
- * accepted/declined/superseded/withdrawn/expired are not actionable here.
+ * status='sent' AND kind='client' ONLY (J4 + Phase 27 seal): the acceptable set. Drafts
+ * (operator workspace), accepted/declined/superseded/withdrawn/expired are not actionable
+ * here, and INTERNAL proposals never reach a client surface (both predicates ANDed).
  *
  * OQ-6 (same as client invoices): proposals carry subtotal/markup_total/tax_total/
  * total, but the client sees the marked-up TOTAL only — subtotal/markup are NOT
@@ -54,6 +55,7 @@ export async function listClientJobProposals(
         eq(proposals.tenantId, tenantId),
         eq(proposals.jobId, jobId),
         eq(proposals.status, "sent"),
+        eq(proposals.kind, "client"), // Phase 27 SEAL: a proposal reaches the client ONLY if BOTH sent AND client-kind
       ),
     )
     .orderBy(asc(proposals.sentAt), asc(proposals.id));

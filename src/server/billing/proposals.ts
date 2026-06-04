@@ -34,12 +34,14 @@ type ProposalLineCategory = NonNullable<typeof proposalLineItems.$inferInsert["c
 
 // LIVE = occupies the chain's single live slot (for the single-live-revision invariant). An
 // accepted proposal is still live (it can be superseded by a revision — re-quote after accept).
+// internal_billed is TERMINAL (Phase 27) — deliberately NOT here, so it never holds the live slot.
 const LIVE_STATUSES = ["draft", "sent", "viewed", "accepted"] as const;
 function isLive(status: string): boolean {
   return (LIVE_STATUSES as readonly string[]).includes(status);
 }
-// WITHDRAWABLE excludes `accepted`: once a client has accepted, the proposal is a commitment —
-// you revise (supersede) or issue a change order, you do not withdraw it. (Distinct from LIVE.)
+// WITHDRAWABLE excludes `accepted` (a commitment) and `internal_billed` (terminal, Phase 27):
+// once a client has accepted you revise (supersede) or issue a change order, you do not withdraw
+// it; a billed internal proposal is terminal. (Distinct from LIVE.)
 const WITHDRAWABLE_STATUSES = ["draft", "sent", "viewed"] as const;
 function isWithdrawable(status: string): boolean {
   return (WITHDRAWABLE_STATUSES as readonly string[]).includes(status);
@@ -72,6 +74,7 @@ export type ProposalRow = typeof proposals.$inferSelect;
 export type CreateProposalInput = {
   tenantId: string;
   jobId: string;
+  kind?: "client" | "internal"; // Phase 27 — defaults to 'client' (existing operator-authored path)
   title?: string | null;
   scopeSnapshot?: string | null;
   currency?: string;
@@ -88,6 +91,7 @@ export async function createProposal(input: CreateProposalInput): Promise<{ id: 
     id,
     tenantId: input.tenantId,
     jobId: input.jobId,
+    kind: input.kind ?? "client", // Phase 27 — default preserves the client-facing operator path
     title: input.title ?? null,
     scopeSnapshot: input.scopeSnapshot ?? null,
     currency: input.currency ?? "USD",
@@ -325,6 +329,7 @@ export async function createProposalRevision(input: {
       await tx
         .select({
           jobId: proposals.jobId, status: proposals.status, total: proposals.total,
+          kind: proposals.kind, // Phase 27 — a revision inherits the prior's kind
           title: proposals.title, scopeSnapshot: proposals.scopeSnapshot, currency: proposals.currency,
           validUntil: proposals.validUntil, notes: proposals.notes,
         })
@@ -338,7 +343,7 @@ export async function createProposalRevision(input: {
     await tx.insert(proposals).values({
       id: newId, tenantId: input.tenantId, jobId: prior.jobId,
       parentProposalId: rootId, supersedesProposalId: input.supersedesProposalId,
-      revisionNumber: newRev, status: "draft",
+      revisionNumber: newRev, status: "draft", kind: prior.kind, // Phase 27 — revision of internal STAYS internal
       title: prior.title, scopeSnapshot: prior.scopeSnapshot, currency: prior.currency,
       validUntil: prior.validUntil, notes: prior.notes, createdByUserId: input.actorUserId,
     });
