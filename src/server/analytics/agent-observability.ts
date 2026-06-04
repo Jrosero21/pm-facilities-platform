@@ -19,11 +19,15 @@ import {
   agentRuns,
   invoiceReviews,
   jobScopeReviews,
+  proposalDrafts,
+  proposalReviews,
   updateRewriteReviews,
 } from "@/server/schema";
 import { priceFor } from "@/server/agents/config/pricing";
 import { summarizeSeconds } from "@/server/analytics/percentile";
 import { latestReviewPerDraft } from "@/server/analytics/correction-pairs";
+import { normalizedLevenshtein } from "@/server/analytics/text-distance";
+import { phrasingOnly, PROPOSAL_PHRASING_GOLD_MAX } from "@/server/analytics/proposal-phrasing";
 
 const DISPATCH_AGENT_ID = "dispatch_router_v1";
 
@@ -190,20 +194,49 @@ export async function invoiceApproveAsIs(tenantId: string): Promise<ApproveAsIsC
 }
 
 /**
+ * Proposal approve-as-is: approve AND the operator kept the PHRASING ~as-is (numbers excluded),
+ * latest review per draft. DIVERGES from the other agents: the proposal draft is number-free, so
+ * "approve with no edit" never happens; instead we measure phrasing edit-distance (draft vs edited,
+ * numbers stripped via phrasingOnly) and count a draft as approved-as-is when that distance is at or
+ * below the gold-band lower edge. Needs the draft content, so it joins proposal_drafts (not just
+ * reviews); proposalDraftId is aliased to draftId for classifyLatestReviews.
+ */
+export async function proposalApproveAsIs(tenantId: string): Promise<ApproveAsIsCounts> {
+  const rows = await db
+    .select({
+      draftId: proposalReviews.proposalDraftId,
+      decision: proposalReviews.decision,
+      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS CHAR)`,
+      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS CHAR)`,
+      createdAt: proposalReviews.createdAt,
+    })
+    .from(proposalDrafts)
+    .innerJoin(proposalReviews, eq(proposalReviews.proposalDraftId, proposalDrafts.id))
+    .where(eq(proposalDrafts.tenantId, tenantId))
+    .orderBy(desc(proposalReviews.createdAt));
+  return classifyLatestReviews(
+    rows,
+    (r) => normalizedLevenshtein(phrasingOnly(r.draftContent), phrasingOnly(r.editedContent ?? "")) <= PROPOSAL_PHRASING_GOLD_MAX,
+  );
+}
+
+/**
  * Unified approve-as-is across agents. Agents with a draft/review table report their rate;
  * dispatch_router_v1 (and any agent without a review surface) reports applicable:false / zeros.
  */
 export async function agentApproveAsIs(tenantId: string): Promise<AgentApproveAsIsRow[]> {
-  const [rewriter, scope, invoice] = await Promise.all([
+  const [rewriter, scope, invoice, proposal] = await Promise.all([
     rewriterApproveAsIs(tenantId),
     scopeApproveAsIs(tenantId),
     invoiceApproveAsIs(tenantId),
+    proposalApproveAsIs(tenantId),
   ]);
   return [
     { agentId: "update_rewriter_v1", applicable: true, ...rewriter },
     { agentId: "scope_generator_v1", applicable: true, ...scope },
     { agentId: DISPATCH_AGENT_ID, applicable: false, reviewed: 0, approvedAsIs: 0, rate: 0 },
     { agentId: "invoice_creator_v1", applicable: true, ...invoice },
+    { agentId: "proposal_generator_v1", applicable: true, ...proposal },
   ];
 }
 

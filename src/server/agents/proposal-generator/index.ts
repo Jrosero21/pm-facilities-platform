@@ -3,7 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
-import { selectFewShotPairs, type CorrectionPair } from "@/server/analytics/correction-pairs";
+import { selectFewShotPairs, proposalCorrectionPairs } from "@/server/analytics/correction-pairs";
 import { getJobDetailTool, getJobStatusCodeTool, createProposalDraftTool } from "./tools";
 import { generateProposal, resolveProposalRouting } from "./llm";
 import type { ProposedProposal, ProposedProposalLine } from "./drafts";
@@ -28,15 +28,6 @@ export const AGENT_ID = "proposal_generator_v1";
 //   - CLOSED_BILLED → terminal; billing already finalized
 // Eligible set: DISPATCHED, SCHEDULED, IN_PROGRESS, ON_HOLD, COMPLETED.
 const NOT_BILLABLE_STATUS_CODES = new Set(["NEW", "CANCELLED", "CLOSED", "CLOSED_BILLED"]);
-
-// TODO(Batch 4): replace with proposalCorrectionPairs(tenantId) from analytics/correction-pairs
-// once proposal_drafts/_reviews are wired into the correction-pairs reader. Returns [] today, so
-// generateProposal takes the single-shot path (no few-shot). Kept inline + clearly marked so the
-// wiring point is obvious and nothing silently looks "done".
-async function proposalCorrectionPairsStub(tenantId: string): Promise<CorrectionPair[]> {
-  void tenantId; // TODO(Batch 4): query proposalCorrectionPairs(tenantId) from analytics/correction-pairs
-  return [];
-}
 
 /**
  * Run the proposal generator against an active/billable job. Produces a NUMBER-FREE draft at
@@ -93,9 +84,12 @@ export async function runProposalGenerator(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
-    // Phase 25 feedback loop (wired in Batch 4 — stub returns [] today → single-shot). Skipped on mock.
+    // Phase 25 feedback loop: mine this tenant's operator corrections (phrasing-distance classified,
+    // GOLD-first, cap 20, rejects excluded) and pass them as few-shot. Tenant-scoped, number-free by
+    // construction (phrasing-only pairs). Skipped on the mock path. Near-empty today (sparse reviews)
+    // → the single-shot fallback inside generateProposal.
     const fewShot =
-      routing.mode === "mock" ? [] : selectFewShotPairs(await proposalCorrectionPairsStub(input.tenantId));
+      routing.mode === "mock" ? [] : selectFewShotPairs(await proposalCorrectionPairs(input.tenantId));
 
     // LLM transform (PHRASING ONLY — the schema is number-free, D1). Provider preference +
     // failover applied inside. The proposal generator has no auto-execute path — it ALWAYS queues.

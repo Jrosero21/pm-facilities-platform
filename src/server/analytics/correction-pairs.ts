@@ -27,13 +27,22 @@ import {
   invoiceReviews,
   jobScopeDrafts,
   jobScopeReviews,
+  proposalDrafts,
+  proposalReviews,
   updateRewriteDrafts,
   updateRewriteReviews,
 } from "@/server/schema";
+import { normalizedLevenshtein } from "@/server/analytics/text-distance";
+import {
+  phrasingOnly,
+  PROPOSAL_PHRASING_GOLD_MAX,
+  PROPOSAL_PHRASING_NEGATIVE_MIN,
+} from "@/server/analytics/proposal-phrasing";
 
 const REWRITER_AGENT_ID = "update_rewriter_v1";
 const SCOPE_AGENT_ID = "scope_generator_v1";
 const INVOICE_AGENT_ID = "invoice_creator_v1";
+const PROPOSAL_AGENT_ID = "proposal_generator_v1";
 
 /**
  * Latest-review-per-draft dedupe (the ONE shared primitive — Phase-24 retention-extraction
@@ -189,28 +198,99 @@ export async function invoiceCorrectionPairs(tenantId: string): Promise<Correcti
   return toPairs(INVOICE_AGENT_ID, rows);
 }
 
-export type AgentId = typeof REWRITER_AGENT_ID | typeof SCOPE_AGENT_ID | typeof INVOICE_AGENT_ID;
+/**
+ * Proposal corrections: agent_runs → drafts → reviews. DIVERGES from the other three agents: the
+ * proposal draft is NUMBER-FREE, so the invoice "edited_content == null = approved-as-is" signal
+ * does not apply (the operator always authors pricing → edited_content is never null on a valid
+ * publish). Instead we classify by PHRASING edit-distance, and BOTH draftContent and editedContent
+ * are the phrasing-only projection (numbers dropped) — so buildFewShotMessages stays number-free
+ * with NO change to it (a gold pair's editedContent string contains no dollar figures).
+ *
+ * proposed_proposal/edited_content are JSON longtext; CAST AS CHAR returns the RAW stored string
+ * (bypassing drizzle's json() decoder); phrasingOnly parses + projects.
+ */
+export async function proposalCorrectionPairs(tenantId: string): Promise<CorrectionPair[]> {
+  const rows = await db
+    .select({
+      draftId: proposalDrafts.id, // satisfies latestReviewPerDraft<{ draftId, createdAt }>
+      agentRunId: proposalDrafts.agentRunId,
+      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS CHAR)`,
+      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS CHAR)`,
+      decision: proposalReviews.decision,
+      reviewedAt: proposalReviews.reviewedAt,
+      createdAt: proposalReviews.createdAt,
+    })
+    .from(proposalDrafts)
+    .innerJoin(
+      agentRuns,
+      and(eq(agentRuns.id, proposalDrafts.agentRunId), eq(agentRuns.agentId, PROPOSAL_AGENT_ID)),
+    )
+    .innerJoin(proposalReviews, eq(proposalReviews.proposalDraftId, proposalDrafts.id))
+    .where(eq(proposalDrafts.tenantId, tenantId))
+    .orderBy(desc(proposalReviews.createdAt));
 
-/** Correction pairs for one agent (rewriter = text, scope + invoice = JSON). */
+  return latestReviewPerDraft(rows).map((r) => {
+    const draftPhrasing = phrasingOnly(r.draftContent);
+    // reject → negative (no phrasing comparison needed).
+    if (r.decision === "reject") {
+      return {
+        agentId: PROPOSAL_AGENT_ID, draftId: r.draftId, agentRunId: r.agentRunId,
+        bucket: "negative" as CorrectionBucket, draftContent: draftPhrasing, editedContent: null,
+        decision: r.decision, reviewedAt: r.reviewedAt, createdAt: r.createdAt,
+      };
+    }
+    // approve → classify by phrasing edit-distance (numbers already stripped on both sides).
+    const editedPhrasing = phrasingOnly(r.editedContent ?? "");
+    const d = normalizedLevenshtein(draftPhrasing, editedPhrasing);
+    let bucket: CorrectionBucket;
+    let editedContent: string | null;
+    if (d <= PROPOSAL_PHRASING_GOLD_MAX) {
+      bucket = "positive"; // kept ~as-is → assistant turn is the DRAFT (buildFewShotMessages: positive→draftContent)
+      editedContent = null;
+    } else if (d >= PROPOSAL_PHRASING_NEGATIVE_MIN) {
+      bucket = "negative"; // heavy rewrite → excluded from few-shot
+      editedContent = null;
+    } else {
+      bucket = "gold"; // refined → assistant turn is the EDITED phrasing (buildFewShotMessages: gold→editedContent)
+      editedContent = editedPhrasing;
+    }
+    return {
+      agentId: PROPOSAL_AGENT_ID, draftId: r.draftId, agentRunId: r.agentRunId,
+      bucket, draftContent: draftPhrasing, editedContent,
+      decision: r.decision, reviewedAt: r.reviewedAt, createdAt: r.createdAt,
+    };
+  });
+}
+
+export type AgentId =
+  | typeof REWRITER_AGENT_ID
+  | typeof SCOPE_AGENT_ID
+  | typeof INVOICE_AGENT_ID
+  | typeof PROPOSAL_AGENT_ID;
+
+/** Correction pairs for one agent (rewriter = text, scope + invoice = JSON, proposal = phrasing). */
 export async function correctionPairsForAgent(
   tenantId: string,
   agentId: AgentId,
 ): Promise<CorrectionPair[]> {
   return agentId === INVOICE_AGENT_ID
     ? invoiceCorrectionPairs(tenantId)
-    : agentId === SCOPE_AGENT_ID
-      ? scopeCorrectionPairs(tenantId)
-      : rewriterCorrectionPairs(tenantId);
+    : agentId === PROPOSAL_AGENT_ID
+      ? proposalCorrectionPairs(tenantId)
+      : agentId === SCOPE_AGENT_ID
+        ? scopeCorrectionPairs(tenantId)
+        : rewriterCorrectionPairs(tenantId);
 }
 
 /** All correction pairs across the in-scope LLM agents. */
 export async function allCorrectionPairs(tenantId: string): Promise<CorrectionPair[]> {
-  const [rewriter, scope, invoice] = await Promise.all([
+  const [rewriter, scope, invoice, proposal] = await Promise.all([
     rewriterCorrectionPairs(tenantId),
     scopeCorrectionPairs(tenantId),
     invoiceCorrectionPairs(tenantId),
+    proposalCorrectionPairs(tenantId),
   ]);
-  return [...rewriter, ...scope, ...invoice];
+  return [...rewriter, ...scope, ...invoice, ...proposal];
 }
 
 const DEFAULT_FEW_SHOT_CAP = 20;
