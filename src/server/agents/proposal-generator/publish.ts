@@ -1,7 +1,6 @@
 import "server-only";
 
 import { and, eq, isNull } from "drizzle-orm";
-import Big from "big.js";
 import { db } from "@/server/db";
 import { auditLogs, proposalDrafts, proposals } from "@/server/schema";
 import { createProposal, addProposalLineItem } from "@/server/billing/proposals";
@@ -9,6 +8,7 @@ import { resolveClientMarkupDefault } from "@/server/billing/client-invoices";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { computeArLines, type ArLineInput } from "@/server/billing/totals";
+import { decideProposalKind } from "@/server/billing/proposal-routing";
 import { isDecimalStr } from "@/server/billing/money";
 import { getJobDetail } from "@/server/jobs";
 import { getProposalDraft, type ProposedProposal } from "./drafts";
@@ -108,17 +108,8 @@ export async function publishProposalDraft(input: {
     .map((ln, i) => `${i + 1}. [${ln.category}] ${ln.description}\n${ln.scopePhrasing ?? ""}`.trimEnd())
     .join("\n\n");
 
-  // NTE GATE — the kind decision (explicit, decimal-string comparison via Big.js):
-  let kind: "client" | "internal";
-  if (input.forceClientReview === true) {
-    kind = "client"; // override forces TOWARD review (§2.1-safe)
-  } else if (effectiveNte === null) {
-    kind = "client"; // no ceiling → fail-safe to the client review flow
-  } else if (new Big(total).lte(new Big(effectiveNte))) {
-    kind = "internal"; // under or equal to the NTE → auto-billed internal
-  } else {
-    kind = "client"; // over the NTE → client review
-  }
+  // NTE GATE — the kind decision (shared with the routing preview so they can never disagree).
+  const kind = decideProposalKind(total, effectiveNte, input.forceClientReview === true);
 
   // h. create the canonical proposal at the decided kind (own txn; lands status='draft').
   const { id: proposalId } = await createProposal({
