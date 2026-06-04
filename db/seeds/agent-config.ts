@@ -88,6 +88,23 @@ Judge lumpFlag: set it true ONLY when the vendor invoice is a single lumped or n
 
 Keep descriptions specific to the stated trade and the work actually done; do not editorialize about price, margin, or the vendor. Return your line items (descriptions + categories + reconciliations), your lumpFlag judgment, your confidence, and a one-line rationale.`;
 
+// Phase 27 — proposal_generator_v1. Drafts the proposal for a job from its CONTEXT (problem
+// description, trade, location) — there is no vendor invoice source. MONEY-SAFETY mirrors the
+// invoice creator: the model writes line-item PHRASING (category + description + scope) only and
+// must NEVER output an amount; the operator authors all pricing at review and the platform applies
+// the billing rules. Per-trade prompts are banked — the trade specialization comes from the job
+// data the per-run user prompt supplies, not a per-variant prompt row. Voice mirrors the invoice
+// prompt deliberately (the two agents should read as the same company).
+const PROPOSAL_SYSTEM_PROMPT = `You draft the proposal for a commercial facilities maintenance work order, starting from the job's problem description and context. Your output is a DRAFT: an operator reviews, prices, and edits it before it is used — never assume it is final.
+
+You write the proposal LINE ITEMS only — the words, not the money. For each line you provide a category, a clear client-facing description of the work, and the scope-of-work phrasing that says what that line covers. You must NOT output any amounts — no prices, no quantities, no markup, no totals. The operator authors all pricing at review and the platform applies the billing rules; inventing or restating numbers is never your job and would corrupt the proposal.
+
+Break the work into a sensible handful of line items that follow the job from start to finish — typically diagnosis or assessment, the parts or materials needed, the labor to perform the work, and verification or testing that the fix holds. Use the stated trade, problem description, and location to shape the scope so it reads as specific to this job (for example, an HVAC compressor failure becomes lines like diagnose the unit, supply the replacement compressor, perform the replacement, and test and recharge the system). Do not collapse everything into one lump line, and do not over-fragment routine work into trivial steps.
+
+When the problem description is too vague to scope confidently, favor assessment-first lines, set confidence to 'low', and note the gap in your rationale rather than inventing work the description does not support.
+
+For each line choose an appropriate category (labor, materials, equipment, trip, permit, fee, tax, other). Keep descriptions and scope phrasing specific to the work actually needed, and keep the tone plain, professional, and appropriate for a commercial client to read. Do not editorialize about price, margin, or vendors. Return your line items (categories + descriptions + scope phrasing), your confidence, and a one-line rationale for your choices.`;
+
 // All agents seeded here share the model footprint + variant; one row each in the
 // *_defaults tables they participate in. (Q-7.x: split into per-agent seed files later.)
 // systemPrompt is OPTIONAL: a rule-based / LLM-free agent (dispatch_router_v1) has NO prompt
@@ -106,6 +123,8 @@ const AGENT_SEEDS: AgentSeed[] = [
   { agentId: "dispatch_router_v1", policy: { requiresReview: true } },
   // Phase 26 2b-i — invoice_creator_v1: PROMPT DEFAULT ONLY (no policy — fail-safe gated).
   { agentId: "invoice_creator_v1", systemPrompt: INVOICE_SYSTEM_PROMPT },
+  // Phase 27 — proposal_generator_v1: PROMPT DEFAULT ONLY (no policy — fail-safe gated).
+  { agentId: "proposal_generator_v1", systemPrompt: PROPOSAL_SYSTEM_PROMPT },
 ];
 
 async function main() {
