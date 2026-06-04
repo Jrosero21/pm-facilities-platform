@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { VendorInvoiceRow } from "@/server/billing/vendor-invoices";
+import { DraftClientInvoiceButton, canDraftClientInvoice } from "@/components/draft-client-invoice-button";
 
 // ── Phase 8 batch 8c.11d — compact vendor-invoice (AP) list on the job detail ─────────
 
@@ -30,8 +31,8 @@ export function VendorInvoiceList({ vendorInvoices, jobId }: { vendorInvoices: V
       ) : (
         <ul className="mt-3 divide-y divide-neutral-100 rounded-lg border border-neutral-200 bg-white">
           {vendorInvoices.map((vi) => (
-            <li key={vi.id}>
-              <Link href={`/jobs/${jobId}/vendor-invoices/${vi.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-50">
+            <li key={vi.id} className="flex items-center gap-2 px-4 py-3 hover:bg-neutral-50">
+              <Link href={`/jobs/${jobId}/vendor-invoices/${vi.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-neutral-900">{vi.invoiceNumber ?? "(no number)"}</p>
                   <p className="mt-0.5 text-xs text-neutral-500">{vi.createdAt.toLocaleDateString()}</p>
@@ -43,6 +44,7 @@ export function VendorInvoiceList({ vendorInvoices, jobId }: { vendorInvoices: V
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[vi.status] ?? "bg-neutral-100 text-neutral-700"}`}>{vi.status}</span>
                 </div>
               </Link>
+              {canDraftClientInvoice(vi.status) && <DraftClientInvoiceButton jobId={jobId} vendorInvoiceId={vi.id} />}
             </li>
           ))}
         </ul>

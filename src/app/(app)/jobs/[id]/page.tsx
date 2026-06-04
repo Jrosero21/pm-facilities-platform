@@ -43,6 +43,11 @@ import { LinkedPayments } from "@/components/linked-payments";
 import { CloseBillingButton } from "@/components/close-billing-button";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
+import { listInvoiceDraftsForJobDetailed } from "@/server/agents/invoice-creator/drafts";
+import { listProposalDraftsForJobDetailed } from "@/server/agents/proposal-generator/drafts";
+import { InvoiceDraftsSection } from "@/components/invoice-drafts-section";
+import { ProposalDraftsSection } from "@/components/proposal-drafts-section";
+import { GenerateProposalButton } from "@/components/generate-proposal-button";
 import { isJobStalled } from "@/server/analytics/stalled-jobs";
 import { tierBadge } from "@/components/dashboard/tier-colors";
 
@@ -87,7 +92,7 @@ export default async function JobDetailPage({
       isJobStalled(tenantId, id),
     ]);
   // 8c.11a billing reads — all existing verified readers (+ listJobBillingEvents, actorName-enhanced).
-  const [proposals, changeOrders, vendorInvoices, clientInvoices, payments, margin, readiness, billingEvents] =
+  const [proposals, changeOrders, vendorInvoices, clientInvoices, payments, margin, readiness, billingEvents, invoiceDrafts, proposalDrafts] =
     await Promise.all([
       listProposalsForJob(tenantId, id),
       listChangeOrdersForJob(tenantId, id),
@@ -97,6 +102,9 @@ export default async function JobDetailPage({
       getJobMargin(tenantId, id),
       getBillingCloseReadiness(tenantId, id),
       listJobBillingEvents(tenantId, id),
+      // v2.10.1 — AI draft review queues (invoice + proposal)
+      listInvoiceDraftsForJobDetailed(tenantId, id),
+      listProposalDraftsForJobDetailed(tenantId, id),
     ]);
   // 8c.11e: accounting-gate (defense-in-depth for the close button) + already-closed guard.
   // alreadyBillingClosed is a UI hint via the seeded status display name; the data-layer
@@ -417,10 +425,15 @@ export default async function JobDetailPage({
 
       {/* Proposals (8c.11b — navigable list + create) */}
       <div className="mt-8">
-        <h2 className="text-sm font-semibold text-neutral-900">Proposals</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">Proposals</h2>
+          <GenerateProposalButton jobId={id} />
+        </div>
         <div className="mt-3">
           <ProposalList proposals={proposals} jobId={id} />
         </div>
+        {/* v2.10.1 — proposal-generator AI draft review queue */}
+        <ProposalDraftsSection jobId={id} drafts={proposalDrafts} />
       </div>
 
       {/* Change orders (8c.11c — navigable list + create) */}
@@ -445,6 +458,8 @@ export default async function JobDetailPage({
         <div className="mt-3">
           <ClientInvoiceList clientInvoices={clientInvoices} jobId={id} />
         </div>
+        {/* v2.10.1 — invoice-creator AI draft review queue (generate trigger lives per-row in Vendor invoices) */}
+        <InvoiceDraftsSection jobId={id} drafts={invoiceDrafts} />
       </div>
 
       {/* Payments (8c.11e) */}
