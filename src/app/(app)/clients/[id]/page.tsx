@@ -32,9 +32,12 @@ export default async function ClientDetailPage({
         / {client.name}
       </div>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">{client.name}</h1>
-      <div className="mt-2">
+      <div className="mt-2 flex items-center gap-4">
         <Link href={`/clients/${id}/nte-rules`} className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
           Billing NTE rules →
+        </Link>
+        <Link href={`/clients/${id}/billing-rules`} className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
+          Markup &amp; billing rules →
         </Link>
       </div>
 
