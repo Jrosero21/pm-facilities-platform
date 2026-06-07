@@ -259,3 +259,69 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
   **Verify any "retires/depends-on X" claim against this live bank** (it wins over §6/§9 and handoff
   prose — the encryption item is **CF-12.4** not CF-12.1; B-16.5 retires **per agent**, beginning Phase
   26, advanced by Phase 27, residual = NTE negotiator).
+
+---
+
+## Post-Phase-27 findings (v2.10.x verification)
+
+Surfaced while verifying the proposal generator against live state + the v2.10.1 review UI. These are
+NET-NEW to this bank (not inherited).
+
+### MUST-HAVE — Post-create job editing (priority, trade, NTE, ~all fields)
+**This is a committed near-term build — the headline of the next build unit, NOT backlog.** Jobs are
+currently **immutable after creation**: `createJob` is the ONLY writer of `priority_id` /
+`primary_trade_id` / `not_to_exceed_amount`; the only post-create mutation on `jobs` is
+`current_status_id` (status transitions) and NTE-via-approved-change-orders (computed-on-read; the base
+column is never re-set). There is **NO `updateJob` / `editJob` action or UI** anywhere (`createJobAction`
+is the only job action; no edit route under `jobs/[id]/`). Consequences observed in live testing:
+- **(a)** a job created via a non-manual source (client portal / email / PM / snow) with **null
+  priority/trade** can **NEVER resolve an NTE** (every `resolveClientNteRule` rung requires a priority,
+  and `createJob` skips resolution when trade OR priority is absent) and **can never be corrected** —
+  permanently unroutable-to-internal.
+- **(b)** the manual create form has **no NTE field**, so an operator can only get an NTE onto a job via
+  a matching `client_nte_rules` row that exists **BEFORE** creation.
+- **(c)** typos (e.g. trade / problem description) **cannot be fixed** at all post-create.
+**Required operator functionality.** Scope should include an edit surface for **priority, trade, NTE
+(direct entry — not only via rules), problem description, and most other job fields**. Design must handle
+the downstream effects of editing trade/NTE: re-resolve the NTE? interact with existing change orders?
+re-snapshot vs. leave the create-time snapshot? (The single-writer-of-the-NTE-snapshot invariant, 8c.4,
+is the thing being reconsidered — do it deliberately.)
+
+### CF-27.7 — Markup-rules (`client_billing_rules`) management UI
+**Highest-value AR gap after job-edit.** No authoring path AT ALL: no page, no form, **no app-layer
+writer (`createClientBillingRule` does not exist)**, no seed. **Prod has 0 rows** → `resolveClientMarkupDefault`
+returns `null` → **every published proposal/invoice gets null markup (no margin)**. Confirmed in live
+testing: the $315 internal proposal published at **cost-only, no uplift**. Build it by **mirroring the
+existing NTE-rules UI pattern** (`clients/[id]/nte-rules`: page + `NteRulesList` + `NteRuleForm` +
+`createClientNteRule`/activate/archive writers) for `client_billing_rules`.
+
+### CF-27.8 — Direct NTE entry on job create + edit
+The manual New-job form has **no `not_to_exceed` input**; an NTE only lands via a pre-existing matching
+`client_nte_rules` row at create (the auto-snapshot). Operators should be able to **type an NTE directly
+at create AND edit it after** (the edit half is part of the job-edit MUST-HAVE above). Note: **adding an
+NTE rule is NOT retroactive** — the snapshot is create-time only (`createJob` is the single writer of
+`jobs.not_to_exceed_amount`; `nte.ts` never writes that column), so existing null-NTE jobs **stay null
+forever** without job-edit.
+
+### CF-27.9 — Non-manual job sources create incomplete jobs
+`create-client-job` (client portal), `ingest-email`, `pm/generate-visits`, `pm/approve-visits`,
+`snow/dispatch-sites` can create jobs with **null priority/trade**, which both yields a null NTE and
+(today) **cannot be corrected**. Either **require those fields at those sources** or rely on the job-edit
+MUST-HAVE to fix after creation. (The operator manual form already requires trade + priority, D-4.7 — so
+this is specifically the non-manual ingest paths.)
+
+### CF-27.10 — Proposal cosmetics: default title
+Published proposals show **"Untitled proposal"** — the agent / publish flow sets no `title`. Minor; set a
+sensible default (e.g. derived from the problem description, or `"Proposal — <trade> <date>"`).
+
+### CF-27.11 — Per-trade prompt specialization
+`ai_prompt_templates` has **no trade dimension**; the `variant` column is the latent hook, but
+`resolveActivePrompt` is **always called with `variant="default"`**. Per-trade prompts (distinct
+proposal/scope/invoice prompts per trade) would need **agent-code changes** (pass `variant=<trade>`) **+
+per-variant seed rows**. Deferred — build only if single-prompt draft quality proves insufficient per
+trade.
+
+### CF-27.12 *(soft)* — Priority vocabulary check
+Observed a job Priority value of **"Scheduled,"** which reads more like a status / urgency than a
+priority level (low / normal / high / emergency). Worth confirming the priorities-table vocabulary is
+intentional. Low priority; **note only.**
