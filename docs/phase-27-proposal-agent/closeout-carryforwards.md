@@ -268,6 +268,9 @@ Surfaced while verifying the proposal generator against live state + the v2.10.1
 NET-NEW to this bank (not inherited).
 
 ### MUST-HAVE — Post-create job editing (priority, trade, NTE, ~all fields)
+> **→ RESOLVED — SHIPPED in v2.11.0** (full record in the "## v2.11.0 — post-create job editing (SHIPPED)"
+> section at the bottom of this file). The original entry below is kept verbatim for history.
+
 **This is a committed near-term build — the headline of the next build unit, NOT backlog.** Jobs are
 currently **immutable after creation**: `createJob` is the ONLY writer of `priority_id` /
 `primary_trade_id` / `not_to_exceed_amount`; the only post-create mutation on `jobs` is
@@ -296,6 +299,9 @@ existing NTE-rules UI pattern** (`clients/[id]/nte-rules`: page + `NteRulesList`
 `createClientNteRule`/activate/archive writers) for `client_billing_rules`.
 
 ### CF-27.8 — Direct NTE entry on job create + edit
+> **→ edit-side SHIPPED v2.11.0** (the `jobs/[id]/edit` form has a direct NTE input — blank leaves it
+> unchanged). **Create-side STILL OPEN:** the New-job form still has no NTE field.
+
 The manual New-job form has **no `not_to_exceed` input**; an NTE only lands via a pre-existing matching
 `client_nte_rules` row at create (the auto-snapshot). Operators should be able to **type an NTE directly
 at create AND edit it after** (the edit half is part of the job-edit MUST-HAVE above). Note: **adding an
@@ -304,6 +310,10 @@ NTE rule is NOT retroactive** — the snapshot is create-time only (`createJob` 
 forever** without job-edit.
 
 ### CF-27.9 — Non-manual job sources create incomplete jobs
+> **→ PARTLY MITIGATED v2.11.0** — such null-priority/trade jobs are now **editable post-create** (job-edit),
+> so they're no longer permanently stuck / unroutable-to-internal. **Root cause STILL OPEN:** the ingest
+> sources still allow null priority/trade at creation.
+
 `create-client-job` (client portal), `ingest-email`, `pm/generate-visits`, `pm/approve-visits`,
 `snow/dispatch-sites` can create jobs with **null priority/trade**, which both yields a null NTE and
 (today) **cannot be corrected**. Either **require those fields at those sources** or rely on the job-edit
@@ -325,3 +335,56 @@ trade.
 Observed a job Priority value of **"Scheduled,"** which reads more like a status / urgency than a
 priority level (low / normal / high / emergency). Worth confirming the priorities-table vocabulary is
 intentional. Low priority; **note only.**
+
+---
+
+## v2.11.0 — post-create job editing (SHIPPED)
+
+Branch `v2.11.0-job-edit` (commits `5b3de8d` writer · `4d6687b` harness · `58d318f` UI + build fix).
+Resolves the **MUST-HAVE** above. Recorded here so the bank reads as history (the original entry is
+annotated, not deleted).
+
+### What shipped
+- **Editable fields** via `updateJob(input: { tenantId, jobId, actorUserId, patch })`:
+  `priority_id`, `primary_trade_id` (warn-not-block post-dispatch), `not_to_exceed_amount` (direct
+  entry), `client_location_id` (**same-client only** — `LOCATION_CLIENT_MISMATCH` guard),
+  `problem_description` (**source-locked**: editable for `manual` / `preventative_maintenance` /
+  `snow_event`; locked for `internal_client_portal` / `external_client_portal` / `email_ingestion` /
+  `forwarded_email` / `api`), and `scope_of_work` (always editable).
+- **Dual-write per changed field, one transaction** (mirrors `createJob` step 5–8): typed history
+  (`job_priority_history` / `job_trade_history`) and/or `job_events` (`job.priority_changed`,
+  `job.trade_changed`, `job.location_changed`, `job.scope_updated`) + one `audit_logs` `job.updated`
+  row. A no-op (nothing changed) writes nothing.
+- **`nte.adjusted`** billing event on an NTE edit — and **`updateJob` is the DELIBERATE 2nd writer of
+  `jobs.not_to_exceed_amount`**, an **accepted change to the 8c.4 single-writer invariant** (recorded:
+  `createJob` was previously the sole writer; the effective NTE stays computed-on-read = edited base +
+  Σ approved COs).
+- **UI:** `jobs/[id]/edit` (pre-filled `JobEditForm` — direct NTE input, same-client location dropdown,
+  required priority/trade selects, source-gated read-only description, amber active-dispatch warning via
+  `hasActiveAssignment` [SENT+]) + an Edit link on the job detail header. `updateJobAction` wraps the
+  writer and reuses `canonicalizeNte` (relocated to `billing/money.ts` — a `"use server"` module may
+  only export async functions).
+- **Proof:** `db:check:job-edit` **15/0** (history/event/audit dual-write + no-op; NTE 2nd writer +
+  `nte.adjusted` + `getEffectiveNte`; same-client + source-lock guards; clear-to-null rejection;
+  `hasActiveAssignment`). Build green; one edit live-verified (NTE 500→2500 + trade change → events on
+  the timeline).
+
+### Boundaries (by design)
+- **`client_id` immutable** — never in the form; changing a job's client would orphan its proposals /
+  invoices / assignments / NTE rules.
+- **`generated_scope_of_work` / `approved_scope_of_work` out of scope** — owned by the scope-generator
+  publish flow.
+- **Clear-to-null on priority/trade unsupported** — see CF-27.13 below.
+
+### CF-27.13 *(new, soft)* — clear-to-null on priority/trade not supported
+`updateJob` rejects setting priority/trade to null (`PRIORITY_REQUIRED` / `TRADE_REQUIRED`) because the
+typed history tables' `to_priority_id` / `to_trade_id` are **NOT NULL** (a history row can't record a
+transition *to* null). The null→value fix (the actual use case — correcting a null-priority ingest job)
+works cleanly. If "clear the priority/trade" is ever genuinely needed it requires a different design
+(skip-history for that transition, or a nullable-`to` redesign). Low priority; **note only.**
+
+### CF-27.14 *(new, soft)* — create-time priority/trade history baseline missing
+Pre-existing: `createJob` writes the initial `job_status_history` row (`null → NEW`) but **NOT** initial
+`job_priority_history` / `job_trade_history` rows. So priority/trade history starts at the **first edit**
+— there's no "created as X" baseline row (the first edit's `from_*_id` is the create-time value, which is
+correct, just un-rowed at create). Optional future backfill into `createJob`. Minor; **note only.**
