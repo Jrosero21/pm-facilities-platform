@@ -291,6 +291,11 @@ re-snapshot vs. leave the create-time snapshot? (The single-writer-of-the-NTE-sn
 is the thing being reconsidered — do it deliberately.)
 
 ### CF-27.7 — Markup-rules (`client_billing_rules`) management UI
+> **→ EXPANDED.** Inspection found this markup-rules UI is the **first seam (Seam 0)** of a larger
+> client-billing-model system. **Seam 0 in progress** (branch `cf-27.7-markup-rules`) — it closes the
+> original entry below. See the full **"## CF-27.7 expanded — client billing models (4-part plan)"**
+> section at the bottom of this file.
+
 **Highest-value AR gap after job-edit.** No authoring path AT ALL: no page, no form, **no app-layer
 writer (`createClientBillingRule` does not exist)**, no seed. **Prod has 0 rows** → `resolveClientMarkupDefault`
 returns `null` → **every published proposal/invoice gets null markup (no margin)**. Confirmed in live
@@ -388,3 +393,54 @@ Pre-existing: `createJob` writes the initial `job_status_history` row (`null →
 `job_priority_history` / `job_trade_history` rows. So priority/trade history starts at the **first edit**
 — there's no "created as X" baseline row (the first edit's `from_*_id` is the create-time value, which is
 correct, just un-rowed at create). Optional future backfill into `createJob`. Minor; **note only.**
+
+---
+
+## CF-27.7 expanded — client billing models (4-part plan)
+
+The original CF-27.7 (markup-rules UI) was found, on inspection, to be the **first seam of a larger
+client-billing-model system**. Recorded here as the canonical plan; the original entry is annotated, not
+deleted.
+
+### The three billing models (from the operator)
+1. **RATE-SHEET** *(PRIMARY / MUST-HAVE)* — per-client per-trade **agreed billed rates** (e.g. HVAC
+   $95/hr, handyman $85/hr, materials at an agreed markup). Bill at the agreed rates; **margin = agreed
+   rate − negotiated vendor cost**. The client sees line items at the agreed rates. **NOT supported today.**
+2. **COST-PLUS** *(rare)* — the client sees the **vendor's actual invoice cost + an agreed %** on top
+   (the existing `markup_percent` path). In cost-plus the vendor/client invoice is a **REQUIRED
+   DOCUMENT** (the client is contracted to see cost) — ties to the required-documents feature.
+3. **FLAT-DOLLAR** *(occasional)* — a custom per-job dollar amount. **One method per job** (never % and
+   flat at once).
+
+### Key inspection findings
+- The **shared line-item schema already expresses all three models** — `quantity` + `unit` +
+  `unit_price` + `markup_percent` (cost-plus = unit_price is cost + markup%; rate-sheet = unit_price is
+  the agreed rate, no markup; flat = one line at the flat amount). **The gap is rate STORAGE + a
+  billing-model selector + the authoring flow — NOT the line table.**
+- **The required-documents feature does NOT exist** (net-new; zero rows/tables/UI/code).
+  `vendor_compliance` is the requirement-with-state template; `jobAttachments` / `vendor_invoices` are
+  the file/satisfy side, but no requirement↔file link exists.
+- **`vendor_rates` is the proven template** for a `client_rates` table (client × trade × rate_type ×
+  amount × unit × effective dates × status).
+- **No `billing_model` field exists** anywhere on `clients` or `jobs`.
+
+### Sequenced build plan
+- **Seam 0** *(IN PROGRESS — closes original CF-27.7)* — markup-rules UI for
+  `client_billing_rules.markup_percent`. The cost-plus money path **already applies markup**
+  (`resolveClientMarkupDefault` → proposal/invoice publish); this ships margin **now**. ~350-line clone
+  of the NTE-rules UI, **NO migration**. Branch `cf-27.7-markup-rules`.
+- **Phase (i)** *(MUST-HAVE — the primary rate-sheet model)* — a **`billing_model` enum on `clients`**
+  (`rate_sheet | cost_plus | flat`) + a **new `client_rates` table** (mirror `vendor_rates`: client ×
+  trade × rate_type × amount × unit × effective dates × status) + a **rate-sheet management UI**.
+  Migration + new table.
+- **Phase (ii)** — **rate-based line authoring**: pick trade + hours → pull the agreed rate → emit a
+  billed line (`unit_price = rate`, no markup); wire into manual authoring + the invoice/proposal agents.
+  Touches the ~1,200-line pricing layer.
+- **Phase (iii)** — the **required-documents feature** (net-new; mirror `vendor_compliance` + a
+  satisfy-link to `jobAttachments` / `vendor_invoices` + a per-client UI) + the conditional **"require the
+  vendor invoice when `billing_model = cost_plus`"** client-invoice issuance gate. **Independent of
+  (i)/(ii)** — a standalone compliance feature the cost-plus model ties into; must not block rate-sheet.
+
+**MUST-HAVE: Phase (i) rate-sheet** is the operator's primary billing model and the headline of this
+expansion (Seam 0 unblocks cost-plus margin first; (i)+(ii) deliver rate-sheet; (iii) is the separate
+required-documents feature).
