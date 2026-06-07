@@ -34,3 +34,20 @@ export function assertCommonLineFields(f: CommonLineFields): void {
   if (f.taxAmount !== undefined && !isDecimalStr(f.taxAmount, 12, 2)) throw new Error("INVALID_LINE_TAX_AMOUNT");
   if (f.taxRate != null && !isDecimalStr(f.taxRate, 3, 3)) throw new Error("INVALID_LINE_TAX_RATE");
 }
+
+// 8c.4 / 9b: canonicalize an operator-entered NTE to a "d.dd" decimal(12,2) string, or null if
+// invalid. Validates shape, strips leading zeros, pads decimals, requires > 0 and ≤10 integer
+// digits. createJob compares this canonical form === the resolver's canonical amount (no money lib
+// in the data layer — 9a), so canonicalization MUST happen at the action boundary.
+//
+// RELOCATED (v2.11.0) from jobs/actions.ts: it had to leave that file because exporting it for
+// updateJobAction broke the "use server" rule (every export of a Server-Action module must be an
+// async function). Logic is BYTE-IDENTICAL — createJob's NTE behavior + the harness are unchanged.
+export function canonicalizeNte(raw: string): string | null {
+  if (!/^\d+(\.\d{1,2})?$/.test(raw)) return null;
+  const [intRaw, decRaw = ""] = raw.split(".");
+  const intPart = intRaw.replace(/^0+(?=\d)/, "");
+  if (intPart.length > 10) return null; // decimal(12,2) overflow
+  const canonical = `${intPart}.${(decRaw + "00").slice(0, 2)}`;
+  return parseFloat(canonical) > 0 ? canonical : null;
+}

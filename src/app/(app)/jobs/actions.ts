@@ -3,23 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
-import { createJob } from "@/server/jobs";
+import { createJob, updateJob, type JobPatch } from "@/server/jobs";
+// canonicalizeNte lives in the pure money util (NOT here) — every export of a "use server" module
+// must be an async function, so a sync helper cannot be exported from this file (v2.11.0 fix).
+import { canonicalizeNte } from "@/server/billing/money";
 
 export type CreateJobState = { error: string } | null;
-
-// 8c.4 / 9b: canonicalize an operator-entered NTE to a "d.dd" decimal(12,2) string, or null if
-// invalid. Validates shape, strips leading zeros, pads decimals, requires > 0 and ≤10 integer
-// digits. createJob then compares this canonical form === the resolver's canonical amount (no
-// money lib in the data layer — 9a), so canonicalization MUST happen here at the boundary.
-// Exported (v2.11.0) so updateJobAction (batch 2) reuses the SAME rule — never a second copy.
-export function canonicalizeNte(raw: string): string | null {
-  if (!/^\d+(\.\d{1,2})?$/.test(raw)) return null;
-  const [intRaw, decRaw = ""] = raw.split(".");
-  const intPart = intRaw.replace(/^0+(?=\d)/, "");
-  if (intPart.length > 10) return null; // decimal(12,2) overflow
-  const canonical = `${intPart}.${(decRaw + "00").slice(0, 2)}`;
-  return parseFloat(canonical) > 0 ? canonical : null;
-}
+// v2.11.0 — same shape as CreateJobState; named separately for the edit form's clarity.
+export type UpdateJobState = { error: string } | null;
 
 export async function createJobAction(
   _prev: CreateJobState,
@@ -95,4 +86,75 @@ export async function createJobAction(
 
   revalidatePath("/jobs");
   redirect(`/jobs/${newId}`);
+}
+
+// ── v2.11.0 — edit an existing job (wraps the committed updateJob writer) ──────────────
+// Builds a JobPatch from only the fields the form submits (updateJob no-ops unchanged ones), reuses
+// the SAME canonicalizeNte, and maps the writer's guard errors to friendly messages. The form omits
+// a locked problem_description (not submitted); the server PROBLEM_DESCRIPTION_LOCKED guard is the
+// backstop. Empty NTE field = LEAVE UNCHANGED (omitted) — clearing the NTE to null is not offered
+// here (a distinct intent). client_id is never in the form (immutable); priority/trade are required
+// selects (no clear-to-null). Redirect-on-success mirrors createJobAction.
+export async function updateJobAction(
+  jobId: string,
+  _prev: UpdateJobState,
+  formData: FormData,
+): Promise<UpdateJobState> {
+  const ctx = await requireTenant();
+
+  const priorityId = String(formData.get("priorityId") ?? "").trim();
+  const primaryTradeId = String(formData.get("primaryTradeId") ?? "").trim();
+  const clientLocationId = String(formData.get("clientLocationId") ?? "").trim();
+  const scopeRaw = formData.get("scopeOfWork"); // present (editable); "" clears the optional scope
+  const descRaw = formData.get("problemDescription"); // null when locked (disabled → not submitted)
+  const notToExceedRaw = String(formData.get("notToExceedAmount") ?? "").trim();
+
+  const patch: JobPatch = {};
+  if (priorityId) patch.priorityId = priorityId;
+  if (primaryTradeId) patch.primaryTradeId = primaryTradeId;
+  if (clientLocationId) patch.clientLocationId = clientLocationId;
+  if (scopeRaw !== null) patch.scopeOfWork = String(scopeRaw).trim() || null; // "" → null (scope is nullable)
+  if (descRaw !== null) {
+    const pd = String(descRaw).trim();
+    if (!pd) return { error: "Problem description is required." };
+    patch.problemDescription = pd;
+  }
+  if (notToExceedRaw) {
+    const canonical = canonicalizeNte(notToExceedRaw);
+    if (canonical === null) {
+      return { error: "Not-to-exceed must be a positive dollar amount with at most 2 decimals." };
+    }
+    patch.notToExceedAmount = canonical;
+  } // empty NTE → omit (leave unchanged)
+
+  try {
+    await updateJob({ tenantId: ctx.activeTenant.tenantId, jobId, actorUserId: ctx.user.id, patch });
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "PROBLEM_DESCRIPTION_LOCKED":
+          return { error: "This job's problem description came from the client and can't be edited." };
+        case "LOCATION_CLIENT_MISMATCH":
+          return { error: "That location belongs to a different client." };
+        case "LOCATION_NOT_FOUND":
+          return { error: "Location not found in this tenant." };
+        case "PRIORITY_REQUIRED":
+          return { error: "Priority is required." };
+        case "TRADE_REQUIRED":
+          return { error: "Trade is required." };
+        case "PRIORITY_NOT_FOUND":
+          return { error: "That priority is not valid for this tenant." };
+        case "TRADE_NOT_FOUND":
+          return { error: "That trade no longer exists." };
+        case "PROBLEM_DESCRIPTION_REQUIRED":
+          return { error: "Problem description is required." };
+        case "JOB_NOT_FOUND":
+          return { error: "Job not found in this tenant." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath(`/jobs/${jobId}`);
+  redirect(`/jobs/${jobId}`);
 }

@@ -166,6 +166,13 @@ export default async function JobDetailPage({
             Stalled
           </span>
         )}
+        {/* v2.11.0 — post-create job editing */}
+        <Link
+          href={`/jobs/${id}/edit`}
+          className="ml-auto rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:border-neutral-500"
+        >
+          Edit
+        </Link>
       </div>
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
