@@ -26,7 +26,8 @@ import { jobBillingEvents, users } from "@/server/schema";
 //   payment.recorded  → paymentId + the paid invoice (clientInvoiceId OR vendorInvoiceId)
 //   vendor_invoice.paid / client_invoice.paid → the invoice id (+ optionally paymentId)
 //   nte.exceeded      → vendorInvoiceId (the over-NTE invoice)
-//   nte.overridden    → (none — job-level)
+//   nte.overridden    → (none — job-level; create-time override of the rule-resolved NTE)
+//   nte.adjusted      → (none — job-level; v2.11.0 post-create job-edit of the NTE)
 //   billing.closed    → (none — job-level)
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -53,6 +54,7 @@ export const BILLING_EVENT_TYPES = [
   "payment.recorded",
   "nte.exceeded",
   "nte.overridden",
+  "nte.adjusted", // v2.11.0 — operator edited an existing job NTE post-create (distinct from the create-time override)
   "billing.closed",
 ] as const;
 export type BillingEventType = (typeof BILLING_EVENT_TYPES)[number];

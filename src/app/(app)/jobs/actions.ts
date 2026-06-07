@@ -11,7 +11,8 @@ export type CreateJobState = { error: string } | null;
 // invalid. Validates shape, strips leading zeros, pads decimals, requires > 0 and ≤10 integer
 // digits. createJob then compares this canonical form === the resolver's canonical amount (no
 // money lib in the data layer — 9a), so canonicalization MUST happen here at the boundary.
-function canonicalizeNte(raw: string): string | null {
+// Exported (v2.11.0) so updateJobAction (batch 2) reuses the SAME rule — never a second copy.
+export function canonicalizeNte(raw: string): string | null {
   if (!/^\d+(\.\d{1,2})?$/.test(raw)) return null;
   const [intRaw, decRaw = ""] = raw.split(".");
   const intPart = intRaw.replace(/^0+(?=\d)/, "");

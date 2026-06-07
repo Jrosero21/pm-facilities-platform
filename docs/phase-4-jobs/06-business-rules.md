@@ -55,6 +55,7 @@ Every job creation runs these seven steps in **one** DB transaction, in this ord
 ## R-4.11 — `job_events.event_type` is a documented string vocabulary, not an enum
 - `event_type` is a `varchar(64)`. **Phase 4 vocabulary:** `job.created`, `job.status_changed`, `job.priority_changed`, `job.trade_changed`, `job.note_added`, `job.contact_added`.
 - **Why:** the vocabulary grows every phase (5 adds `job.vendor_assigned`, `job.eta_confirmed`; 6 adds comms events; 7 scope events; 8 billing events) — an enum would force a migration each time. Phases 5/6/7/8 each add their own event types without a migration, documenting them as they land. Mirrors `audit_logs.action`. (D-4.11.)
+- **v2.11.0 (job edit) adds:** `job.location_changed` and `job.scope_updated` (the latter covers a `problem_description` and/or `scope_of_work` edit; metadata lists which changed). The previously-reserved `job.priority_changed` / `job.trade_changed` now actually fire (from `updateJob`). The NTE edit is a **billing** event (`nte.adjusted`, `job_billing_events`), not a `job_events` row.
 
 ## R-4.12 — Dependent pickers remount on parent change (`<select key={parentId}>`)
 - When a child picker's options depend on a parent selection, the child `<select>` is keyed by the parent id so a parent change remounts it, atomically resetting the child selection.

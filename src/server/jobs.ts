@@ -1,15 +1,19 @@
 import "server-only";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
 import {
   auditLogs,
   clientLocations,
   clients,
+  dispatchAssignmentStatuses,
   jobEvents,
+  jobPriorityHistory,
   jobStatusHistory,
   jobStatuses,
+  jobTradeHistory,
+  jobVendorAssignments,
   jobs,
   priorities,
   tenantJobSequences,
@@ -380,4 +384,200 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
   const row = await getJob(input.tenantId, jobId);
   if (!row) throw new Error("Job insert succeeded but row could not be reloaded.");
   return row;
+}
+
+// ── v2.11.0 batch 1 — post-create job editing (updateJob) ─────────────────────────────
+// The SECOND writer of jobs (createJob was the first). Editable fields only — client_id is
+// IMMUTABLE (changing a job's client would orphan its proposals/invoices/assignments/NTE rules),
+// and generated/approved scope are owned by the scope-generator publish flow (out of scope here).
+//
+// Mirrors createJob's step-5..8 dual-write EXACTLY: every meaningful change writes the typed
+// history row (priority/trade) and/or a job_events row and/or the nte.adjusted billing event, plus
+// ONE audit_logs row, ALL inside ONE transaction (D-4.6). A no-op (nothing changed) writes nothing.
+//
+// DELIBERATE INVARIANT BREAK (8c.4): editing not_to_exceed_amount makes updateJob a second writer of
+// that column (createJob was the sole writer). Recorded here, surfaced as nte.adjusted (distinct from
+// the create-time nte.overridden). The effective NTE stays computed-on-read (edited base + Σ approved
+// COs) — change orders stack on whatever the base now is. The value MUST be canonicalized by the
+// caller (canonicalizeNte) — no money lib in this layer (9a).
+//
+// HARD server guards (not just UI): (1) a new location must belong to the SAME client (client_id
+// immutable); (2) a problem_description change is rejected unless source_type is operator/platform-
+// authored (a client-submitted request is locked). Trade/location edits are warn-not-block
+// post-dispatch — the warning is advisory UI (hasActiveAssignment), NOT enforced here.
+
+// source_types whose problem_description is operator/platform-authored (editable). The rest
+// (internal_client_portal / external_client_portal / email_ingestion / forwarded_email / api) carry
+// the client's / external requester's words → problem_description is LOCKED.
+const OPERATOR_DESCRIPTION_SOURCES: ReadonlySet<JobSourceType> = new Set([
+  "manual",
+  "preventative_maintenance",
+  "snow_event",
+]);
+
+export type JobPatch = {
+  priorityId?: string | null;
+  primaryTradeId?: string | null;
+  notToExceedAmount?: string | null; // canonical "d.dd" or null — caller canonicalizes (canonicalizeNte)
+  clientLocationId?: string;
+  problemDescription?: string;
+  scopeOfWork?: string | null;
+};
+
+export type UpdateJobInput = {
+  tenantId: string;
+  jobId: string;
+  actorUserId: string;
+  patch: JobPatch;
+};
+
+/**
+ * Edit an existing job's mutable fields in one transaction, dual-writing history/events/audit for
+ * every change. No-op when nothing changed. Reloads and returns the job row.
+ *
+ * Throws: JOB_NOT_FOUND, LOCATION_NOT_FOUND, LOCATION_CLIENT_MISMATCH, PRIORITY_NOT_FOUND,
+ * TRADE_NOT_FOUND, PRIORITY_REQUIRED / TRADE_REQUIRED (cannot clear — the typed history's to_*_id is
+ * NOT NULL), PROBLEM_DESCRIPTION_REQUIRED, PROBLEM_DESCRIPTION_LOCKED (client/external-sourced).
+ */
+export async function updateJob(input: UpdateJobInput): Promise<JobRow> {
+  const { tenantId, jobId, actorUserId, patch } = input;
+
+  await db.transaction(async (tx) => {
+    // Lock + read the current values (compute from→to; no-op unchanged fields).
+    const curRows = await tx
+      .select({
+        clientId: jobs.clientId,
+        clientLocationId: jobs.clientLocationId,
+        primaryTradeId: jobs.primaryTradeId,
+        priorityId: jobs.priorityId,
+        notToExceedAmount: jobs.notToExceedAmount,
+        problemDescription: jobs.problemDescription,
+        scopeOfWork: jobs.scopeOfWork,
+        sourceType: jobs.sourceType,
+      })
+      .from(jobs)
+      .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)))
+      .for("update");
+    const cur = curRows[0];
+    if (!cur) throw new Error("JOB_NOT_FOUND");
+
+    const set: Partial<typeof jobs.$inferInsert> = {};
+    const changedFields: string[] = [];
+
+    // priority — typed history + job.priority_changed (to_priority_id is NN → cannot clear).
+    if (patch.priorityId !== undefined && patch.priorityId !== cur.priorityId) {
+      if (patch.priorityId === null) throw new Error("PRIORITY_REQUIRED");
+      const p = await getPriority(tenantId, patch.priorityId);
+      if (!p) throw new Error("PRIORITY_NOT_FOUND");
+      set.priorityId = patch.priorityId;
+      changedFields.push("priorityId");
+      await tx.insert(jobPriorityHistory).values({
+        tenantId, jobId, fromPriorityId: cur.priorityId, toPriorityId: patch.priorityId, changedByUserId: actorUserId,
+      });
+      await tx.insert(jobEvents).values({
+        tenantId, jobId, eventType: "job.priority_changed", actorUserId,
+        summary: "Priority changed", metadata: { from: cur.priorityId, to: patch.priorityId },
+      });
+    }
+
+    // trade — typed history + job.trade_changed (to_trade_id is NN → cannot clear).
+    if (patch.primaryTradeId !== undefined && patch.primaryTradeId !== cur.primaryTradeId) {
+      if (patch.primaryTradeId === null) throw new Error("TRADE_REQUIRED");
+      const t = await getTrade(patch.primaryTradeId);
+      if (!t) throw new Error("TRADE_NOT_FOUND");
+      set.primaryTradeId = patch.primaryTradeId;
+      changedFields.push("primaryTradeId");
+      await tx.insert(jobTradeHistory).values({
+        tenantId, jobId, fromTradeId: cur.primaryTradeId, toTradeId: patch.primaryTradeId, changedByUserId: actorUserId,
+      });
+      await tx.insert(jobEvents).values({
+        tenantId, jobId, eventType: "job.trade_changed", actorUserId,
+        summary: "Trade changed", metadata: { from: cur.primaryTradeId, to: patch.primaryTradeId },
+      });
+    }
+
+    // location — same-client guard (client_id immutable); no typed history table → job_events only.
+    if (patch.clientLocationId !== undefined && patch.clientLocationId !== cur.clientLocationId) {
+      const loc = await getLocation(tenantId, patch.clientLocationId);
+      if (!loc) throw new Error("LOCATION_NOT_FOUND");
+      if (loc.clientId !== cur.clientId) throw new Error("LOCATION_CLIENT_MISMATCH");
+      set.clientLocationId = patch.clientLocationId;
+      changedFields.push("clientLocationId");
+      await tx.insert(jobEvents).values({
+        tenantId, jobId, eventType: "job.location_changed", actorUserId,
+        summary: "Location changed", metadata: { from: cur.clientLocationId, to: patch.clientLocationId },
+      });
+    }
+
+    // NTE — the DELIBERATE 2nd writer of not_to_exceed_amount + the nte.adjusted billing event.
+    if (patch.notToExceedAmount !== undefined && patch.notToExceedAmount !== cur.notToExceedAmount) {
+      set.notToExceedAmount = patch.notToExceedAmount;
+      changedFields.push("notToExceedAmount");
+      await emitJobBillingEvent(tx, {
+        tenantId, jobId, eventType: "nte.adjusted", actorUserId,
+        summary: `Job NTE changed: ${cur.notToExceedAmount ?? "none"} → ${patch.notToExceedAmount ?? "none"}`,
+        amount: patch.notToExceedAmount, currency: "USD",
+        metadata: { from: cur.notToExceedAmount, to: patch.notToExceedAmount, level: "job" },
+      });
+    }
+
+    // problem_description + scope_of_work — one job.scope_updated event covers both (metadata lists
+    // which changed). problem_description is LOCKED for client/external-sourced jobs (server-enforced).
+    const scopeMeta: { problemDescription?: boolean; scopeOfWork?: boolean } = {};
+    if (patch.problemDescription !== undefined && patch.problemDescription !== cur.problemDescription) {
+      if (patch.problemDescription.trim().length === 0) throw new Error("PROBLEM_DESCRIPTION_REQUIRED");
+      if (!OPERATOR_DESCRIPTION_SOURCES.has(cur.sourceType)) throw new Error("PROBLEM_DESCRIPTION_LOCKED");
+      set.problemDescription = patch.problemDescription;
+      changedFields.push("problemDescription");
+      scopeMeta.problemDescription = true;
+    }
+    if (patch.scopeOfWork !== undefined && (patch.scopeOfWork ?? null) !== (cur.scopeOfWork ?? null)) {
+      set.scopeOfWork = patch.scopeOfWork ?? null;
+      changedFields.push("scopeOfWork");
+      scopeMeta.scopeOfWork = true;
+    }
+    if (scopeMeta.problemDescription || scopeMeta.scopeOfWork) {
+      await tx.insert(jobEvents).values({
+        tenantId, jobId, eventType: "job.scope_updated", actorUserId,
+        summary: "Scope / description updated", metadata: scopeMeta,
+      });
+    }
+
+    if (changedFields.length === 0) return; // no-op — no column write, no history/event/audit.
+
+    await tx.update(jobs).set(set).where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)));
+
+    // ONE audit row (R-4.5: direct tx.insert, not writeAuditLog — atomic with the edit).
+    await tx.insert(auditLogs).values({
+      tenantId, userId: actorUserId, action: "job.updated", targetType: "job", targetId: jobId,
+      metadata: { changedFields },
+    });
+  });
+
+  const row = await getJob(tenantId, jobId);
+  if (!row) throw new Error("Job update succeeded but row could not be reloaded.");
+  return row;
+}
+
+/**
+ * v2.11.0 — does the job have a LIVE vendor assignment (warn before editing trade/location)?
+ * EXISTS over job_vendor_assignments ⋈ dispatch_assignment_statuses WHERE is_terminal = false AND
+ * code != 'DRAFT' (SENT+ — a vendor actually dispatched; a DRAFT is operator workspace, allowed
+ * silently). Advisory only — updateJob does NOT block on it (trade/location edits are warn-not-block).
+ */
+export async function hasActiveAssignment(tenantId: string, jobId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .innerJoin(dispatchAssignmentStatuses, eq(jobVendorAssignments.currentStatusId, dispatchAssignmentStatuses.id))
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenantId),
+        eq(jobVendorAssignments.jobId, jobId),
+        eq(dispatchAssignmentStatuses.isTerminal, false),
+        ne(dispatchAssignmentStatuses.code, "DRAFT"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
