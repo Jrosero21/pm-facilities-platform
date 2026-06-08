@@ -7,6 +7,7 @@ import { listClientContacts } from "@/server/client-contacts";
 import { createClientContactAction } from "@/app/(app)/clients/contact-actions";
 import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
+import { BillingModelSelector } from "@/components/billing-model-selector";
 
 export default async function ClientDetailPage({
   params,
@@ -39,7 +40,13 @@ export default async function ClientDetailPage({
         <Link href={`/clients/${id}/billing-rules`} className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
           Markup &amp; billing rules →
         </Link>
+        <Link href={`/clients/${id}/rates`} className="text-sm font-medium text-neutral-600 hover:text-neutral-900">
+          Rate sheet →
+        </Link>
       </div>
+
+      {/* Phase (i) rate-sheet — how this client is billed */}
+      <BillingModelSelector clientId={id} current={client.billingModel} />
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
