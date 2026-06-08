@@ -433,9 +433,14 @@ deleted.
   (`rate_sheet | cost_plus | flat`) + a **new `client_rates` table** (mirror `vendor_rates`: client ×
   trade × rate_type × amount × unit × effective dates × status) + a **rate-sheet management UI**.
   Migration + new table.
+  > **→ STORAGE + UI SHIPPED v2.13.0** (branch `v2.13.0-rate-sheet`). See the "Phase (i) — SHIPPED"
+  > record below. **Billing-from-rates is NOT yet done** — that's Phase (ii).
 - **Phase (ii)** — **rate-based line authoring**: pick trade + hours → pull the agreed rate → emit a
   billed line (`unit_price = rate`, no markup); wire into manual authoring + the invoice/proposal agents.
   Touches the ~1,200-line pricing layer.
+  > **→ THE REMAINING PIECE** that makes rate-sheet billing actually *produce bills*. Phase (i) shipped
+  > the STORAGE (rates + the `billing_model` selector); nothing yet **resolves** a `client_rates` row +
+  > `billing_model` into a billed line. Storage shipped, billing-from-rates still pending.
 - **Phase (iii)** — the **required-documents feature** (net-new; mirror `vendor_compliance` + a
   satisfy-link to `jobAttachments` / `vendor_invoices` + a per-client UI) + the conditional **"require the
   vendor invoice when `billing_model = cost_plus`"** client-invoice issuance gate. **Independent of
@@ -444,3 +449,42 @@ deleted.
 **MUST-HAVE: Phase (i) rate-sheet** is the operator's primary billing model and the headline of this
 expansion (Seam 0 unblocks cost-plus margin first; (i)+(ii) deliver rate-sheet; (iii) is the separate
 required-documents feature).
+
+### Phase (i) — SHIPPED v2.13.0 (rate-sheet STORAGE + UI)
+
+Branch `v2.13.0-rate-sheet` (4 batches: `1284727` migration · `d86eb7e` writer · `f7fe4f1` UI · `3dcdf99`
+harness). **Storage + UI shipped; billing-from-rates is Phase (ii).**
+
+**Delivered:**
+- **Migration 0049** (`0049_married_shape`, **PROD-APPLIED**, 123→124 tables): `client_rates` table
+  (client × trade × rate_type × amount × unit × effective/expiry × status; mirrors `vendor_rates`,
+  `client_id` swap, no `vendor_location_id`; FK tenant/client CASCADE, trade RESTRICT, created_by SET
+  NULL) + **`clients.billing_model` enum** `('rate_sheet','cost_plus','flat')` NOT NULL **default
+  `cost_plus`** (behavior-preserving on existing rows).
+- **`client-rates.ts` writer** (`listClientRates` w/ trade-name join · `createClientRate` · `archiveClientRate`),
+  tenant-scoped, audit-in-txn, `isDecimalStr` validation, **NO `is_default`** (rates coexist) + the
+  **`setClientBillingModel`** selector writer (no-op-safe, audits `client.billing_model_changed` from→to).
+- **Rate-sheet UI** (`clients/[id]/rates` page + form + list) + the **billing-model selector** on the
+  client detail page; three client-billing links now sit together (NTE · markup · rate sheet).
+- **`db:check:client-rates` 13/0** — proves rates coexist (no demote), validation, scoped archive, and the
+  no-op-safe model change.
+
+**DURABLE PRINCIPLE — contractual-vs-judgment billing split (architecture decision):**
+- **LABOR = CONTRACTUAL** → lives in the **rate sheet** (`client_rates`, agreed $/hr per trade). Deterministic,
+  operator-authored, the cost side negotiated with the vendor. **Shipped here.**
+- **MATERIALS = JUDGMENT** → **NOT** in the rate table. Materials pricing is case-by-case (what was used,
+  at what markup) — the **agent suggests and the operator authors** it, the way the proposal/invoice agents
+  already work (number-free draft + operator pricing at the gate). A blanket "materials rate" would
+  misrepresent judgment as a fixed rate. (A later *agent-refinement* unit may help suggest materials
+  pricing, but it never becomes a contractual rate row.)
+- Implication for Phase (ii): rate→line authoring resolves **labor** from `client_rates`; **materials**
+  stays the operator-authored / agent-suggested path. The two are deliberately different mechanisms.
+
+**Deferred items surfaced this phase (open):**
+- **`client_location_id` on `client_rates`** — per-location rate variants. Dropped from 0049 (the
+  `vendor_rates` `vendor_location_id` analog); add when per-site rates are needed.
+- **`jobs.billing_model`** — per-job override of the client default ("one method per job"). Deferred to
+  **Phase (ii)** (the client default suffices for storage; per-job resolution belongs with line authoring).
+- **Rate uniqueness / resolution precedence** — overlapping active rates are currently ALLOWED (no
+  uniqueness enforced); **most-specific / newest-wins resolution is to be DESIGNED in Phase (ii)** (it's a
+  read-time concern, not a storage one).
