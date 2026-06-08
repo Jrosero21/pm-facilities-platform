@@ -25,6 +25,13 @@ export const clients = mysqlTable(
     status: mysqlEnum("status", ["active", "inactive", "archived"])
       .notNull()
       .default("active"),
+    // Phase (i) rate-sheet (0049) — how this client is billed. Default 'cost_plus' is
+    // behavior-preserving (the markup_percent path already works end-to-end); a client is
+    // flipped to 'rate_sheet' once its client_rates sheet is entered. Per-job override is
+    // deferred to phase (ii) (no jobs.billing_model yet).
+    billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"])
+      .notNull()
+      .default("cost_plus"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

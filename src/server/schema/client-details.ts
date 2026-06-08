@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   decimal,
   foreignKey,
   index,
@@ -14,6 +15,7 @@ import {
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
+import { trades } from "./trades";
 import { clients, clientLocations } from "./clients";
 
 const statusEnum = ["active", "inactive", "archived"] as const;
@@ -200,4 +202,49 @@ export const clientBillingRules = mysqlTable(
     index("client_billing_rules_tenant_idx").on(t.tenantId),
     index("client_billing_rules_client_idx").on(t.clientId),
   ],
+);
+
+// Phase (i) rate-sheet (0049) — per-client per-trade AGREED BILLED RATES (e.g. HVAC $95/hr).
+// Mirrors vendor_rates (the cost-side analog) EXACTLY, with vendor_id → client_id and the
+// vendor_location_id dimension DROPPED (deferred). trade_id null = a general (all-trade) rate.
+// `unit` is meaningful when rate_type = 'per_unit' (e.g. materials). Resolution precedence
+// (most-specific-wins) + how a rate produces a billed line is a Phase (ii) concern — not here.
+export const clientRates = mysqlTable(
+  "client_rates",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .$defaultFn(() => uuidv7()),
+    tenantId: varchar("tenant_id", { length: 36 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    clientId: varchar("client_id", { length: 36 })
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    tradeId: varchar("trade_id", { length: 36 }).references(() => trades.id, {
+      onDelete: "restrict",
+    }),
+    rateType: mysqlEnum("rate_type", [
+      "hourly",
+      "flat",
+      "trip_charge",
+      "per_unit",
+      "emergency",
+      "after_hours",
+    ]).notNull(),
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+    unit: varchar("unit", { length: 32 }),
+    effectiveDate: date("effective_date"),
+    expiryDate: date("expiry_date"),
+    notes: text("notes"),
+    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  },
+  (t) => [index("client_rates_tenant_client_idx").on(t.tenantId, t.clientId)],
 );
