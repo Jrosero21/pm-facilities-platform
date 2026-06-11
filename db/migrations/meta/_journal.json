@@ -351,6 +351,13 @@
       "when": 1780886841592,
       "tag": "0049_married_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "5",
+      "when": 1781151015911,
+      "tag": "0050_bouncy_jack_flag",
+      "breakpoints": true
     }
   ]
 }

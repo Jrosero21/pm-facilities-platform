@@ -15,6 +15,7 @@ import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
 import { clients } from "./clients";
+import { trades } from "./trades";
 import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 
 // ── Phase 8 batch 8b (migration 0021) — CLIENT INVOICES / AR (#3/#6/#14) ─────────────
@@ -71,16 +72,29 @@ export const clientInvoices = mysqlTable(
 );
 
 // Base + AR-markup (8b-D4); markup columns INTERNAL-ONLY (OQ-6). Totals writer-owned.
+// Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
+// record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
+// (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
 export const clientInvoiceLineItems = mysqlTable(
   "client_invoice_line_items",
   {
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
+    tradeId: varchar("trade_id", { length: 36 }),
+    rateType: mysqlEnum("rate_type", [
+      "hourly",
+      "flat",
+      "trip_charge",
+      "per_unit",
+      "emergency",
+      "after_hours",
+    ]),
     clientInvoiceId: varchar("client_invoice_id", { length: 36 }).notNull(),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "cili_tenant_fk" }).onDelete("cascade"),
     foreignKey({ columns: [t.clientInvoiceId], foreignColumns: [clientInvoices.id], name: "cili_invoice_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [t.tradeId], foreignColumns: [trades.id], name: "cili_trade_fk" }).onDelete("restrict"),
     index("cili_tenant_invoice_idx").on(t.tenantId, t.clientInvoiceId),
   ],
 );

@@ -88,6 +88,12 @@ export const jobs = mysqlTable(
       precision: 12,
       scale: 2,
     }),
+    // Phase (ii) billing-from-rates (0050) — per-job OVERRIDE of the client's billing
+    // model. NULLABLE, no default: null means "inherit clients.billing_model" (the v1
+    // resolution rule is job.billing_model ?? client.billing_model). Same enum as
+    // clients.billing_model. The operator's "one method per job" — a job pins its method
+    // only when it must deviate from the client default.
+    billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"]),
     scheduledStartAt: datetime("scheduled_start_at"),
     scheduledEndAt: datetime("scheduled_end_at"),
     dueAt: datetime("due_at"),

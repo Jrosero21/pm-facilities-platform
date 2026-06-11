@@ -14,6 +14,7 @@ import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
+import { trades } from "./trades";
 import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 
 // ── Phase 8 batch 8b (migration 0018) — PROPOSALS (#8/#9/#10/#11) ─────────────────────
@@ -88,16 +89,29 @@ export const proposals = mysqlTable(
 );
 
 // Base + AR-markup (8b-D4). extended_amount/markup_amount writer-owned (recalculateProposalTotals).
+// Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
+// record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
+// (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
 export const proposalLineItems = mysqlTable(
   "proposal_line_items",
   {
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
+    tradeId: varchar("trade_id", { length: 36 }),
+    rateType: mysqlEnum("rate_type", [
+      "hourly",
+      "flat",
+      "trip_charge",
+      "per_unit",
+      "emergency",
+      "after_hours",
+    ]),
     proposalId: varchar("proposal_id", { length: 36 }).notNull(),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "pli_tenant_fk" }).onDelete("cascade"),
     foreignKey({ columns: [t.proposalId], foreignColumns: [proposals.id], name: "pli_proposal_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [t.tradeId], foreignColumns: [trades.id], name: "pli_trade_fk" }).onDelete("restrict"),
     index("pli_tenant_proposal_idx").on(t.tenantId, t.proposalId),
   ],
 );

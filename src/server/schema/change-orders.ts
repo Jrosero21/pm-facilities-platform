@@ -14,6 +14,7 @@ import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
 import { proposals } from "./proposals";
+import { trades } from "./trades";
 import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 
 // ── Phase 8 batch 8b (migration 0019) — CHANGE ORDERS (#12/#13) ──────────────────────
@@ -67,16 +68,29 @@ export const changeOrders = mysqlTable(
 );
 
 // Base + AR-markup (8b-D4). Totals writer-owned (recalculateChangeOrderTotals).
+// Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
+// record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
+// (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
 export const changeOrderLineItems = mysqlTable(
   "change_order_line_items",
   {
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
+    tradeId: varchar("trade_id", { length: 36 }),
+    rateType: mysqlEnum("rate_type", [
+      "hourly",
+      "flat",
+      "trip_charge",
+      "per_unit",
+      "emergency",
+      "after_hours",
+    ]),
     changeOrderId: varchar("change_order_id", { length: 36 }).notNull(),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "coli_tenant_fk" }).onDelete("cascade"),
     foreignKey({ columns: [t.changeOrderId], foreignColumns: [changeOrders.id], name: "coli_co_fk" }).onDelete("cascade"),
+    foreignKey({ columns: [t.tradeId], foreignColumns: [trades.id], name: "coli_trade_fk" }).onDelete("restrict"),
     index("coli_tenant_co_idx").on(t.tenantId, t.changeOrderId),
   ],
 );
