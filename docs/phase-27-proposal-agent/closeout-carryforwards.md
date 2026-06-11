@@ -441,6 +441,10 @@ deleted.
   > **→ THE REMAINING PIECE** that makes rate-sheet billing actually *produce bills*. Phase (i) shipped
   > the STORAGE (rates + the `billing_model` selector); nothing yet **resolves** a `client_rates` row +
   > `billing_model` into a billed line. Storage shipped, billing-from-rates still pending.
+  >
+  > **→ UNIT 1 SHIPPED v2.14.0** (branch `v2.14.0-billing-from-rates`) — manual authoring now resolves
+  > a `client_rates` row + the effective `billing_model` into a billed line. See **"Phase (ii) — UNIT 1
+  > SHIPPED v2.14.0"** below. **Unit 2 (agent pre-fill) is the remaining piece.**
 - **Phase (iii)** — the **required-documents feature** (net-new; mirror `vendor_compliance` + a
   satisfy-link to `jobAttachments` / `vendor_invoices` + a per-client UI) + the conditional **"require the
   vendor invoice when `billing_model = cost_plus`"** client-invoice issuance gate. **Independent of
@@ -488,3 +492,69 @@ harness). **Storage + UI shipped; billing-from-rates is Phase (ii).**
 - **Rate uniqueness / resolution precedence** — overlapping active rates are currently ALLOWED (no
   uniqueness enforced); **most-specific / newest-wins resolution is to be DESIGNED in Phase (ii)** (it's a
   read-time concern, not a storage one).
+
+### Phase (ii) — UNIT 1 SHIPPED v2.14.0 (billing-from-rates: MANUAL authoring)
+
+Branch `v2.14.0-billing-from-rates` (4 batches: `13815ee` migration 0050 · `147b3de` resolver + add-line
+wiring · `0203bd6` manual UI trade-pickers · `5c237dc` harness). **Manual authoring now turns a
+`client_rates` row + the effective `billing_model` into a billed line. Agent pre-fill (Unit 2) remains.**
+
+**Delivered:**
+- **Migration 0050** (`0050_bouncy_jack_flag`, **PROD-APPLIED**, columns-only, table count unchanged at
+  124): nullable `trade_id` (FK `trades` RESTRICT) + `rate_type` enum on the **three AR** line tables
+  (`proposal_line_items`, `client_invoice_line_items`, `change_order_line_items`) — labor-rate
+  PROVENANCE; **vendor (AP) lines excluded** (cost side). Plus **`jobs.billing_model`** nullable enum
+  (`rate_sheet | cost_plus | flat`, no default → null = inherit the client's model).
+- **`resolveClientLaborRate(tenantId, clientId, tradeId, rateType='hourly')`** — the read side of the
+  rate sheet. Specific→general ladder (Rung 1 trade-specific beats Rung 2 general / `trade_id IS NULL`);
+  within a rung **NEWEST-active-wins** (`desc created_at` — re-priced sheet supersedes, the deliberate
+  opposite of NTE's earliest-wins); **date-valid** (`effective_date ≤ CURDATE() ≤ expiry_date`, nulls
+  open); `status='active'`; tenant-scoped. null ⇒ operator authors manually. **Resolves the Phase (i)
+  deferred "resolution precedence" open item.**
+- **`resolveEffectiveBillingModel(jobModel, clientModel)`** — per-job override precedence:
+  `job.billing_model ?? client.billing_model`. **Resolves the Phase (i) deferred `jobs.billing_model`
+  open item** (the column shipped in 0050; resolution lives here).
+- **Wired into the three AR add-line writers** (`addProposalLineItem`, `addClientInvoiceLineItem`,
+  `addChangeOrderLineItem`) via `resolveLaborLineDefault` — a DEFAULT-fill, never a lock: a `rate_sheet`
+  **labor/trip** line with a `tradeId` and **no explicit `unit_price`** is priced from the agreed rate
+  (`unit_price = rate`, **`markup_percent = null`** — the rate has margin baked in), and `trade_id` +
+  `rate_type` are stored as provenance. A **typed `unit_price` always wins** (operator override; no
+  provenance stamped). `cost_plus` / `flat` paths unchanged.
+- **Manual UI trade-picker** on labor/trip lines (all three editors), shown **only for `rate_sheet`
+  jobs**, defaulted to the job's primary trade, **changeable per line** (`loadLaborRatePickerContext`);
+  blank price → the agreed rate fills on save. cost_plus/flat editors unchanged.
+- **`db:check:billing-from-rates` 14/14** — sandbox-only (exit-2 guard), self-seed/teardown, 0 leftover.
+
+**Browser-verified:** HVAC $95 / Handyman $85 fill on blank labor lines; changing the trade pulls the
+other trade's rate (multiple trades' rates on ONE bill — the multi-trade case); a typed $150 wins over
+the agreed rate.
+
+**MULTI-TRADE — SHIPPED, not deferred:** the per-line trade picker (pre-filled to the job's trade,
+changeable per line) shipped in Unit 1, so **one bill can carry several trades each at its own agreed
+rate** (e.g. 1 handyman line + 1 electrician line). Any earlier "deferred" framing of the per-line trade
+picker is **superseded** — it is live.
+
+**DURABLE PRINCIPLE held — contractual-vs-judgment (now in BILLING, not just storage):**
+- **LABOR = CONTRACTUAL** → resolved from the rate sheet and **now produces billed lines** (was storage
+  only in Phase (i)).
+- **MATERIALS = JUDGMENT** → never auto-resolved; stays operator/agent-authored. **Proven by harness L4**
+  (a materials line with a trade + blank price does NOT force-fill a rate — it requires an explicit
+  price), alongside L5 (cost_plus is gated out even when a matching rate exists).
+
+**Unit 2 — REMAINING (agent pre-fill / UX layer):**
+- **proposal-generator** pre-fills labor `unit_price` at draft-review for `rate_sheet` jobs (the draft is
+  number-free today; the operator would review a populated number instead of a blank).
+- **invoice-creator** branches labor lines to the agreed rate (no markup) for `rate_sheet` clients,
+  instead of the vendor-cost + `markup_percent` cost-plus path.
+- The data-layer add-line branch **already resolves rates**, so both agents **inherit** the behavior via
+  the same `add*LineItem` writers — **Unit 2 is the pre-fill/UX layer on top**, not new pricing logic.
+
+**Banked follow-ups surfaced in Unit 1 (open, low-priority):**
+1. **Proposal revision line-clone drops rate provenance** — `createProposalRevision` copies line columns
+   predating 0050, so a cloned revision loses `trade_id`/`rate_type` (the prices are preserved). Re-copy
+   the two provenance columns when desired.
+2. **`update*LineItem` does not re-resolve** — editing a line never re-pulls the rate (intended: the
+   add-line default is the resolution point; edits are explicit operator values).
+3. **Per-line `rate_type` beyond labor/trip** — the resolver accepts any `rate_type`, but the add-line
+   default map is currently `labor→hourly`, `trip→trip_charge`; `emergency`/`after_hours`/`per_unit`
+   resolution per line is available in the resolver but not yet surfaced in the manual UI.
