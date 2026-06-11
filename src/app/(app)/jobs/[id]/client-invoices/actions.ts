@@ -90,6 +90,11 @@ export async function addClientInvoiceLineItemAction(
   const ctx = await requireTenant();
   const markupRaw = String(formData.get("markupPercent") ?? "").trim();
   const markupPercent = markupRaw === "" ? undefined : markupRaw; // "" → snapshot; "0"/value → explicit
+  // Phase (ii): a picked trade (rate_sheet labor/trip) + BLANK price → defer to the agreed rate
+  // (undefined ⇒ the data-layer resolver fills it; markup is forced null there). Otherwise blank→"0".
+  const tradeId = OPT(formData, "tradeId");
+  const priceRaw = NUM(formData, "unitPrice");
+  const unitPrice = tradeId && priceRaw === "" ? undefined : priceRaw || "0";
   try {
     await addClientInvoiceLineItem({
       tenantId: ctx.activeTenant.tenantId,
@@ -98,10 +103,11 @@ export async function addClientInvoiceLineItemAction(
       description: NUM(formData, "description"),
       quantity: NUM(formData, "quantity") || "1",
       unit: OPT(formData, "unit"),
-      unitPrice: NUM(formData, "unitPrice") || "0",
+      unitPrice,
       markupPercent,
       taxRate: OPT(formData, "taxRate"),
       taxAmount: NUM(formData, "taxAmount") || "0",
+      tradeId, // rateType is derived from category in the data layer (labor→hourly, trip→trip_charge)
     });
     revalidatePath(`/jobs/${jobId}/client-invoices/${clientInvoiceId}`);
     return null;

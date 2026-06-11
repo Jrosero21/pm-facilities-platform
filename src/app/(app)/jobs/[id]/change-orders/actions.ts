@@ -107,6 +107,11 @@ export async function addChangeOrderLineItemAction(
   formData: FormData,
 ): Promise<ChangeOrderActionState> {
   const ctx = await requireTenant();
+  // Phase (ii): a picked trade (rate_sheet labor/trip) + BLANK price → defer to the agreed rate
+  // (undefined ⇒ the data-layer resolver fills it). Otherwise preserve the historic blank→"0".
+  const tradeId = OPT(formData, "tradeId");
+  const priceRaw = NUM(formData, "unitPrice");
+  const unitPrice = tradeId && priceRaw === "" ? undefined : priceRaw || "0";
   try {
     await addChangeOrderLineItem({
       tenantId: ctx.activeTenant.tenantId,
@@ -115,10 +120,11 @@ export async function addChangeOrderLineItemAction(
       description: NUM(formData, "description"),
       quantity: NUM(formData, "quantity") || "1",
       unit: OPT(formData, "unit"),
-      unitPrice: NUM(formData, "unitPrice") || "0",
+      unitPrice,
       markupPercent: OPT(formData, "markupPercent"),
       taxRate: OPT(formData, "taxRate"),
       taxAmount: NUM(formData, "taxAmount") || "0",
+      tradeId, // rateType is derived from category in the data layer (labor→hourly, trip→trip_charge)
     });
     revalidatePath(`/jobs/${jobId}/change-orders/${changeOrderId}`);
     return null;

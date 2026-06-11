@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getProposal, listProposalLineItems } from "@/server/billing/proposals";
+import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
 import { ProposalActions } from "@/components/proposal-actions";
 import { ProposalLineItemsEditor } from "@/components/proposal-line-items-editor";
 
@@ -26,9 +27,10 @@ export default async function ProposalDetailPage({
   const ctx = await requireTenant();
   const tenantId = ctx.activeTenant.tenantId;
 
-  const [proposal, lines] = await Promise.all([
+  const [proposal, lines, rateContext] = await Promise.all([
     getProposal(tenantId, proposalId),
     listProposalLineItems(tenantId, proposalId),
+    loadLaborRatePickerContext({ tenantId, jobId: id }),
   ]);
   if (!proposal || proposal.jobId !== id) notFound();
 
@@ -127,6 +129,7 @@ export default async function ProposalDetailPage({
               proposalId={proposal.id}
               jobId={id}
               lines={lines.map((l) => ({ id: l.id, lineNumber: l.lineNumber, description: l.description }))}
+              rateContext={rateContext}
             />
           </div>
         </div>

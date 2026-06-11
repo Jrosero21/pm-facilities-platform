@@ -6,6 +6,7 @@ import {
   listClientInvoiceLineItems,
   resolveClientMarkupDefault,
 } from "@/server/billing/client-invoices";
+import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
 import { listPaymentsForClientInvoice } from "@/server/billing/payments";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { ClientInvoiceActions } from "@/components/client-invoice-actions";
@@ -31,10 +32,11 @@ export default async function ClientInvoiceDetailPage({
   const inv = await getClientInvoice(tenantId, clientInvoiceId);
   if (!inv || inv.jobId !== id) notFound();
 
-  const [lines, payments, defaultMarkup] = await Promise.all([
+  const [lines, payments, defaultMarkup, rateContext] = await Promise.all([
     listClientInvoiceLineItems(tenantId, clientInvoiceId),
     listPaymentsForClientInvoice(tenantId, clientInvoiceId),
     resolveClientMarkupDefault(tenantId, inv.clientId),
+    loadLaborRatePickerContext({ tenantId, jobId: id }),
   ]);
 
   const header: { label: string; value: string | null }[] = [
@@ -121,6 +123,7 @@ export default async function ClientInvoiceDetailPage({
               jobId={id}
               defaultMarkup={defaultMarkup}
               lines={lines.map((l) => ({ id: l.id, lineNumber: l.lineNumber, description: l.description }))}
+              rateContext={rateContext}
             />
           </div>
         </div>

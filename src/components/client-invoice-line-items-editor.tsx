@@ -1,11 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addClientInvoiceLineItemAction,
   removeClientInvoiceLineItemAction,
   type ClientInvoiceActionState,
 } from "@/app/(app)/jobs/[id]/client-invoices/actions";
+
+// Phase (ii) billing-from-rates — the editor's rate-fill affordance (client-safe shape; mirrors the
+// server LaborRatePickerContext). enabled only for rate_sheet jobs; absent/disabled = manual pricing.
+type RatePickerContext = {
+  enabled: boolean;
+  defaultTradeId: string | null;
+  trades: { id: string; name: string }[];
+};
 
 // ── Phase 8 batch 8c.11d — client (AR) line-item editor (markup THREE-WAY) ────────────
 // Markup field: BLANK → snapshot the default rule (placeholder shows the resolved default);
@@ -39,15 +47,20 @@ export function ClientInvoiceLineItemsEditor({
   jobId,
   lines,
   defaultMarkup,
+  rateContext,
 }: {
   clientInvoiceId: string;
   jobId: string;
   lines: LineRow[];
   defaultMarkup: string | null;
+  rateContext?: RatePickerContext;
 }) {
   const addAction = addClientInvoiceLineItemAction.bind(null, clientInvoiceId, jobId);
   const [state, formAction, pending] = useActionState<ClientInvoiceActionState, FormData>(addAction, null);
   const markupPlaceholder = defaultMarkup ? `${defaultMarkup} (default)` : "(no default — blank = none)";
+  // labor/trip on a rate_sheet job → offer the agreed-rate fill (pick trade, leave price blank).
+  const [category, setCategory] = useState("labor");
+  const rateEligible = !!rateContext?.enabled && (category === "labor" || category === "trip");
 
   return (
     <div className="space-y-4">
@@ -67,7 +80,13 @@ export function ClientInvoiceLineItemsEditor({
       <form action={formAction} className="grid gap-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:grid-cols-2">
         <label className="text-xs font-medium text-neutral-600">
           Category
-          <select name="category" required className={inputClass} defaultValue="labor">
+          <select
+            name="category"
+            required
+            className={inputClass}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
             {CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -79,13 +98,34 @@ export function ClientInvoiceLineItemsEditor({
           Description
           <input name="description" required className={inputClass} />
         </label>
+        {rateEligible && (
+          <label className="text-xs font-medium text-neutral-600">
+            Trade <span className="font-normal text-neutral-400">— agreed rate</span>
+            <select name="tradeId" defaultValue={rateContext?.defaultTradeId ?? ""} className={inputClass}>
+              <option value="">— select trade —</option>
+              {rateContext?.trades.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="text-xs font-medium text-neutral-600">
           Quantity
           <input name="quantity" defaultValue="1" inputMode="decimal" className={inputClass} />
         </label>
         <label className="text-xs font-medium text-neutral-600">
           Unit price
-          <input name="unitPrice" defaultValue="0" inputMode="decimal" className={inputClass} />
+          {rateEligible && <span className="font-normal text-neutral-400"> — blank = agreed rate</span>}
+          <input
+            key={rateEligible ? "rate" : "manual"}
+            name="unitPrice"
+            defaultValue={rateEligible ? "" : "0"}
+            placeholder={rateEligible ? "agreed rate" : undefined}
+            inputMode="decimal"
+            className={inputClass}
+          />
         </label>
         <label className="text-xs font-medium text-neutral-600">
           Markup %{" "}

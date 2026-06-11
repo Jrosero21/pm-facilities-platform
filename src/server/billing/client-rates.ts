@@ -4,7 +4,7 @@ import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
 import { auditLogs, clientRates, clients, jobs, trades } from "@/server/schema";
-import { getTrade } from "@/server/trades";
+import { getTrade, listActiveTrades } from "@/server/trades";
 import { isDecimalStr } from "@/server/billing/money";
 
 // ── Phase (i) rate-sheet (0049) — CLIENT RATE-SHEET WRITER ─────────────────────────────
@@ -322,4 +322,46 @@ export async function resolveLaborLineDefault(input: {
   if (amount === null) return null; // no agreed rate on file → operator authors manually
 
   return { unitPrice: amount, markupPercent: null, tradeId: input.tradeId, rateType };
+}
+
+/** What a line-item editor needs to offer the rate-fill affordance: whether this job bills from a
+ *  rate sheet at all, the trade to default the picker to (the job's primary trade), and the trade
+ *  options. enabled=false ⇒ the editor stays exactly as before (no picker, manual price). */
+export type LaborRatePickerContext = {
+  enabled: boolean;
+  defaultTradeId: string | null;
+  trades: { id: string; name: string }[];
+};
+
+/**
+ * Load the editor's rate-fill context for a job. enabled is true ONLY when the job's EFFECTIVE
+ * billing model is 'rate_sheet' (job override ?? client default) — in which case the trade list is
+ * loaded and the picker defaults to the job's primary trade. For cost_plus / flat it short-circuits
+ * to disabled WITHOUT loading trades. One tenant-scoped join + (when enabled) the global trade read.
+ */
+export async function loadLaborRatePickerContext(input: {
+  tenantId: string;
+  jobId: string;
+}): Promise<LaborRatePickerContext> {
+  const row = (
+    await db
+      .select({
+        jobBillingModel: jobs.billingModel,
+        clientBillingModel: clients.billingModel,
+        primaryTradeId: jobs.primaryTradeId,
+      })
+      .from(jobs)
+      .innerJoin(clients, and(eq(clients.tenantId, jobs.tenantId), eq(clients.id, jobs.clientId)))
+      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)))
+      .limit(1)
+  )[0];
+  if (!row || resolveEffectiveBillingModel(row.jobBillingModel, row.clientBillingModel) !== "rate_sheet") {
+    return { enabled: false, defaultTradeId: null, trades: [] };
+  }
+  const trades = await listActiveTrades();
+  return {
+    enabled: true,
+    defaultTradeId: row.primaryTradeId,
+    trades: trades.map((t) => ({ id: t.id, name: t.name })),
+  };
 }

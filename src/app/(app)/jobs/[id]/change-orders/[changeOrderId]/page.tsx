@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getChangeOrder, getEffectiveNte, listChangeOrderLineItems } from "@/server/billing/change-orders";
+import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
 import { ChangeOrderActions } from "@/components/change-order-actions";
 import { ChangeOrderLineItemsEditor } from "@/components/change-order-line-items-editor";
 
@@ -22,10 +23,11 @@ export default async function ChangeOrderDetailPage({
   const ctx = await requireTenant();
   const tenantId = ctx.activeTenant.tenantId;
 
-  const [co, lines, effectiveNte] = await Promise.all([
+  const [co, lines, effectiveNte, rateContext] = await Promise.all([
     getChangeOrder(tenantId, changeOrderId),
     listChangeOrderLineItems(tenantId, changeOrderId),
     getEffectiveNte(tenantId, id),
+    loadLaborRatePickerContext({ tenantId, jobId: id }),
   ]);
   if (!co || co.jobId !== id) notFound();
 
@@ -139,6 +141,7 @@ export default async function ChangeOrderDetailPage({
               changeOrderId={co.id}
               jobId={id}
               lines={lines.map((l) => ({ id: l.id, lineNumber: l.lineNumber, description: l.description }))}
+              rateContext={rateContext}
             />
           </div>
         </div>
