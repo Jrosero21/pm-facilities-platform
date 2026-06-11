@@ -7,6 +7,7 @@ import { proposalApprovals, proposalLineItems, proposals } from "@/server/schema
 import { recalculateProposalTotals } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
+import { resolveLaborLineDefault, type RateType } from "@/server/billing/client-rates";
 import {
   ProposalChainHasLiveRevision,
   ProposalNotDraft,
@@ -127,21 +128,40 @@ export type ProposalLineItemInput = {
   description: string;
   quantity: string;
   unit?: string | null;
-  unitPrice: string;
+  // OPTIONAL since Phase (ii): when omitted on a rate_sheet labor line with a tradeId, the agreed
+  // rate is resolved as the default unit_price. An explicit value always wins (operator override).
+  unitPrice?: string;
   markupPercent?: string | null;
   taxRate?: string | null;
   taxAmount?: string;
+  // Phase (ii) billing-from-rates — lookup key + provenance. tradeId drives the labor-rate lookup;
+  // rateType overrides the category default (labor→hourly, trip→trip_charge) when set.
+  tradeId?: string | null;
+  rateType?: RateType;
 };
 
-/** Add a line to a DRAFT proposal (lineNumber auto = max+1 under the parent lock, 10e), then recalc. */
+/** Add a line to a DRAFT proposal (lineNumber auto = max+1 under the parent lock, 10e), then recalc.
+ *  Phase (ii): a rate_sheet labor/trip line with a tradeId and NO explicit unit_price is priced from
+ *  the agreed rate (markup forced null — the rate has margin baked in — and trade_id/rate_type stored
+ *  as provenance). An explicit unit_price always wins; cost_plus/flat are unchanged. */
 export async function addProposalLineItem(
   input: { tenantId: string; proposalId: string } & ProposalLineItemInput,
 ): Promise<{ id: string }> {
-  assertValidLineFields(input);
   const id = uuidv7();
   await db.transaction(async (tx) => {
     const p = await lockProposal(tx, input.tenantId, input.proposalId);
     if (p.status !== "draft") throw new ProposalNotDraft(input.proposalId, p.status);
+
+    // billing-from-rates: resolve a DEFAULT labor unit_price when the operator passed none.
+    const rate = await resolveLaborLineDefault({
+      tenantId: input.tenantId, jobId: p.jobId, category: input.category,
+      explicitUnitPrice: input.unitPrice, tradeId: input.tradeId, rateType: input.rateType,
+    });
+    const unitPrice = rate?.unitPrice ?? input.unitPrice;
+    if (unitPrice === undefined) throw new Error("INVALID_LINE_UNIT_PRICE"); // no price + no rate resolved
+    const markupPercent = rate ? null : input.markupPercent ?? null; // agreed rate → no markup
+    assertValidLineFields({ ...input, unitPrice, markupPercent });
+
     const existing = await tx
       .select({ ln: proposalLineItems.lineNumber })
       .from(proposalLineItems)
@@ -156,10 +176,12 @@ export async function addProposalLineItem(
       description: input.description,
       quantity: input.quantity,
       unit: input.unit ?? null,
-      unitPrice: input.unitPrice,
-      markupPercent: input.markupPercent ?? null,
+      unitPrice,
+      markupPercent,
       taxRate: input.taxRate ?? null,
       taxAmount: input.taxAmount ?? "0",
+      tradeId: rate?.tradeId ?? null, // provenance: stored only when rate-resolved
+      rateType: rate?.rateType ?? null,
     });
     await recalculateProposalTotals(tx, input.tenantId, input.proposalId);
   });

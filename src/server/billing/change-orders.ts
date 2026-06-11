@@ -8,6 +8,7 @@ import { changeOrderApprovals, changeOrderLineItems, changeOrders, jobs } from "
 import { recalculateChangeOrderTotals, roundHalfUp } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
+import { resolveLaborLineDefault, type RateType } from "@/server/billing/client-rates";
 import {
   ChangeOrderNotApprovable,
   ChangeOrderNotEditable,
@@ -120,20 +121,40 @@ export type ChangeOrderLineItemInput = {
   description: string;
   quantity: string;
   unit?: string | null;
-  unitPrice: string;
+  // OPTIONAL since Phase (ii): when omitted on a rate_sheet labor line with a tradeId, the agreed
+  // rate is resolved as the default unit_price. An explicit value always wins (operator override).
+  unitPrice?: string;
   markupPercent?: string | null;
   taxRate?: string | null;
   taxAmount?: string;
+  // Phase (ii) billing-from-rates — lookup key + provenance. tradeId drives the labor-rate lookup;
+  // rateType overrides the category default (labor→hourly, trip→trip_charge) when set.
+  tradeId?: string | null;
+  rateType?: RateType;
 };
 
+/** Add a line to a DRAFT change order, then recalc.
+ *  Phase (ii): a rate_sheet labor/trip line with a tradeId and NO explicit unit_price is priced from
+ *  the agreed rate (markup forced null, trade_id/rate_type stored as provenance). Explicit unit_price
+ *  always wins; cost_plus/flat are unchanged. */
 export async function addChangeOrderLineItem(
   input: { tenantId: string; changeOrderId: string } & ChangeOrderLineItemInput,
 ): Promise<{ id: string }> {
-  assertValidLineFields(input);
   const id = uuidv7();
   await db.transaction(async (tx) => {
     const co = await lockChangeOrder(tx, input.tenantId, input.changeOrderId);
     if (co.status !== "draft") throw new ChangeOrderNotEditable(input.changeOrderId, co.status);
+
+    // billing-from-rates: resolve a DEFAULT labor unit_price when the operator passed none.
+    const rate = await resolveLaborLineDefault({
+      tenantId: input.tenantId, jobId: co.jobId, category: input.category,
+      explicitUnitPrice: input.unitPrice, tradeId: input.tradeId, rateType: input.rateType,
+    });
+    const unitPrice = rate?.unitPrice ?? input.unitPrice;
+    if (unitPrice === undefined) throw new Error("INVALID_LINE_UNIT_PRICE"); // no price + no rate resolved
+    const markupPercent = rate ? null : input.markupPercent ?? null; // agreed rate → no markup
+    assertValidLineFields({ ...input, unitPrice, markupPercent });
+
     const existing = await tx
       .select({ ln: changeOrderLineItems.lineNumber })
       .from(changeOrderLineItems)
@@ -148,10 +169,12 @@ export async function addChangeOrderLineItem(
       description: input.description,
       quantity: input.quantity,
       unit: input.unit ?? null,
-      unitPrice: input.unitPrice,
-      markupPercent: input.markupPercent ?? null,
+      unitPrice,
+      markupPercent,
       taxRate: input.taxRate ?? null,
       taxAmount: input.taxAmount ?? "0",
+      tradeId: rate?.tradeId ?? null, // provenance: stored only when rate-resolved
+      rateType: rate?.rateType ?? null,
     });
     await recalculateChangeOrderTotals(tx, input.tenantId, input.changeOrderId);
   });

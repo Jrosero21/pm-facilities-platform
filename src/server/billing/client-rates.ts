@@ -1,9 +1,9 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { auditLogs, clientRates, clients, trades } from "@/server/schema";
+import { auditLogs, clientRates, clients, jobs, trades } from "@/server/schema";
 import { getTrade } from "@/server/trades";
 import { isDecimalStr } from "@/server/billing/money";
 
@@ -185,4 +185,141 @@ export async function setClientBillingModel(input: {
       metadata: { from: cur.billingModel, to: input.billingModel },
     });
   });
+}
+
+// ── Phase (ii) billing-from-rates (Unit 1) — LABOR-RATE RESOLUTION ─────────────────────
+// The READ side of the rate sheet: turn (client, trade, rate_type) into the AGREED billed rate,
+// for rate_sheet clients. Mirrors resolveClientNteRule's specific→general ladder, but the
+// tie-break is NEWEST-active-wins (desc created_at) — a re-priced sheet supersedes the old row
+// (deliberately the OPPOSITE of NTE's earliest-wins: a rate sheet is re-quoted; an NTE rule is
+// demoted). A DEFAULT only — never a lock; the operator's explicit unit_price always wins
+// (money-safety, same principle as NTE). LABOR-only for v1 (+ trip → trip_charge, a clean map);
+// materials/fee/permit/tax/equipment/other are judgment, never auto-resolved.
+
+/**
+ * Resolve the agreed billed rate for (client, trade, rate_type) — date-valid + active.
+ *  Rung 1 — trade-specific (trade_id = tradeId); Rung 2 (fallback) — general (trade_id IS NULL).
+ *  Within a rung: NEWEST-by-created_at wins. null ⇒ no rate (operator authors manually).
+ *  date-valid = (effective_date IS NULL OR ≤ today) AND (expiry_date IS NULL OR ≥ today),
+ *  evaluated against the DB's CURDATE(). Tenant-scoped on every rung. rateType defaults 'hourly'
+ *  but accepts any type (so trip_charge / emergency / after_hours resolve too). Pure read.
+ */
+export async function resolveClientLaborRate(input: {
+  tenantId: string;
+  clientId: string;
+  tradeId: string;
+  rateType?: RateType;
+}): Promise<string | null> {
+  const rateType = input.rateType ?? "hourly";
+  const dateValid = sql`(${clientRates.effectiveDate} is null or ${clientRates.effectiveDate} <= curdate())
+    and (${clientRates.expiryDate} is null or ${clientRates.expiryDate} >= curdate())`;
+
+  const tryRung = async (tradeMatch: SQL): Promise<string | null> => {
+    const rows = await db
+      .select({ amount: clientRates.amount })
+      .from(clientRates)
+      .where(
+        and(
+          eq(clientRates.tenantId, input.tenantId), // tenant-scoped, every rung
+          eq(clientRates.clientId, input.clientId),
+          tradeMatch,
+          eq(clientRates.rateType, rateType),
+          eq(clientRates.status, "active"),
+          dateValid,
+        ),
+      )
+      .orderBy(desc(clientRates.createdAt)) // newest-active-wins (re-priced sheet supersedes)
+      .limit(1);
+    return rows[0]?.amount ?? null;
+  };
+
+  // Rung 1: the line's actual trade. Rung 2: the client's general (all-trade) rate.
+  const specific = await tryRung(eq(clientRates.tradeId, input.tradeId));
+  if (specific !== null) return specific;
+  return tryRung(isNull(clientRates.tradeId));
+}
+
+/** Per-job override precedence (Phase ii): the job's own model wins, else the client's. Pure. */
+export function resolveEffectiveBillingModel(
+  jobBillingModel: BillingModel | null,
+  clientBillingModel: BillingModel,
+): BillingModel {
+  return jobBillingModel ?? clientBillingModel;
+}
+
+/** Load the line-pricing billing context for a job: the client it bills to + the EFFECTIVE billing
+ *  model (job override ?? client default), via one tenant-scoped join. null ⇒ job missing. */
+export async function loadJobBillingContext(input: {
+  tenantId: string;
+  jobId: string;
+}): Promise<{ clientId: string; billingModel: BillingModel } | null> {
+  const row = (
+    await db
+      .select({
+        clientId: jobs.clientId,
+        jobBillingModel: jobs.billingModel,
+        clientBillingModel: clients.billingModel,
+      })
+      .from(jobs)
+      .innerJoin(clients, and(eq(clients.tenantId, jobs.tenantId), eq(clients.id, jobs.clientId)))
+      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)))
+      .limit(1)
+  )[0];
+  if (!row) return null;
+  return {
+    clientId: row.clientId,
+    billingModel: resolveEffectiveBillingModel(row.jobBillingModel, row.clientBillingModel),
+  };
+}
+
+// v1 resolvable categories → the rate_type each resolves at. A category ABSENT here NEVER
+// auto-resolves (materials/fee/permit/tax/equipment/other = judgment, operator/agent authored).
+const RESOLVABLE_CATEGORY_RATE_TYPE: Readonly<Record<string, RateType>> = {
+  labor: "hourly",
+  trip: "trip_charge",
+};
+
+/** The rate-resolved DEFAULT for a labor line: unit_price + forced-null markup + provenance. */
+export type ResolvedLaborLine = {
+  unitPrice: string;
+  markupPercent: null; // an agreed rate has margin baked in — never marked up again
+  tradeId: string;
+  rateType: RateType;
+};
+
+/**
+ * The DEFAULT-fill for a rate_sheet labor line. Returns a resolved unit_price ONLY when ALL hold:
+ *  the operator passed NO explicit unit_price (operator always wins); the category is resolvable
+ *  (labor → hourly, trip → trip_charge; an explicit rateType may override within those, e.g.
+ *  emergency/after_hours); a trade is known; the job's EFFECTIVE billing model is 'rate_sheet';
+ *  and an agreed rate actually resolves. In EVERY other case returns null = "leave pricing to the
+ *  caller / operator" — which covers cost_plus, flat, materials, and no-rate-on-file. NEVER a lock.
+ *  Consumed by the three AR add-line writers (proposal / client-invoice / change-order).
+ */
+export async function resolveLaborLineDefault(input: {
+  tenantId: string;
+  jobId: string;
+  category: string;
+  explicitUnitPrice?: string;
+  tradeId?: string | null;
+  rateType?: RateType;
+}): Promise<ResolvedLaborLine | null> {
+  if (input.explicitUnitPrice !== undefined) return null; // operator's explicit price always wins
+  if (!input.tradeId) return null; // need a trade to resolve a rate
+  const defaultRateType = RESOLVABLE_CATEGORY_RATE_TYPE[input.category];
+  if (!defaultRateType) return null; // category not labor/trip → judgment, never auto-resolved
+  const rateType = input.rateType ?? defaultRateType;
+
+  const ctx = await loadJobBillingContext({ tenantId: input.tenantId, jobId: input.jobId });
+  if (!ctx || ctx.billingModel !== "rate_sheet") return null; // only rate_sheet branches here
+
+  const amount = await resolveClientLaborRate({
+    tenantId: input.tenantId,
+    clientId: ctx.clientId,
+    tradeId: input.tradeId,
+    rateType,
+  });
+  if (amount === null) return null; // no agreed rate on file → operator authors manually
+
+  return { unitPrice: amount, markupPercent: null, tradeId: input.tradeId, rateType };
 }
