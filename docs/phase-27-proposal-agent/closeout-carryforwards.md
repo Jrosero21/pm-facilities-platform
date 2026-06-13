@@ -549,6 +549,10 @@ picker is **superseded** — it is live.
 - The data-layer add-line branch **already resolves rates**, so both agents **inherit** the behavior via
   the same `add*LineItem` writers — **Unit 2 is the pre-fill/UX layer on top**, not new pricing logic.
 
+> **→ UNIT 2a SHIPPED v2.15.0** (proposal agent pre-fill). The **proposal-generator** bullet above is
+> DONE; the **invoice-creator** bullet is now **Unit 2b (REMAINING)**. See **"Phase (ii) — UNIT 2a
+> SHIPPED v2.15.0"** below.
+
 **Banked follow-ups surfaced in Unit 1 (open, low-priority):**
 1. **Proposal revision line-clone drops rate provenance** — `createProposalRevision` copies line columns
    predating 0050, so a cloned revision loses `trade_id`/`rate_type` (the prices are preserved). Re-copy
@@ -558,3 +562,60 @@ picker is **superseded** — it is live.
 3. **Per-line `rate_type` beyond labor/trip** — the resolver accepts any `rate_type`, but the add-line
    default map is currently `labor→hourly`, `trip→trip_charge`; `emergency`/`after_hours`/`per_unit`
    resolution per line is available in the resolver but not yet surfaced in the manual UI.
+
+### Phase (ii) — UNIT 2a SHIPPED v2.15.0 (proposal agent pre-fills agreed labor rates)
+
+Branch `v2.15.0-proposal-rate-prefill` (`8e457b4` build · `025cc2c` harness). **The proposal agent's
+review now opens with `rate_sheet` labor lines PRE-FILLED at the agreed rate — the operator reviews a
+populated number, not a blank — with rate provenance recorded on publish.**
+
+**Delivered:**
+- **`enrichWithAgreedRates`** (inside `listProposalDraftsForJobDetailed`) seeds `suggestedUnitPrice` on
+  **pending-review** labor/trip lines for `rate_sheet` jobs — a **parallel, READ-TIME-only field**: the
+  number-free `proposed_proposal` is **NOT mutated** and the read-only approved view is untouched
+  (decision-B / no aliasing). Non-rate_sheet / null primary trade / no rate on file → no suggestion
+  (blank, exactly as before). Memoized per category → ≤2 rate lookups regardless of line count.
+- **Review-editor pre-fill** (`proposal-drafts-section.tsx`): `toEditable` seeds the unit-price input
+  from the suggestion (`unitPrice ?? suggestedUnitPrice ?? ""`); a small **"agreed rate"** chip (green)
+  shows while the price equals the suggestion and flips to **"overridden"** (amber) the moment the
+  operator types a different number. Still a plain editable input — override is free.
+- **Provenance threaded submit→publish with SERVER re-verification** (the decision-B core): the editor
+  submits `trade_id`/`rate_type` **only** while the price is unchanged; `publishProposalDraft` +
+  `addProposalLineItem` then **re-resolve the agreed rate server-side** and record `trade_id`/`rate_type`
+  + **`markup_percent = null`** ONLY when the explicit price still **equals** the agreed rate. A
+  typed-over price OR a since-changed (stale) rate **drops provenance honestly** and bills the reviewed
+  number with normal markup. Never trusts the client's tag.
+- **Single provenance authority** — `addProposalLineItem` (via `resolveAgreedRateProvenance`) is the one
+  place that decides provenance, so the **agent publish path and the manual add-line path behave
+  identically**.
+- **Shared per-line markup helper** (`resolveAgreedRateLineMarkups`) feeds BOTH the routing **preview**
+  and the **publish** gate, so **preview total == published total** for an agreed-rate proposal (an
+  agreed-rate line is unmarked-up on both sides; the NTE-gate basis stays byte-identical to the
+  persisted total).
+- **`db:check:proposal-rate-prefill` 10/10** — sandbox-only (exit-2 guard), self-seed/teardown, 0
+  leftover. Proves **E1–E4** (rate_sheet labor pre-fills; materials/cost_plus/null-trade do not), **P1**
+  (agreed-rate line records `trade_id`/`rate_type` + null markup, server-verified), **P2** (override
+  ≠ agreed rate → provenance dropped, rule markup applies), **P3** (stale rate → provenance dropped,
+  bills the reviewed price), **PV1** (preview == publish).
+
+**Verified via the live data loader (real DB, read-only):** Apple Job #2 (HVAC, rate_sheet) → the
+pending draft's **8 labor lines pre-fill `$95.00`** (the HVAC agreed rate) with the HVAC trade stamped,
+the **trip line blank** (non-labor never pre-fills); Apple's **plumbing** jobs (no PLUMB rate on file)
+→ labor **blank**. The resolver **discriminates per trade** — same client, different job trade,
+different fill.
+
+**MONEY-SAFETY held:** the LLM stays **number-free**; the pre-fill is **deterministic resolution** of
+operator-entered `client_rates` (never AI pricing); the pre-filled price is a default the **operator
+overrides freely**; and the server **re-verifies** provenance before stamping it (no false agreed-rate
+labels).
+
+**Phase (ii) UNIT 2b — REMAINING (invoice agent rate-sheet branch):**
+- For **`rate_sheet` clients**, the invoice-creator's **labor** lines should bill the **agreed rate**
+  — **decoupled from vendor cost, no markup** — while **materials** stay **cost-plus** (reconciled to
+  the vendor cost line). The labor-vs-materials split is the crux.
+- The data-layer branch in **`addClientInvoiceLineItem`** already exists (it resolves the agreed rate
+  and forces null markup when a trade is passed — wired in Unit 1). 2b is **threading the trade into the
+  agent's draft + teaching the invoice-creator draft model the labor-vs-materials cost split** — a
+  **behavioral change** to draft generation, **not just a parameter**: the agent currently reconciles
+  *every* client line to a vendor cost line, and for rate_sheet labor that coupling is wrong (labor
+  bills the rate regardless of what the vendor charged; materials still reconcile).
