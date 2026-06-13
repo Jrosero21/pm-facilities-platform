@@ -41,6 +41,12 @@ type EditableLine = {
   unitPrice: string;
   markupPercent: string;
   taxAmount: string;
+  // Phase (ii) Unit 2a — the server-seeded agreed rate + its provenance (hidden). suggestedUnitPrice
+  // is the override sentinel: provenance is submitted only while unitPrice still equals it. null ⇒ no
+  // rate was pre-filled (non-rate_sheet / no rate on file) → behaves exactly as before.
+  suggestedUnitPrice: string | null;
+  tradeId: string | null;
+  rateType: string | null;
 };
 
 function toEditable(lines: ProposedProposalLine[]): EditableLine[] {
@@ -48,28 +54,40 @@ function toEditable(lines: ProposedProposalLine[]): EditableLine[] {
     category: l.category,
     description: l.description,
     scopePhrasing: l.scopePhrasing,
-    // number-free draft → operator authors these (seed quantity 1, price blank).
+    // number-free draft → operator authors these (seed quantity 1). Phase (ii) Unit 2a: a rate_sheet
+    // labor/trip line opens with the agreed rate pre-filled (suggestedUnitPrice); else blank, as
+    // before. Still a plain editable input — the operator overwrites freely.
     quantity: l.quantity ?? "1",
     unit: l.unit ?? null,
-    unitPrice: l.unitPrice ?? "",
+    unitPrice: l.unitPrice ?? l.suggestedUnitPrice ?? "",
     markupPercent: l.markupPercent ?? "",
     taxAmount: l.taxAmount ?? "0",
+    suggestedUnitPrice: l.suggestedUnitPrice ?? null,
+    tradeId: l.tradeId ?? null,
+    rateType: l.rateType ?? null,
   }));
 }
 
 // Serialize to resolveEditedProposal's contract (ProposedProposal). quantity + unit price required.
+// Phase (ii) Unit 2a: the agreed-rate provenance (tradeId/rateType) is submitted ONLY when the price
+// still equals the pre-filled suggestion — a typed-over price is no longer the agreed rate, so its
+// provenance is dropped (publish then bills it as a normal, marked-up operator-authored line).
 function serialize(lines: EditableLine[]): string {
   return JSON.stringify({
-    lineItems: lines.map((l) => ({
-      category: l.category,
-      description: l.description,
-      scopePhrasing: l.scopePhrasing,
-      quantity: l.quantity,
-      unit: l.unit,
-      unitPrice: l.unitPrice,
-      markupPercent: l.markupPercent === "" ? null : l.markupPercent,
-      taxAmount: l.taxAmount,
-    })),
+    lineItems: lines.map((l) => {
+      const keptRate = l.suggestedUnitPrice !== null && l.unitPrice === l.suggestedUnitPrice;
+      return {
+        category: l.category,
+        description: l.description,
+        scopePhrasing: l.scopePhrasing,
+        quantity: l.quantity,
+        unit: l.unit,
+        unitPrice: l.unitPrice,
+        markupPercent: l.markupPercent === "" ? null : l.markupPercent,
+        taxAmount: l.taxAmount,
+        ...(keptRate ? { tradeId: l.tradeId, rateType: l.rateType } : {}),
+      };
+    }),
   });
 }
 
@@ -153,7 +171,15 @@ function ProposalApproveEditor({ jobId, draft }: { jobId: string; draft: Proposa
                   <input value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} inputMode="decimal" className={inputClass} />
                 </label>
                 <label className="text-xs text-neutral-600">
-                  Unit price
+                  <span className="flex items-center gap-1">
+                    Unit price
+                    {l.suggestedUnitPrice !== null &&
+                      (l.unitPrice === l.suggestedUnitPrice ? (
+                        <span className="rounded bg-emerald-50 px-1 text-[10px] font-medium text-emerald-700">agreed rate</span>
+                      ) : (
+                        <span className="rounded bg-amber-50 px-1 text-[10px] font-medium text-amber-700">overridden</span>
+                      ))}
+                  </span>
                   <input value={l.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} inputMode="decimal" placeholder="author price" className={inputClass} />
                 </label>
               </div>

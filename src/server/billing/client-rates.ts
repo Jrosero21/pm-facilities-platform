@@ -279,6 +279,14 @@ const RESOLVABLE_CATEGORY_RATE_TYPE: Readonly<Record<string, RateType>> = {
   trip: "trip_charge",
 };
 
+/** The rate_type a resolvable category defaults to (labor→hourly, trip→trip_charge); null when the
+ *  category never auto-resolves. Exported so an add-line writer can record provenance rate_type for an
+ *  EXPLICIT agreed-rate line (the resolved price passed back as a unit_price — Phase ii Unit 2a)
+ *  without re-deriving the mapping. */
+export function defaultRateTypeForCategory(category: string): RateType | null {
+  return RESOLVABLE_CATEGORY_RATE_TYPE[category] ?? null;
+}
+
 /** The rate-resolved DEFAULT for a labor line: unit_price + forced-null markup + provenance. */
 export type ResolvedLaborLine = {
   unitPrice: string;
@@ -322,6 +330,79 @@ export async function resolveLaborLineDefault(input: {
   if (amount === null) return null; // no agreed rate on file → operator authors manually
 
   return { unitPrice: amount, markupPercent: null, tradeId: input.tradeId, rateType };
+}
+
+// ── Phase (ii) Unit 2a — agreed-rate PROVENANCE for an EXPLICIT-price line ───────────────
+// resolveLaborLineDefault short-circuits the moment an explicit unit_price is present (the operator
+// always wins), so it can NOT confirm provenance for a line whose price was passed back explicitly —
+// which is exactly the pre-fill shape: the review editor seeds the resolved rate as the unit_price,
+// the operator approves it unchanged, and publish bills that explicit number. The two functions below
+// re-derive provenance for that case. Both RE-RESOLVE server-side and never trust a caller-supplied
+// provenance tag (money-safety): a typed-over price no longer equals the agreed rate → no provenance.
+
+/**
+ * Confirm an EXPLICIT unit_price IS the agreed rate for (job, category, claimed trade) — so an
+ * agreed-rate line whose price was passed back explicitly (the Unit 2a pre-fill / manual rate-pick)
+ * still records trade_id/rate_type provenance and bills at no markup. Returns the provenance ONLY
+ * when ALL hold: a trade is claimed; the category is resolvable (labor/trip); the job's EFFECTIVE
+ * billing model is 'rate_sheet'; a rate is on file; and explicitUnitPrice EQUALS it (string-exact,
+ * the stored decimal). In EVERY other case returns null — a typed-over / non-agreed price is just an
+ * operator-authored number (no provenance, normal markup). Never a lock; never trusts the caller.
+ */
+export async function resolveAgreedRateProvenance(input: {
+  tenantId: string;
+  jobId: string;
+  category: string;
+  explicitUnitPrice: string;
+  tradeId?: string | null;
+  rateType?: RateType;
+}): Promise<{ tradeId: string; rateType: RateType } | null> {
+  if (!input.tradeId) return null;
+  const defaultRateType = RESOLVABLE_CATEGORY_RATE_TYPE[input.category];
+  if (!defaultRateType) return null; // not labor/trip → judgment, no provenance
+  const rateType = input.rateType ?? defaultRateType;
+
+  const ctx = await loadJobBillingContext({ tenantId: input.tenantId, jobId: input.jobId });
+  if (!ctx || ctx.billingModel !== "rate_sheet") return null; // only rate_sheet bills the agreed rate
+
+  const amount = await resolveClientLaborRate({
+    tenantId: input.tenantId,
+    clientId: ctx.clientId,
+    tradeId: input.tradeId,
+    rateType,
+  });
+  if (amount === null) return null; // no agreed rate on file
+  return amount === input.explicitUnitPrice ? { tradeId: input.tradeId, rateType } : null;
+}
+
+/**
+ * Per-line BILLED markup for AR content priced on a rate_sheet-capable job: "0" for a CONFIRMED
+ * agreed-rate labor/trip line (explicit price == the resolved rate for its claimed trade — margin
+ * baked in), else ruleMarkupPercent. Aligned by index. SHARED by the proposal routing PREVIEW and the
+ * PUBLISH gate so their totals can never diverge (preview ≡ publish), and consistent with what
+ * addProposalLineItem persists (it independently re-derives the same provenance). A line with no
+ * claimed trade is always the rule markup — the common, untouched path.
+ */
+export async function resolveAgreedRateLineMarkups(input: {
+  tenantId: string;
+  jobId: string;
+  ruleMarkupPercent: string | null;
+  lines: { category: string; unitPrice: string; tradeId?: string | null; rateType?: RateType }[];
+}): Promise<(string | null)[]> {
+  return Promise.all(
+    input.lines.map(async (ln) => {
+      if (!ln.tradeId) return input.ruleMarkupPercent;
+      const prov = await resolveAgreedRateProvenance({
+        tenantId: input.tenantId,
+        jobId: input.jobId,
+        category: ln.category,
+        explicitUnitPrice: ln.unitPrice,
+        tradeId: ln.tradeId,
+        rateType: ln.rateType,
+      });
+      return prov ? null : input.ruleMarkupPercent; // agreed rate → no markup (null ≡ "0" in the math)
+    }),
+  );
 }
 
 /** What a line-item editor needs to offer the rate-fill affordance: whether this job bills from a

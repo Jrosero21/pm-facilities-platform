@@ -15,6 +15,7 @@ import {
   ProposalRequiresPricing,
 } from "@/server/agents/proposal-generator/errors";
 import { resolveClientMarkupDefault } from "@/server/billing/client-invoices";
+import { resolveAgreedRateLineMarkups } from "@/server/billing/client-rates";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { computeArLines, type ArLineInput } from "@/server/billing/totals";
 import { decideProposalKind } from "@/server/billing/proposal-routing";
@@ -229,11 +230,25 @@ export async function previewProposalRoutingAction(
   if (!job) return { ok: false, error: "Job not found in this tenant." };
 
   const markupResolved = await resolveClientMarkupDefault(tenantId, job.clientId);
+  // Phase (ii) Unit 2a — per-line billed markup: "0" for a confirmed agreed-rate labor/trip line,
+  // else the rule default. SHARED with publishProposalDraft (f2) so this preview's total is the
+  // byte-identical basis the publish gate will use (preview ≡ publish — they can never disagree).
+  const lineMarkups = await resolveAgreedRateLineMarkups({
+    tenantId,
+    jobId,
+    ruleMarkupPercent: markupResolved,
+    lines: content.lineItems.map((ln) => ({
+      category: ln.category,
+      unitPrice: ln.unitPrice ?? "",
+      tradeId: ln.tradeId,
+      rateType: ln.rateType,
+    })),
+  });
   const arLines: ArLineInput[] = content.lineItems.map((ln, i) => ({
     id: String(i),
     quantity: ln.quantity as string, // resolveEditedProposal proved these well-formed
     unitPrice: ln.unitPrice as string,
-    markupPercent: markupResolved,
+    markupPercent: lineMarkups[i],
     taxAmount: ln.taxAmount ?? "0",
   }));
   const total = computeArLines(arLines).total;

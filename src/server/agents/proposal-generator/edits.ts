@@ -1,5 +1,6 @@
 import { isDecimalStr } from "@/server/billing/money";
 import { lineItemCategoryEnum } from "@/server/schema/billing-shared";
+import type { RateType } from "@/server/billing/client-rates";
 import type { ProposedProposal, ProposedProposalLine, ProposalLineCategory } from "./drafts";
 
 // ── Phase 27 batch 3b — edited-proposal resolution (pure, no DB) ───────────────────────
@@ -30,6 +31,14 @@ function normCategory(c: unknown): ProposalLineCategory | null {
     : null;
 }
 
+// Phase (ii) Unit 2a — accept only valid rate_type provenance from the editor's submitted JSON
+// (mirrors the client_rates enum). A type-only RateType import keeps this module DB-free / pure;
+// the literal set is the runtime guard. An unrecognized value drops to undefined (no provenance).
+const RATE_TYPES: readonly string[] = ["hourly", "flat", "trip_charge", "per_unit", "emergency", "after_hours"];
+function normRateType(v: unknown): RateType | undefined {
+  return typeof v === "string" && RATE_TYPES.includes(v) ? (v as RateType) : undefined;
+}
+
 export type ProposalEditResolution =
   | { ok: true; editedContent: ProposedProposal | null }
   | { ok: false; error: "MALFORMED_PROPOSAL" | "PROPOSAL_REQUIRES_LINES" | "INVALID_LINE_NUMBERS" };
@@ -58,6 +67,8 @@ function normalizeLine(raw: unknown): ProposedProposalLine {
     markupPercent?: unknown;
     taxRate?: unknown;
     taxAmount?: unknown;
+    tradeId?: unknown;
+    rateType?: unknown;
   };
   return {
     category: normCategory(r.category) ?? ("" as ProposalLineCategory),
@@ -69,6 +80,10 @@ function normalizeLine(raw: unknown): ProposedProposalLine {
     markupPercent: typeof r.markupPercent === "string" ? r.markupPercent : null,
     taxRate: typeof r.taxRate === "string" ? r.taxRate : null,
     taxAmount: typeof r.taxAmount === "string" ? r.taxAmount : "0",
+    // Phase (ii) Unit 2a — agreed-rate provenance the editor kept (price unchanged). Absent ⇒ null
+    // tradeId / undefined rateType (no provenance; the line bills with normal markup at publish).
+    tradeId: typeof r.tradeId === "string" ? r.tradeId : null,
+    rateType: normRateType(r.rateType),
   };
 }
 
@@ -82,7 +97,9 @@ function linesEqual(a: ProposedProposalLine, b: ProposedProposalLine): boolean {
     (a.unitPrice ?? "") === (b.unitPrice ?? "") &&
     (a.markupPercent ?? null) === (b.markupPercent ?? null) &&
     (a.taxRate ?? null) === (b.taxRate ?? null) &&
-    (a.taxAmount ?? "0") === (b.taxAmount ?? "0")
+    (a.taxAmount ?? "0") === (b.taxAmount ?? "0") &&
+    (a.tradeId ?? null) === (b.tradeId ?? null) &&
+    (a.rateType ?? null) === (b.rateType ?? null)
   );
 }
 

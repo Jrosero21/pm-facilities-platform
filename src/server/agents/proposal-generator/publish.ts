@@ -5,6 +5,7 @@ import { db } from "@/server/db";
 import { auditLogs, proposalDrafts, proposals } from "@/server/schema";
 import { createProposal, addProposalLineItem } from "@/server/billing/proposals";
 import { resolveClientMarkupDefault } from "@/server/billing/client-invoices";
+import { resolveAgreedRateLineMarkups } from "@/server/billing/client-rates";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { computeArLines, type ArLineInput } from "@/server/billing/totals";
@@ -76,8 +77,26 @@ export async function publishProposalDraft(input: {
   const clientId = job.clientId;
   const effectiveNte = await getEffectiveNte(input.tenantId, input.jobId);
 
-  // f. resolve markup ONCE (D2) — the same concrete value feeds the gate total AND every line.
+  // f. resolve markup ONCE (D2) — the rule default feeds non-agreed-rate lines at the gate AND at i.
   const markupResolved = await resolveClientMarkupDefault(input.tenantId, clientId);
+
+  // f2. Phase (ii) Unit 2a — per-line BILLED markup: null (no markup) for a CONFIRMED agreed-rate
+  //     labor/trip line (the editor kept the pre-filled rate; re-resolved server-side, never trusting
+  //     the tag), else markupResolved. The SAME array feeds the gate total (g) AND every
+  //     addProposalLineItem (i), so the NTE-gate basis stays byte-identical to what
+  //     recalculateProposalTotals persists — an agreed-rate line is unmarked-up on both sides. SHARED
+  //     with the routing preview.
+  const lineMarkups = await resolveAgreedRateLineMarkups({
+    tenantId: input.tenantId,
+    jobId: input.jobId,
+    ruleMarkupPercent: markupResolved,
+    lines: content.lineItems.map((ln) => ({
+      category: ln.category,
+      unitPrice: ln.unitPrice ?? "",
+      tradeId: ln.tradeId,
+      rateType: ln.rateType,
+    })),
+  });
 
   // g. PRICING GUARD + total. Every content line must be priced (well-formed decimal qty/unit
   //    price) — covers the approve-as-is (number-free) path. Then compute the proposal TOTAL with
@@ -93,7 +112,7 @@ export async function publishProposalDraft(input: {
       id: String(i),
       quantity: ln.quantity,
       unitPrice: ln.unitPrice,
-      markupPercent: markupResolved, // the resolved rule default — same value billed at i.
+      markupPercent: lineMarkups[i], // null for an agreed-rate line, else the rule default — same at i.
       taxAmount: ln.taxAmount ?? "0",
     };
   });
@@ -120,9 +139,14 @@ export async function publishProposalDraft(input: {
     createdByUserId: input.actorUserId, // the operator who published the draft
   });
 
-  // i. add each line (own txn each; recalculateProposalTotals runs inside). markupPercent = the
-  //    resolved rule default (D2) — string ⇒ that markup; null ⇒ explicit no-markup.
-  for (const line of content.lineItems) {
+  // i. add each line (own txn each; recalculateProposalTotals runs inside). Pass the per-line markup
+  //    from f2 plus the line's kept tradeId/rateType — addProposalLineItem is the single authority on
+  //    provenance: it RE-CONFIRMS the explicit price still equals the agreed rate, then PERSISTS
+  //    trade_id/rate_type and forces markup null for a confirmed agreed-rate line (margin baked in),
+  //    else keeps the rule markup with no provenance. f2's null markup and that forced-null are the
+  //    same in the math, so the persisted total matches the gate basis either way.
+  for (let i = 0; i < content.lineItems.length; i++) {
+    const line = content.lineItems[i];
     await addProposalLineItem({
       tenantId: input.tenantId,
       proposalId,
@@ -131,9 +155,11 @@ export async function publishProposalDraft(input: {
       quantity: line.quantity as string, // pricing guard above proved these are well-formed strings
       unitPrice: line.unitPrice as string,
       unit: line.unit ?? undefined,
-      markupPercent: markupResolved,
+      markupPercent: lineMarkups[i],
       taxRate: line.taxRate ?? undefined,
       taxAmount: line.taxAmount ?? undefined,
+      tradeId: line.tradeId ?? undefined,
+      rateType: line.rateType ?? undefined,
     });
   }
 

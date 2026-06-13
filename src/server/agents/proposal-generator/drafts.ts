@@ -6,6 +6,12 @@ import { db } from "@/server/db";
 import { agentDecisions, proposalDrafts } from "@/server/schema";
 import { writeAuditLog } from "@/server/audit";
 import { lineItemCategoryEnum } from "@/server/schema/billing-shared";
+import {
+  loadLaborRatePickerContext,
+  resolveLaborLineDefault,
+  type RateType,
+  type ResolvedLaborLine,
+} from "@/server/billing/client-rates";
 
 // ── Phase 27 batch 3b — proposal_drafts data layer ────────────────────────────────────
 // The proposal generator's draft I/O — the proposal equivalent of invoice-creator/drafts.ts.
@@ -40,6 +46,15 @@ export type ProposedProposalLine = {
   markupPercent?: string | null;
   taxRate?: string | null;
   taxAmount?: string;
+  // Phase (ii) billing-from-rates (Unit 2a). On OPERATOR-EDITED content (proposal_reviews
+  // .edited_content), tradeId/rateType are the agreed-rate PROVENANCE the operator kept — publish
+  // passes them to addProposalLineItem to persist on the line. suggestedUnitPrice is a READ-TIME ONLY
+  // seed attached by listProposalDraftsForJobDetailed (the resolved agreed rate) so the review editor
+  // opens pre-filled; it is NEVER persisted or submitted (the editor seeds unit_price from it, the
+  // serializer omits it). All three are absent on the stored, number-free proposed_proposal.
+  tradeId?: string | null;
+  rateType?: RateType;
+  suggestedUnitPrice?: string;
 };
 
 // The structured draft. No lumpFlag (no vendor source to keep whole — unlike invoices).
@@ -194,6 +209,45 @@ export type ProposalDraftDetailed = ProposalDraft & {
   lineCount: number | null;
 };
 
+// Phase (ii) Unit 2a — pre-fill agreed rates for the review editor. For a rate_sheet job with a
+// primary trade, attach a PARALLEL suggestion (suggestedUnitPrice + tradeId/rateType provenance) to
+// each labor/trip draft line whose agreed rate resolves, so the editor opens with the rate pre-filled
+// (still operator-editable). The number-free proposed_proposal is NOT mutated in price — only these
+// read-time hints are added; the read-only approved view (which ignores them) is untouched. Non-
+// rate_sheet / no primary trade / no rate on file → no suggestion (blank, as before). Only
+// pending_review drafts are enriched — the only status the editor renders. resolveLaborLineDefault is
+// memoized per category (labor/trip), so this is ≤2 rate lookups regardless of line count.
+async function enrichWithAgreedRates(
+  tenantId: string,
+  jobId: string,
+  drafts: ProposalDraftDetailed[],
+): Promise<void> {
+  const pending = drafts.filter((d) => d.status === "pending_review");
+  if (pending.length === 0) return;
+  const picker = await loadLaborRatePickerContext({ tenantId, jobId });
+  if (!picker.enabled || !picker.defaultTradeId) return; // not rate_sheet / no primary trade → no fill
+  const tradeId = picker.defaultTradeId;
+
+  const byCategory = new Map<string, ResolvedLaborLine | null>();
+  const resolveForCategory = async (category: string): Promise<ResolvedLaborLine | null> => {
+    if (!byCategory.has(category)) {
+      byCategory.set(category, await resolveLaborLineDefault({ tenantId, jobId, category, tradeId }));
+    }
+    return byCategory.get(category) ?? null;
+  };
+
+  for (const d of pending) {
+    for (const ln of d.proposedProposal.lineItems) {
+      const resolved = await resolveForCategory(ln.category);
+      if (resolved) {
+        ln.suggestedUnitPrice = resolved.unitPrice;
+        ln.tradeId = resolved.tradeId;
+        ln.rateType = resolved.rateType;
+      }
+    }
+  }
+}
+
 export async function listProposalDraftsForJobDetailed(
   tenantId: string,
   jobId: string,
@@ -224,7 +278,7 @@ export async function listProposalDraftsForJobDetailed(
     .where(and(eq(proposalDrafts.tenantId, tenantId), eq(proposalDrafts.jobId, jobId)))
     .orderBy(desc(proposalDrafts.createdAt));
 
-  return rows.map((r) => {
+  const detailed = rows.map((r) => {
     const meta = parseDecisionMeta(r.decisionMetadata);
     return {
       id: r.id,
@@ -241,4 +295,8 @@ export async function listProposalDraftsForJobDetailed(
       lineCount: meta.lineCount,
     };
   });
+
+  // Phase (ii) Unit 2a — seed the agreed rate onto pending labor/trip lines (read-time, in place).
+  await enrichWithAgreedRates(tenantId, jobId, detailed);
+  return detailed;
 }

@@ -7,7 +7,7 @@ import { proposalApprovals, proposalLineItems, proposals } from "@/server/schema
 import { recalculateProposalTotals } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
-import { resolveLaborLineDefault, type RateType } from "@/server/billing/client-rates";
+import { resolveLaborLineDefault, resolveAgreedRateProvenance, type RateType } from "@/server/billing/client-rates";
 import {
   ProposalChainHasLiveRevision,
   ProposalNotDraft,
@@ -141,9 +141,12 @@ export type ProposalLineItemInput = {
 };
 
 /** Add a line to a DRAFT proposal (lineNumber auto = max+1 under the parent lock, 10e), then recalc.
- *  Phase (ii): a rate_sheet labor/trip line with a tradeId and NO explicit unit_price is priced from
- *  the agreed rate (markup forced null — the rate has margin baked in — and trade_id/rate_type stored
- *  as provenance). An explicit unit_price always wins; cost_plus/flat are unchanged. */
+ *  Phase (ii): a rate_sheet labor/trip line bills the AGREED RATE with no markup and stores
+ *  trade_id/rate_type provenance, either because (a) the operator passed a tradeId and NO explicit
+ *  unit_price → the resolver fills it (Unit 1), or (b) the operator passed the resolved rate back as
+ *  an EXPLICIT unit_price together with its tradeId — the pre-filled review editor (Unit 2a) — which
+ *  is re-confirmed server-side (price must still equal the agreed rate; a typed-over price drops the
+ *  provenance and bills normally). An explicit unit_price always wins; cost_plus/flat are unchanged. */
 export async function addProposalLineItem(
   input: { tenantId: string; proposalId: string } & ProposalLineItemInput,
 ): Promise<{ id: string }> {
@@ -152,14 +155,27 @@ export async function addProposalLineItem(
     const p = await lockProposal(tx, input.tenantId, input.proposalId);
     if (p.status !== "draft") throw new ProposalNotDraft(input.proposalId, p.status);
 
-    // billing-from-rates: resolve a DEFAULT labor unit_price when the operator passed none.
+    // billing-from-rates: resolve a DEFAULT labor unit_price when the operator passed none (a).
     const rate = await resolveLaborLineDefault({
       tenantId: input.tenantId, jobId: p.jobId, category: input.category,
       explicitUnitPrice: input.unitPrice, tradeId: input.tradeId, rateType: input.rateType,
     });
     const unitPrice = rate?.unitPrice ?? input.unitPrice;
     if (unitPrice === undefined) throw new Error("INVALID_LINE_UNIT_PRICE"); // no price + no rate resolved
-    const markupPercent = rate ? null : input.markupPercent ?? null; // agreed rate → no markup
+
+    // Provenance: the resolver-filled rate (a), else an explicit agreed-rate line re-confirmed (b).
+    // resolveAgreedRateProvenance re-resolves server-side and returns null unless the explicit price
+    // EQUALS the agreed rate — so a typed-over price records no provenance and bills with markup.
+    let provTradeId = rate?.tradeId ?? null;
+    let provRateType: RateType | null = rate?.rateType ?? null;
+    if (!rate && input.unitPrice !== undefined && input.tradeId != null) {
+      const prov = await resolveAgreedRateProvenance({
+        tenantId: input.tenantId, jobId: p.jobId, category: input.category,
+        explicitUnitPrice: input.unitPrice, tradeId: input.tradeId, rateType: input.rateType,
+      });
+      if (prov) { provTradeId = prov.tradeId; provRateType = prov.rateType; }
+    }
+    const markupPercent = provTradeId ? null : input.markupPercent ?? null; // agreed rate → no markup
     assertValidLineFields({ ...input, unitPrice, markupPercent });
 
     const existing = await tx
@@ -180,8 +196,8 @@ export async function addProposalLineItem(
       markupPercent,
       taxRate: input.taxRate ?? null,
       taxAmount: input.taxAmount ?? "0",
-      tradeId: rate?.tradeId ?? null, // provenance: stored only when rate-resolved
-      rateType: rate?.rateType ?? null,
+      tradeId: provTradeId, // provenance: resolver-filled (a) OR re-confirmed explicit agreed rate (b)
+      rateType: provRateType,
     });
     await recalculateProposalTotals(tx, input.tenantId, input.proposalId);
   });
