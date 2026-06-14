@@ -79,6 +79,13 @@ export function VendorInvoiceLineItemsEditor({
           <input name="quantity" defaultValue="1" inputMode="decimal" className={inputClass} />
         </label>
         <label className="text-xs font-medium text-neutral-600">
+          Unit
+          <input name="unit" placeholder="hr, hrs, each, lot…" className={inputClass} />
+          <span className="mt-1 block text-[11px] font-normal text-neutral-400">
+            A time unit (hr/hrs) on a labor line bills the rate-sheet agreed rate.
+          </span>
+        </label>
+        <label className="text-xs font-medium text-neutral-600">
           Unit price
           <input name="unitPrice" defaultValue="0" inputMode="decimal" className={inputClass} />
         </label>
