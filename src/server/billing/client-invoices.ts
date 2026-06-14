@@ -8,7 +8,7 @@ import { clientBillingRules, clientInvoiceLineItems, clientInvoices } from "@/se
 import { recalculateClientInvoiceTotals, roundHalfUp } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
-import { resolveLaborLineDefault, type RateType } from "@/server/billing/client-rates";
+import { resolveLaborLineDefault, resolveAgreedRateProvenance, type RateType } from "@/server/billing/client-rates";
 import {
   ClientInvoiceNotEditable,
   ClientInvoiceNotSendable,
@@ -176,8 +176,24 @@ export async function addClientInvoiceLineItem(
     });
     const unitPrice = rate?.unitPrice ?? input.unitPrice;
     if (unitPrice === undefined) throw new Error("INVALID_LINE_UNIT_PRICE"); // no price + no rate resolved
-    // rate_sheet labor → no markup (rate has margin baked in); else the three-way cost-plus semantic.
-    const markupPercent = rate
+
+    // Provenance (Phase ii Unit 2b): the resolver-filled rate, OR an explicit agreed-rate line re-
+    // confirmed server-side (the rate_sheet pre-fill path passes the resolved price back as an explicit
+    // unitPrice + the trade it came from). resolveAgreedRateProvenance re-resolves and returns null
+    // unless the explicit price EQUALS the agreed rate — a typed-over price records no provenance and
+    // bills with markup. Mirrors addProposalLineItem (the single provenance authority).
+    let provTradeId = rate?.tradeId ?? null;
+    let provRateType: RateType | null = rate?.rateType ?? null;
+    if (!rate && input.unitPrice !== undefined && input.tradeId != null) {
+      const prov = await resolveAgreedRateProvenance({
+        tenantId: input.tenantId, jobId: ci.jobId, category: input.category,
+        explicitUnitPrice: input.unitPrice, tradeId: input.tradeId, rateType: input.rateType,
+      });
+      if (prov) { provTradeId = prov.tradeId; provRateType = prov.rateType; }
+    }
+    // agreed rate (resolved or re-confirmed) → no markup (margin baked in); else the three-way cost-plus
+    // semantic (undefined → snapshot default; null → explicit no-markup; "d.ddd" → operator override).
+    const markupPercent = provTradeId
       ? null
       : input.markupPercent === undefined
         ? await resolveClientMarkupDefault(input.tenantId, ci.clientId)
@@ -202,8 +218,8 @@ export async function addClientInvoiceLineItem(
       markupPercent: markupPercent ?? null,
       taxRate: input.taxRate ?? null,
       taxAmount: input.taxAmount ?? "0",
-      tradeId: rate?.tradeId ?? null, // provenance: stored only when rate-resolved
-      rateType: rate?.rateType ?? null,
+      tradeId: provTradeId, // provenance: resolver-filled OR re-confirmed explicit agreed rate
+      rateType: provRateType,
     });
     await recalculateClientInvoiceTotals(tx, input.tenantId, input.clientInvoiceId);
   });

@@ -1,5 +1,6 @@
 import { isDecimalStr } from "@/server/billing/money";
 import { lineItemCategoryEnum } from "@/server/schema/billing-shared";
+import type { RateType } from "@/server/billing/client-rates";
 import type { ProposedInvoice, ProposedInvoiceLine } from "./drafts";
 
 // ── Phase 26 batch 2b-i — edited-invoice resolution (pure, no DB) ──────────────────────
@@ -19,6 +20,13 @@ function normCategory(c: unknown): Category | null {
   return typeof c === "string" && (lineItemCategoryEnum as readonly string[]).includes(c)
     ? (c as Category)
     : null;
+}
+
+// Phase (ii) Unit 2b — accept only valid rate_type provenance from the editor's submitted JSON
+// (mirrors the client_rates enum). A type-only RateType import keeps this module DB-free / pure.
+const RATE_TYPES: readonly string[] = ["hourly", "flat", "trip_charge", "per_unit", "emergency", "after_hours"];
+function normRateType(v: unknown): RateType | undefined {
+  return typeof v === "string" && RATE_TYPES.includes(v) ? (v as RateType) : undefined;
 }
 
 export type InvoiceEditResolution =
@@ -47,6 +55,8 @@ function normalizeLine(raw: unknown): ProposedInvoiceLine {
     unitPrice?: unknown;
     markupPercent?: unknown;
     reconcilesToVendorLineId?: unknown;
+    tradeId?: unknown;
+    rateType?: unknown;
   };
   return {
     category: normCategory(r.category) ?? ("" as Category),
@@ -57,6 +67,10 @@ function normalizeLine(raw: unknown): ProposedInvoiceLine {
     markupPercent: typeof r.markupPercent === "string" ? r.markupPercent : null,
     reconcilesToVendorLineId:
       typeof r.reconcilesToVendorLineId === "string" ? r.reconcilesToVendorLineId : null,
+    // Phase (ii) Unit 2b — agreed-rate provenance the editor kept (price unchanged). Absent ⇒ null
+    // tradeId / undefined rateType (no provenance; publish bills the line with normal markup logic).
+    tradeId: typeof r.tradeId === "string" ? r.tradeId : null,
+    rateType: normRateType(r.rateType),
   };
 }
 
@@ -68,7 +82,9 @@ function linesEqual(a: ProposedInvoiceLine, b: ProposedInvoiceLine): boolean {
     (a.unit ?? null) === (b.unit ?? null) &&
     a.unitPrice === b.unitPrice &&
     (a.markupPercent ?? null) === (b.markupPercent ?? null) &&
-    (a.reconcilesToVendorLineId ?? null) === (b.reconcilesToVendorLineId ?? null)
+    (a.reconcilesToVendorLineId ?? null) === (b.reconcilesToVendorLineId ?? null) &&
+    (a.tradeId ?? null) === (b.tradeId ?? null) &&
+    (a.rateType ?? null) === (b.rateType ?? null)
   );
 }
 

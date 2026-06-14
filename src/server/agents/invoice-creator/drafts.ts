@@ -38,11 +38,16 @@ export type ProposedInvoiceLine = {
   // Phase (ii) Unit 2b — rate_sheet labor provenance + read-time seed (mirrors ProposedProposalLine).
   // On a rate_sheet ITEMIZED labor/trip line the agent bills the AGREED RATE (unit_price = rate,
   // markup_percent null) DECOUPLED from vendor cost and stamps tradeId/rateType; suggestedUnitPrice
-  // carries the same rate so the review editor (batch 2) can show an "agreed rate" chip. All three are
-  // ABSENT on cost_plus/flat lines and on rate_sheet materials/other (untouched this batch).
+  // carries the same rate so the review editor shows an "agreed rate" chip. ABSENT on cost_plus/flat.
   tradeId?: string | null;
   rateType?: RateType;
   suggestedUnitPrice?: string;
+  // Phase (ii) Unit 2b — the VENDOR COST for this line (the source vendor line's unit_price), carried
+  // as a READ-ONLY REFERENCE so the review editor can show "vendor: $X" beside the price the operator
+  // bills. Under rate_sheet it NEVER drives the billed price (labor = agreed rate, materials =
+  // operator judgment) — it is informational only. Populated on rate_sheet lines; absent on cost_plus
+  // (where the billed unit_price already IS the vendor cost).
+  vendorUnitPrice?: string | null;
 };
 
 // The structured draft. lumpFlag (D3): the vendor invoice was a single lumped / non-itemized

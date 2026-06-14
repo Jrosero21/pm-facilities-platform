@@ -33,6 +33,13 @@ type EditableLine = {
   markupPercent: string;
   taxAmount: string;
   reconcilesToVendorLineId: string | null;
+  // Phase (ii) Unit 2b — agreed-rate seed/provenance (hidden) + the vendor-cost reference (read-only).
+  // suggestedUnitPrice is the override sentinel: provenance is submitted only while unitPrice still
+  // equals it. vendorUnitPrice drives the muted "vendor: $X" reference shown beside the price input.
+  suggestedUnitPrice: string | null;
+  tradeId: string | null;
+  rateType: string | null;
+  vendorUnitPrice: string | null;
 };
 
 function toEditable(lines: ProposedInvoiceLine[]): EditableLine[] {
@@ -41,25 +48,38 @@ function toEditable(lines: ProposedInvoiceLine[]): EditableLine[] {
     description: l.description,
     quantity: l.quantity,
     unit: l.unit ?? null,
-    unitPrice: l.unitPrice,
+    // rate_sheet itemized labor opens at the agreed rate (l.unitPrice already = rate); rate_sheet
+    // materials/lumped labor open BLANK ("") for the operator. Still a plain editable input.
+    unitPrice: l.unitPrice ?? l.suggestedUnitPrice ?? "",
     markupPercent: l.markupPercent ?? "",
     taxAmount: "0",
     reconcilesToVendorLineId: l.reconcilesToVendorLineId ?? null,
+    suggestedUnitPrice: l.suggestedUnitPrice ?? null,
+    tradeId: l.tradeId ?? null,
+    rateType: l.rateType ?? null,
+    vendorUnitPrice: l.vendorUnitPrice ?? null,
   }));
 }
 
 // Serialize to resolveEditedInvoice's contract (ProposedInvoice). reconciliation + lumpFlag preserved.
+// Phase (ii) Unit 2b: the agreed-rate provenance (tradeId/rateType) is submitted ONLY when the price
+// still equals the pre-filled suggestion — a typed-over price is no longer the agreed rate, so its
+// provenance is dropped (publish re-verifies server-side regardless). vendorUnitPrice is display-only.
 function serialize(lines: EditableLine[], lumpFlag: boolean): string {
   return JSON.stringify({
-    lineItems: lines.map((l) => ({
-      category: l.category,
-      description: l.description,
-      quantity: l.quantity,
-      unit: l.unit,
-      unitPrice: l.unitPrice,
-      markupPercent: l.markupPercent === "" ? null : l.markupPercent,
-      reconcilesToVendorLineId: l.reconcilesToVendorLineId,
-    })),
+    lineItems: lines.map((l) => {
+      const keptRate = l.suggestedUnitPrice !== null && l.unitPrice === l.suggestedUnitPrice;
+      return {
+        category: l.category,
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit,
+        unitPrice: l.unitPrice,
+        markupPercent: l.markupPercent === "" ? null : l.markupPercent,
+        reconcilesToVendorLineId: l.reconcilesToVendorLineId,
+        ...(keptRate ? { tradeId: l.tradeId, rateType: l.rateType } : {}),
+      };
+    }),
     lumpFlag,
   });
 }
@@ -98,8 +118,19 @@ function InvoiceApproveEditor({ jobId, draft }: { jobId: string; draft: InvoiceD
                 <input value={l.quantity} onChange={(e) => update(i, { quantity: e.target.value })} inputMode="decimal" className={inputClass} />
               </label>
               <label className="text-xs text-neutral-600">
-                Unit price
-                <input value={l.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} inputMode="decimal" className={inputClass} />
+                <span className="flex items-center gap-1">
+                  Unit price
+                  {l.suggestedUnitPrice !== null &&
+                    (l.unitPrice === l.suggestedUnitPrice ? (
+                      <span className="rounded bg-emerald-50 px-1 text-[10px] font-medium text-emerald-700">agreed rate</span>
+                    ) : (
+                      <span className="rounded bg-amber-50 px-1 text-[10px] font-medium text-amber-700">overridden</span>
+                    ))}
+                </span>
+                <input value={l.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} inputMode="decimal" placeholder={l.suggestedUnitPrice === null && l.vendorUnitPrice !== null ? "author price" : undefined} className={inputClass} />
+                {l.vendorUnitPrice !== null && (
+                  <span className="mt-0.5 block text-[10px] text-neutral-400">vendor: ${l.vendorUnitPrice}</span>
+                )}
               </label>
               <label className="text-xs text-neutral-600">
                 Markup %

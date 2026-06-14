@@ -188,11 +188,11 @@ export async function runInvoiceCreator(input: {
           const category = (llm?.category ?? vl.category) as ProposedInvoiceLine["category"];
           const description = llm?.description ?? vl.description;
 
-          // rate_sheet LABOR/trip fork — decoupled from vendor cost.
+          // rate_sheet fork — DECOUPLED from vendor cost; vl.unitPrice carried as a reference only.
           if (isRateSheet) {
             const agreed = await agreedRateFor(category);
             if (agreed && hasUnitBasis(vl.unit)) {
-              // ITEMIZED: bill quantity × agreed rate, markup null, provenance + chip seed.
+              // ITEMIZED labor/trip: bill quantity × agreed rate, markup null, provenance + chip seed.
               return {
                 category,
                 description,
@@ -204,6 +204,7 @@ export async function runInvoiceCreator(input: {
                 tradeId: job.primaryTradeId,
                 rateType: agreed.rateType,
                 suggestedUnitPrice: agreed.rate,
+                vendorUnitPrice: vl.unitPrice,
               };
             }
             if (defaultRateTypeForCategory(category)) {
@@ -217,12 +218,25 @@ export async function runInvoiceCreator(input: {
                 unitPrice: "",
                 markupPercent: null,
                 reconcilesToVendorLineId: vl.id,
+                vendorUnitPrice: vl.unitPrice,
               };
             }
+            // MATERIALS / other on rate_sheet (batch 2): OPERATOR JUDGMENT — leave the price BLANK with
+            // NO markup (no agreed materials markup for rate_sheet); the operator authors it at review.
+            // vendorUnitPrice is surfaced so they can see what the vendor charged as a reference.
+            return {
+              category,
+              description,
+              quantity: vl.quantity,
+              unit: vl.unit,
+              unitPrice: "",
+              markupPercent: null,
+              reconcilesToVendorLineId: vl.id,
+              vendorUnitPrice: vl.unitPrice,
+            };
           }
 
-          // cost_plus / flat, OR a non-resolvable category (materials/etc) on rate_sheet — UNCHANGED
-          // cost-plus path (byte-identical to before this batch).
+          // cost_plus / flat — UNCHANGED cost-plus path (byte-identical to before this batch).
           return {
             category,
             description,

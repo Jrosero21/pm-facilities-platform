@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
 import { auditLogs, invoiceDrafts } from "@/server/schema";
 import { createClientInvoice, addClientInvoiceLineItem } from "@/server/billing/client-invoices";
+import { loadJobBillingContext } from "@/server/billing/client-rates";
 import { getInvoiceDraft, type ProposedInvoice } from "./drafts";
 import { getApproveReviewForInvoiceDraft } from "./reviews";
 import { DraftNotApproved, InvoiceAlreadyMaterialized } from "./errors";
@@ -67,8 +68,16 @@ export async function publishInvoiceDraft(input: {
     createdByUserId: input.actorUserId,
   });
 
-  // f. add each line (own txn each; recalculateClientInvoiceTotals runs inside). markupPercent
-  //    UNDEFINED → the writer re-snapshots the client's CURRENT markup rule fresh (D2).
+  // f. add each line (own txn each; recalculateClientInvoiceTotals runs inside).
+  //    MARKUP fork on the job's effective billing model (Phase ii Unit 2b):
+  //    - rate_sheet → markupPercent: null (NO markup on ANY line — labor bills the agreed rate,
+  //      materials are operator judgment; neither is marked up). tradeId/rateType are threaded so the
+  //      writer re-confirms the agreed rate server-side and PERSISTS provenance on a kept labor line
+  //      (a typed-over price re-verifies false → no provenance, still null markup under rate_sheet).
+  //    - cost_plus / flat → markupPercent: UNDEFINED → the writer re-snapshots the client's CURRENT
+  //      rule fresh (D2), and tradeId/rateType are absent on those lines, so the call is unchanged.
+  const billingCtx = await loadJobBillingContext({ tenantId: input.tenantId, jobId: input.jobId });
+  const isRateSheet = billingCtx?.billingModel === "rate_sheet";
   for (const line of content.lineItems) {
     await addClientInvoiceLineItem({
       tenantId: input.tenantId,
@@ -78,7 +87,9 @@ export async function publishInvoiceDraft(input: {
       quantity: line.quantity,
       unitPrice: line.unitPrice,
       unit: line.unit ?? undefined,
-      markupPercent: undefined, // D2: fresh re-resolve from client_billing_rules
+      markupPercent: isRateSheet ? null : undefined,
+      tradeId: line.tradeId ?? undefined,
+      rateType: line.rateType ?? undefined,
     });
   }
 
