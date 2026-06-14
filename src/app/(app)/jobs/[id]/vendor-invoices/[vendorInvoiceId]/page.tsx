@@ -39,9 +39,12 @@ export default async function VendorInvoiceDetailPage({
   ]);
   if (!inv || inv.jobId !== id) notFound();
 
-  // Phase (iii) Part 1 — attached documents (list + presigned links), shown in the editable states.
-  const editable = inv.status === "received" || inv.status === "under_review";
-  const docs = editable ? await listVendorInvoiceDocuments(tenantId, vendorInvoiceId) : [];
+  // Phase (iii) Part 1 — attached documents (list + presigned links). Documents are attachable in ANY
+  // state: they arrive on their own schedule (a sign-off often lands AFTER approval) and attaching one
+  // changes no money (unlike line-item editing, which stays locked post-approval). The vendor-invoice
+  // status enum has no void/cancel state, so the section ALWAYS renders. The Part-3 cost-plus gate needs
+  // the invoice document attachable on an APPROVED vendor invoice (the normal case).
+  const docs = await listVendorInvoiceDocuments(tenantId, vendorInvoiceId);
   const docsWithUrl = await Promise.all(
     docs.map(async (d) => {
       const served = await getVendorInvoiceDocumentUrl({ tenantId, vendorInvoiceId, attachmentId: d.id });
@@ -140,19 +143,17 @@ export default async function VendorInvoiceDetailPage({
         </div>
       )}
 
-      {/* Attached documents (Phase iii Part 1) — shown in the editable states */}
-      {editable && (
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold text-neutral-900">Attached documents</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Attach the vendor invoice PDF/scan, sign-off, or receipts. Tag the invoice document so cost-plus
-            billing can verify it&apos;s on file.
-          </p>
-          <div className="mt-2">
-            <VendorInvoiceDocuments vendorInvoiceId={inv.id} jobId={id} docs={docsWithUrl} />
-          </div>
+      {/* Attached documents (Phase iii Part 1) — always available (any status; no money impact) */}
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Attached documents</h2>
+        <p className="mt-1 text-xs text-neutral-500">
+          Attach the vendor invoice PDF/scan, sign-off, or receipts. Tag the invoice document so cost-plus
+          billing can verify it&apos;s on file.
+        </p>
+        <div className="mt-2">
+          <VendorInvoiceDocuments vendorInvoiceId={inv.id} jobId={id} docs={docsWithUrl} />
         </div>
-      )}
+      </div>
 
       {/* Linked payments */}
       <div className="mt-8">
