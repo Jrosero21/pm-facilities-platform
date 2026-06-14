@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { agentDecisions, invoiceDrafts } from "@/server/schema";
 import { writeAuditLog } from "@/server/audit";
 import type { ClientInvoiceLineItemInput } from "@/server/billing/client-invoices";
+import type { RateType } from "@/server/billing/client-rates";
 
 // ── Phase 26 batch 2b-i — invoice_drafts data layer ───────────────────────────────────
 // The invoice creator's draft I/O — the invoice equivalent of scope-generator/drafts.ts. The
@@ -34,6 +35,14 @@ export type ProposedInvoiceLine = {
   unitPrice: string;
   markupPercent?: string | null;
   reconcilesToVendorLineId?: string | null;
+  // Phase (ii) Unit 2b — rate_sheet labor provenance + read-time seed (mirrors ProposedProposalLine).
+  // On a rate_sheet ITEMIZED labor/trip line the agent bills the AGREED RATE (unit_price = rate,
+  // markup_percent null) DECOUPLED from vendor cost and stamps tradeId/rateType; suggestedUnitPrice
+  // carries the same rate so the review editor (batch 2) can show an "agreed rate" chip. All three are
+  // ABSENT on cost_plus/flat lines and on rate_sheet materials/other (untouched this batch).
+  tradeId?: string | null;
+  rateType?: RateType;
+  suggestedUnitPrice?: string;
 };
 
 // The structured draft. lumpFlag (D3): the vendor invoice was a single lumped / non-itemized

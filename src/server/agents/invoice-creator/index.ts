@@ -4,6 +4,12 @@ import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/ru
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
 import { resolveClientMarkupDefault } from "@/server/billing/client-invoices";
+import {
+  loadJobBillingContext,
+  resolveClientLaborRate,
+  defaultRateTypeForCategory,
+  type RateType,
+} from "@/server/billing/client-rates";
 import { selectFewShotPairs, invoiceCorrectionPairs } from "@/server/analytics/correction-pairs";
 import {
   getJobDetailTool,
@@ -120,6 +126,42 @@ export async function runInvoiceCreator(input: {
       if (ln.reconcilesToVendorLineId) llmByVendorLine.set(ln.reconcilesToVendorLineId, ln);
     }
 
+    // Phase (ii) Unit 2b (batch 1) — rate_sheet LABOR fork (the itemized branch only; the invoice-
+    // level lump branch + materials + the vendor-cost-reference UI are batch 2). For a rate_sheet job:
+    //  - an ITEMIZED labor/trip vendor line (one with a real per-unit basis — a non-empty `unit`) is
+    //    re-priced to the AGREED RATE: unit_price = the resolved rate (per unit), quantity = the
+    //    vendor's count, markup null (rate has margin baked in), trade_id/rate_type provenance +
+    //    suggestedUnitPrice (the batch-2 editor chip). The line is DECOUPLED from vendor cost.
+    //  - a LUMPED labor/trip line (no per-unit basis) OR one with no agreed rate on file is left BLANK
+    //    for the operator (no guessed hours; no markup — rate_sheet labor is never marked up).
+    // MATERIALS/other and cost_plus/flat are UNCHANGED (the cost-plus path below is byte-identical to
+    // before). DETECTION rule: `unit` non-empty ⇒ itemized; null/empty ⇒ lumped (quantity defaults to
+    // "1" and so can't distinguish a 1-hour line from a lump — `unit` is the vendor's explicit basis).
+    const billingCtx = await loadJobBillingContext({ tenantId: input.tenantId, jobId: input.jobId });
+    const isRateSheet = billingCtx?.billingModel === "rate_sheet";
+    const agreedRateByCategory = new Map<string, string | null>();
+    const agreedRateFor = async (
+      category: string,
+    ): Promise<{ rate: string; rateType: RateType } | null> => {
+      if (!isRateSheet || !job.primaryTradeId) return null;
+      const rateType = defaultRateTypeForCategory(category);
+      if (!rateType) return null; // not labor/trip → judgment, never auto-priced
+      if (!agreedRateByCategory.has(category)) {
+        agreedRateByCategory.set(
+          category,
+          await resolveClientLaborRate({
+            tenantId: input.tenantId,
+            clientId,
+            tradeId: job.primaryTradeId,
+            rateType,
+          }),
+        );
+      }
+      const rate = agreedRateByCategory.get(category) ?? null;
+      return rate === null ? null : { rate, rateType };
+    };
+    const hasUnitBasis = (unit: string | null) => unit != null && unit.trim() !== "";
+
     const isLump = object.lumpFlag === true || vendorLines.length === 0;
     let proposedLines: ProposedInvoiceLine[];
     if (isLump) {
@@ -140,18 +182,58 @@ export async function runInvoiceCreator(input: {
     } else {
       // Vendor lines are the source of truth for numbers — every cost is represented exactly once;
       // an unmatched vendor line keeps its own description (kept whole, no invented number).
-      proposedLines = vendorLines.map((vl) => {
-        const llm = llmByVendorLine.get(vl.id);
-        return {
-          category: (llm?.category ?? vl.category) as ProposedInvoiceLine["category"],
-          description: llm?.description ?? vl.description,
-          quantity: vl.quantity,
-          unit: vl.unit,
-          unitPrice: vl.unitPrice, // vendor cost basis — copied, never generated
-          markupPercent: markupPreview,
-          reconcilesToVendorLineId: vl.id,
-        };
-      });
+      proposedLines = await Promise.all(
+        vendorLines.map(async (vl) => {
+          const llm = llmByVendorLine.get(vl.id);
+          const category = (llm?.category ?? vl.category) as ProposedInvoiceLine["category"];
+          const description = llm?.description ?? vl.description;
+
+          // rate_sheet LABOR/trip fork — decoupled from vendor cost.
+          if (isRateSheet) {
+            const agreed = await agreedRateFor(category);
+            if (agreed && hasUnitBasis(vl.unit)) {
+              // ITEMIZED: bill quantity × agreed rate, markup null, provenance + chip seed.
+              return {
+                category,
+                description,
+                quantity: vl.quantity,
+                unit: vl.unit,
+                unitPrice: agreed.rate,
+                markupPercent: null,
+                reconcilesToVendorLineId: vl.id,
+                tradeId: job.primaryTradeId,
+                rateType: agreed.rateType,
+                suggestedUnitPrice: agreed.rate,
+              };
+            }
+            if (defaultRateTypeForCategory(category)) {
+              // LUMPED labor/trip (no per-unit basis) OR no agreed rate on file → BLANK for the
+              // operator (no guessed hours, no markup). No provenance — it is not billing the rate.
+              return {
+                category,
+                description,
+                quantity: vl.quantity,
+                unit: vl.unit,
+                unitPrice: "",
+                markupPercent: null,
+                reconcilesToVendorLineId: vl.id,
+              };
+            }
+          }
+
+          // cost_plus / flat, OR a non-resolvable category (materials/etc) on rate_sheet — UNCHANGED
+          // cost-plus path (byte-identical to before this batch).
+          return {
+            category,
+            description,
+            quantity: vl.quantity,
+            unit: vl.unit,
+            unitPrice: vl.unitPrice, // vendor cost basis — copied, never generated
+            markupPercent: markupPreview,
+            reconcilesToVendorLineId: vl.id,
+          };
+        }),
+      );
     }
 
     const proposedInvoice: ProposedInvoice = { lineItems: proposedLines, lumpFlag: isLump };
