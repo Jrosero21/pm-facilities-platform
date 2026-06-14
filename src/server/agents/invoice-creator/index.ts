@@ -10,6 +10,7 @@ import {
   defaultRateTypeForCategory,
   type RateType,
 } from "@/server/billing/client-rates";
+import { isTimeUnit } from "@/server/billing/labor-units";
 import { selectFewShotPairs, invoiceCorrectionPairs } from "@/server/analytics/correction-pairs";
 import {
   getJobDetailTool,
@@ -126,17 +127,17 @@ export async function runInvoiceCreator(input: {
       if (ln.reconcilesToVendorLineId) llmByVendorLine.set(ln.reconcilesToVendorLineId, ln);
     }
 
-    // Phase (ii) Unit 2b (batch 1) — rate_sheet LABOR fork (the itemized branch only; the invoice-
-    // level lump branch + materials + the vendor-cost-reference UI are batch 2). For a rate_sheet job:
-    //  - an ITEMIZED labor/trip vendor line (one with a real per-unit basis — a non-empty `unit`) is
-    //    re-priced to the AGREED RATE: unit_price = the resolved rate (per unit), quantity = the
-    //    vendor's count, markup null (rate has margin baked in), trade_id/rate_type provenance +
-    //    suggestedUnitPrice (the batch-2 editor chip). The line is DECOUPLED from vendor cost.
-    //  - a LUMPED labor/trip line (no per-unit basis) OR one with no agreed rate on file is left BLANK
-    //    for the operator (no guessed hours; no markup — rate_sheet labor is never marked up).
-    // MATERIALS/other and cost_plus/flat are UNCHANGED (the cost-plus path below is byte-identical to
-    // before). DETECTION rule: `unit` non-empty ⇒ itemized; null/empty ⇒ lumped (quantity defaults to
-    // "1" and so can't distinguish a 1-hour line from a lump — `unit` is the vendor's explicit basis).
+    // Phase (ii) Unit 2b — rate_sheet LABOR fork (itemized branch only; the invoice-level lump branch
+    // is batch 2). For a rate_sheet job:
+    //  - an ITEMIZED labor/trip vendor line — one whose `unit` is an EXPLICIT TIME UNIT (hr/hrs/hour/
+    //    hours/man-hour family, via isTimeUnit) — is re-priced to the AGREED RATE: unit_price = the
+    //    resolved rate (per hour), quantity = the vendor's hours, markup null (rate has margin baked
+    //    in), trade_id/rate_type provenance + suggestedUnitPrice (the editor chip). DECOUPLED from cost.
+    //  - EVERYTHING ELSE labor/trip — a bare quantity with no time unit, a lump, qty=1, unit=null, OR
+    //    no agreed rate on file — is left BLANK for the operator (no markup; vendor cost shown as ref).
+    // CONSERVATIVE by design (CONTEXT: 20k+ vendors, no uniform format): quantity alone is NOT trusted
+    // as hours (a qty=1 $500 line can hide 10 man-hours), so ONLY an explicit time unit fills. BLANK is
+    // the safe failure — a wrong auto-fill bills garbage. MATERIALS/other + cost_plus/flat UNCHANGED.
     const billingCtx = await loadJobBillingContext({ tenantId: input.tenantId, jobId: input.jobId });
     const isRateSheet = billingCtx?.billingModel === "rate_sheet";
     const agreedRateByCategory = new Map<string, string | null>();
@@ -160,7 +161,6 @@ export async function runInvoiceCreator(input: {
       const rate = agreedRateByCategory.get(category) ?? null;
       return rate === null ? null : { rate, rateType };
     };
-    const hasUnitBasis = (unit: string | null) => unit != null && unit.trim() !== "";
 
     const isLump = object.lumpFlag === true || vendorLines.length === 0;
     let proposedLines: ProposedInvoiceLine[];
@@ -191,8 +191,9 @@ export async function runInvoiceCreator(input: {
           // rate_sheet fork — DECOUPLED from vendor cost; vl.unitPrice carried as a reference only.
           if (isRateSheet) {
             const agreed = await agreedRateFor(category);
-            if (agreed && hasUnitBasis(vl.unit)) {
-              // ITEMIZED labor/trip: bill quantity × agreed rate, markup null, provenance + chip seed.
+            if (agreed && isTimeUnit(vl.unit)) {
+              // ITEMIZED labor/trip (explicit time unit): bill hours × agreed rate, markup null,
+              // provenance + chip seed.
               return {
                 category,
                 description,
@@ -208,8 +209,9 @@ export async function runInvoiceCreator(input: {
               };
             }
             if (defaultRateTypeForCategory(category)) {
-              // LUMPED labor/trip (no per-unit basis) OR no agreed rate on file → BLANK for the
-              // operator (no guessed hours, no markup). No provenance — it is not billing the rate.
+              // labor/trip with NO explicit time unit (bare quantity / lump / qty=1 / unit=null) OR no
+              // agreed rate on file → BLANK for the operator (no guessed hours, no markup). No
+              // provenance — it is not billing the rate.
               return {
                 category,
                 description,

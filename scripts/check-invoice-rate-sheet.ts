@@ -2,14 +2,18 @@
  * scripts/check-invoice-rate-sheet.ts — Phase (ii) Unit 2b invoice rate-sheet harness.
  *
  * Acceptance proof for the invoice-creator's rate_sheet fork (draft-build + publish provenance):
- *   DRAFT-BUILD FORK (runInvoiceCreator, mock LLM → the real index.ts join loop):
- *     D1 rate_sheet ITEMIZED labor (vendor unit='hr') → unit_price = the AGREED rate (75, NOT vendor
- *        72), markup null, suggestedUnitPrice + trade/rate provenance, vendorUnitPrice = 72 (reference)
- *     D2 rate_sheet LUMPED labor (empty unit) → unit_price BLANK "", no suggestion, vendorUnitPrice ref
- *     D3 rate_sheet MATERIALS → unit_price BLANK "", markup null, vendorUnitPrice = 50 (reference)
- *     D4 rate_sheet itemized labor with NO rate on file for the trade → BLANK (never marked up)
- *     D5 cost_plus client → every line unit_price = vendor cost, markup = rule markup, NO vendorUnitPrice,
- *        NO provenance (byte-identical to pre-2b)
+ *   DRAFT-BUILD FORK (runInvoiceCreator, mock LLM → the real index.ts join loop) — CONSERVATIVE
+ *   time-unit rule: only an EXPLICIT recognized time unit fills the agreed rate; everything else blanks:
+ *     D1   rate_sheet labor, unit='hr' → unit_price = the AGREED rate (75, NOT vendor 72), markup null,
+ *          suggestedUnitPrice + trade/rate provenance, vendorUnitPrice = 72 (reference)
+ *     D1b  VARIANT time unit ('hrs') → also fills 75 (flexible case-insensitive recognition)
+ *     Dbare BARE quantity (qty=4, unit=null) → BLANK (quantity alone NEVER fills — the operator's real
+ *          vendor data case); vendor cost shown as reference
+ *     D2   rate_sheet LUMPED labor (qty=1, no time unit) → unit_price BLANK "", vendorUnitPrice ref
+ *     D3   rate_sheet MATERIALS → unit_price BLANK "", markup null, vendorUnitPrice = 50 (reference)
+ *     D4   rate_sheet labor (unit='hr') with NO rate on file for the trade → BLANK (never marked up)
+ *     D5   cost_plus client → every line unit_price = vendor cost, markup = rule markup, NO vendorUnitPrice,
+ *          NO provenance (byte-identical to pre-2b)
  *   PUBLISH PROVENANCE (server re-verify — addClientInvoiceLineItem):
  *     P1 publish rate_sheet labor at 75 (== agreed) with tradeId → trade_id=HANDY + rate_type=hourly + markup null
  *     P2 publish rate_sheet labor OVERRIDDEN to 200 (≠75) with tradeId → NO provenance, markup null (rate_sheet)
@@ -176,16 +180,26 @@ async function main() {
       return viId;
     };
 
-    const THREE_LINES = [
-      { category: "labor", description: "Itemized HVAC labor", quantity: "4", unit: "hr", unitPrice: "72" },
-      { category: "labor", description: "Lumped labor charge", quantity: "1", unit: null, unitPrice: "300" },
+    // jobA (rate_sheet) — covers every detection case (found by description in the asserts below).
+    // CONSERVATIVE time-unit rule: only an explicit recognized time unit fills the agreed rate.
+    const A_LINES = [
+      { category: "labor", description: "labor-hr", quantity: "4", unit: "hr", unitPrice: "72" },     // explicit time unit → FILLS 75
+      { category: "labor", description: "labor-hrs", quantity: "3", unit: "hrs", unitPrice: "60" },    // VARIANT time unit → FILLS 75
+      { category: "labor", description: "labor-bareqty", quantity: "4", unit: null, unitPrice: "80" }, // BARE qty, no unit → BLANK
+      { category: "labor", description: "labor-lump", quantity: "1", unit: null, unitPrice: "300" },   // lump → BLANK
+      { category: "materials", description: "materials", quantity: "1", unit: null, unitPrice: "50" }, // materials → BLANK
+    ];
+    // jobB (cost_plus) — unchanged 3-line set for the byte-identical regression check (D5).
+    const B_LINES = [
+      { category: "labor", description: "Itemized labor", quantity: "4", unit: "hr", unitPrice: "72" },
+      { category: "labor", description: "Lumped labor", quantity: "1", unit: null, unitPrice: "300" },
       { category: "materials", description: "Parts", quantity: "1", unit: null, unitPrice: "50" },
     ];
-    const viA = await seedVendorInvoice(jobA, THREE_LINES);
+    const viA = await seedVendorInvoice(jobA, A_LINES);
     const viAelec = await seedVendorInvoice(jobAelec, [
-      { category: "labor", description: "Itemized ELEC labor", quantity: "3", unit: "hr", unitPrice: "60" },
+      { category: "labor", description: "ELEC labor", quantity: "3", unit: "hr", unitPrice: "60" }, // time unit but NO rate → BLANK
     ]);
-    const viB = await seedVendorInvoice(jobB, THREE_LINES);
+    const viB = await seedVendorInvoice(jobB, B_LINES);
 
     // ════════ DRAFT-BUILD FORK (runInvoiceCreator mock → real index.ts) ════════
     console.log("\n[D] DRAFT-BUILD FORK — runInvoiceCreator (mock LLM) over the real join loop");
@@ -197,16 +211,25 @@ async function main() {
     };
 
     const aLines = await draftLines(jobA, viA);
-    const aLabItem = aLines.find((l) => l.category === "labor" && l.unit === "hr");
-    const aLabLump = aLines.find((l) => l.category === "labor" && (l.unit == null || l.unit === ""));
-    const aMat = aLines.find((l) => l.category === "materials");
-    check("D1: rate_sheet itemized labor → unit_price 75.00 (agreed rate, NOT vendor 72), markup null, provenance + vendor ref 72",
-      aLabItem?.unitPrice === "75.00" && aLabItem?.markupPercent == null && aLabItem?.suggestedUnitPrice === "75.00"
-        && aLabItem?.tradeId === handy.id && aLabItem?.rateType === "hourly" && aLabItem?.vendorUnitPrice === "72.00",
-      JSON.stringify({ up: aLabItem?.unitPrice, mk: aLabItem?.markupPercent, sug: aLabItem?.suggestedUnitPrice, tr: aLabItem?.tradeId === handy.id, vr: aLabItem?.vendorUnitPrice }));
-    check("D2: rate_sheet lumped labor (empty unit) → unit_price BLANK, no suggestion, vendor ref 300",
-      aLabLump?.unitPrice === "" && aLabLump?.suggestedUnitPrice == null && aLabLump?.tradeId == null && aLabLump?.vendorUnitPrice === "300.00",
-      JSON.stringify({ up: aLabLump?.unitPrice, sug: aLabLump?.suggestedUnitPrice, vr: aLabLump?.vendorUnitPrice }));
+    const byDesc = (d: string) => aLines.find((l) => l.description === d);
+    const aHr = byDesc("labor-hr");
+    const aHrs = byDesc("labor-hrs");
+    const aBare = byDesc("labor-bareqty");
+    const aLump = byDesc("labor-lump");
+    const aMat = byDesc("materials");
+    check("D1: rate_sheet itemized labor (unit 'hr') → unit_price 75.00 (agreed rate, NOT vendor 72), markup null, provenance + vendor ref 72",
+      aHr?.unitPrice === "75.00" && aHr?.markupPercent == null && aHr?.suggestedUnitPrice === "75.00"
+        && aHr?.tradeId === handy.id && aHr?.rateType === "hourly" && aHr?.vendorUnitPrice === "72.00",
+      JSON.stringify({ up: aHr?.unitPrice, mk: aHr?.markupPercent, sug: aHr?.suggestedUnitPrice, tr: aHr?.tradeId === handy.id, vr: aHr?.vendorUnitPrice }));
+    check("D1b: VARIANT time unit ('hrs') → fills 75.00 (flexible case-insensitive recognition), provenance + vendor ref 60",
+      aHrs?.unitPrice === "75.00" && aHrs?.markupPercent == null && aHrs?.tradeId === handy.id && aHrs?.vendorUnitPrice === "60.00",
+      JSON.stringify({ up: aHrs?.unitPrice, tr: aHrs?.tradeId === handy.id, vr: aHrs?.vendorUnitPrice }));
+    check("Dbare: BARE quantity (qty=4, unit=null, no time unit) → BLANK (quantity alone NEVER fills — the operator's real vendor data case), vendor ref 80",
+      aBare?.unitPrice === "" && aBare?.suggestedUnitPrice == null && aBare?.tradeId == null && aBare?.vendorUnitPrice === "80.00",
+      JSON.stringify({ up: aBare?.unitPrice, sug: aBare?.suggestedUnitPrice, tr: aBare?.tradeId, vr: aBare?.vendorUnitPrice }));
+    check("D2: rate_sheet lumped labor (qty=1, no time unit) → unit_price BLANK, no suggestion, vendor ref 300",
+      aLump?.unitPrice === "" && aLump?.suggestedUnitPrice == null && aLump?.tradeId == null && aLump?.vendorUnitPrice === "300.00",
+      JSON.stringify({ up: aLump?.unitPrice, sug: aLump?.suggestedUnitPrice, vr: aLump?.vendorUnitPrice }));
     check("D3: rate_sheet materials → unit_price BLANK, markup null, vendor ref 50",
       aMat?.unitPrice === "" && aMat?.markupPercent == null && aMat?.vendorUnitPrice === "50.00" && aMat?.tradeId == null,
       JSON.stringify({ up: aMat?.unitPrice, mk: aMat?.markupPercent, vr: aMat?.vendorUnitPrice }));
