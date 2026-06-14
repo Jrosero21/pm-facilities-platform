@@ -5,15 +5,9 @@ import { generateInvoiceAction, type InvoiceActionState } from "@/app/(app)/jobs
 
 // PER-VENDOR-INVOICE trigger: the invoice agent drafts the client invoice FROM a specific vendor
 // invoice, so the trigger lives per row in the Vendor invoices (AP) list (unlike the per-job scope /
-// proposal buttons). Gated on a vendor invoice the vendor has submitted (status received / under_review
-// / approved) — NOT a disputed/paid one. The server action is the authoritative gate (it surfaces
-// JOB_NOT_COMPLETED / VENDOR_INVOICE_NOT_FOUND); this is a courteous UI pre-filter.
-const DRAFTABLE_VENDOR_INVOICE_STATUSES = new Set(["received", "under_review", "approved"]);
-
-export function canDraftClientInvoice(vendorInvoiceStatus: string): boolean {
-  return DRAFTABLE_VENDOR_INVOICE_STATUSES.has(vendorInvoiceStatus);
-}
-
+// proposal buttons). The draftable-status PREDICATE (canDraftClientInvoice) is a pure util in
+// @/server/billing/vendor-invoice-status — it must NOT live here, because a "use client" export is a
+// client reference the SERVER vendor-invoice list cannot invoke.
 export function DraftClientInvoiceButton({ jobId, vendorInvoiceId }: { jobId: string; vendorInvoiceId: string }) {
   const action = generateInvoiceAction.bind(null, jobId, vendorInvoiceId);
   const [state, formAction, pending] = useActionState<InvoiceActionState, FormData>(action, null);

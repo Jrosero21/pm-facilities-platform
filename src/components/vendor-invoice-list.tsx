@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { VendorInvoiceRow } from "@/server/billing/vendor-invoices";
-import { DraftClientInvoiceButton, canDraftClientInvoice } from "@/components/draft-client-invoice-button";
+import { DraftClientInvoiceButton } from "@/components/draft-client-invoice-button";
+import { canDraftClientInvoice } from "@/server/billing/vendor-invoice-status";
 
 // ── Phase 8 batch 8c.11d — compact vendor-invoice (AP) list on the job detail ─────────
 
