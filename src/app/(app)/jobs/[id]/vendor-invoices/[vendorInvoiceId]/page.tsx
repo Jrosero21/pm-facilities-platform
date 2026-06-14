@@ -6,8 +6,13 @@ import {
   listVendorInvoiceLineItems,
 } from "@/server/billing/vendor-invoices";
 import { listPaymentsForVendorInvoice } from "@/server/billing/payments";
+import {
+  listVendorInvoiceDocuments,
+  getVendorInvoiceDocumentUrl,
+} from "@/server/billing/vendor-invoice-documents";
 import { VendorInvoiceActions } from "@/components/vendor-invoice-actions";
 import { VendorInvoiceLineItemsEditor } from "@/components/vendor-invoice-line-items-editor";
+import { VendorInvoiceDocuments } from "@/components/vendor-invoice-documents";
 import { LinkedPayments } from "@/components/linked-payments";
 
 const STATUS_STYLE: Record<string, string> = {
@@ -33,6 +38,22 @@ export default async function VendorInvoiceDetailPage({
     listPaymentsForVendorInvoice(tenantId, vendorInvoiceId),
   ]);
   if (!inv || inv.jobId !== id) notFound();
+
+  // Phase (iii) Part 1 — attached documents (list + presigned links), shown in the editable states.
+  const editable = inv.status === "received" || inv.status === "under_review";
+  const docs = editable ? await listVendorInvoiceDocuments(tenantId, vendorInvoiceId) : [];
+  const docsWithUrl = await Promise.all(
+    docs.map(async (d) => {
+      const served = await getVendorInvoiceDocumentUrl({ tenantId, vendorInvoiceId, attachmentId: d.id });
+      return {
+        id: d.id,
+        title: d.title,
+        attachmentType: d.attachmentType,
+        sizeBytes: d.fileSizeBytes,
+        url: served.kind === "url" ? served.url : null,
+      };
+    }),
+  );
 
   const header: { label: string; value: string | null }[] = [
     { label: "Invoice #", value: inv.invoiceNumber ?? "—" },
@@ -115,6 +136,20 @@ export default async function VendorInvoiceDetailPage({
               jobId={id}
               lines={lines.map((l) => ({ id: l.id, lineNumber: l.lineNumber, description: l.description }))}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Attached documents (Phase iii Part 1) — shown in the editable states */}
+      {editable && (
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-neutral-900">Attached documents</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Attach the vendor invoice PDF/scan, sign-off, or receipts. Tag the invoice document so cost-plus
+            billing can verify it&apos;s on file.
+          </p>
+          <div className="mt-2">
+            <VendorInvoiceDocuments vendorInvoiceId={inv.id} jobId={id} docs={docsWithUrl} />
           </div>
         </div>
       )}

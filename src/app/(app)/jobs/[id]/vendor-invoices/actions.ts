@@ -12,6 +12,15 @@ import {
   updateVendorInvoiceLineItem,
 } from "@/server/billing/vendor-invoices";
 import {
+  attachVendorInvoiceDocument,
+  DOCUMENT_TAGS,
+  type DocumentTag,
+} from "@/server/billing/vendor-invoice-documents";
+import {
+  isSafeDocumentUpload,
+  MAX_DOCUMENT_UPLOAD_BYTES,
+} from "@/lib/integrations/storage/document-mime";
+import {
   VendorInvoiceNotApprovable,
   VendorInvoiceNotDisputable,
   VendorInvoiceNotEditable,
@@ -148,6 +157,50 @@ export async function removeVendorInvoiceLineItemAction(
     revalidatePath(`/jobs/${jobId}/vendor-invoices/${vendorInvoiceId}`);
     return null;
   } catch (e) {
+    const m = operationalMessage(e);
+    if (m) return { error: m };
+    throw e;
+  }
+}
+
+/** Attach a DOCUMENT (PDF/scan/sign-off/receipt) to a vendor invoice (Phase iii Part 1). Mirrors
+ *  addVendorInvoiceLineItemAction: requireTenant, FormData (file + tag), revalidatePath. PERMISSIVE
+ *  file types — only unsafe (executable/script) uploads are rejected; size capped at 15 MB. */
+export async function attachVendorInvoiceDocumentAction(
+  vendorInvoiceId: string,
+  jobId: string,
+  _prev: VendorInvoiceActionState,
+  formData: FormData,
+): Promise<VendorInvoiceActionState> {
+  const ctx = await requireTenant();
+
+  const tag = NUM(formData, "tag");
+  if (!(DOCUMENT_TAGS as readonly string[]).includes(tag)) return { error: "Pick a document type." };
+
+  const fileRaw = formData.get("file");
+  if (!(fileRaw instanceof File) || fileRaw.size === 0) return { error: "Choose a file to attach." };
+  if (fileRaw.size > MAX_DOCUMENT_UPLOAD_BYTES) return { error: "File too large (max 15 MB)." };
+  if (!isSafeDocumentUpload(fileRaw.type, fileRaw.name)) {
+    return { error: "That file type can't be uploaded (executables and scripts are blocked)." };
+  }
+  const bytes = Buffer.from(await fileRaw.arrayBuffer());
+
+  try {
+    await attachVendorInvoiceDocument({
+      tenantId: ctx.activeTenant.tenantId,
+      vendorInvoiceId,
+      tag: tag as DocumentTag,
+      bytes,
+      contentType: fileRaw.type || "application/octet-stream",
+      fileName: fileRaw.name,
+      uploadedByUserId: ctx.user.id,
+    });
+    revalidatePath(`/jobs/${jobId}/vendor-invoices/${vendorInvoiceId}`);
+    return null;
+  } catch (e) {
+    if (e instanceof Error && e.message === "STORAGE_PUT_FAILED") {
+      return { error: "Upload failed, please try again." };
+    }
     const m = operationalMessage(e);
     if (m) return { error: m };
     throw e;
