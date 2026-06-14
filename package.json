@@ -43,7 +43,8 @@
     "db:check:client-rates": "tsx --env-file=.env.local --conditions=react-server scripts/check-client-rates.ts",
     "db:check:billing-from-rates": "tsx --env-file=.env.local --conditions=react-server scripts/check-billing-from-rates.ts",
     "db:check:proposal-rate-prefill": "tsx --env-file=.env.local --conditions=react-server scripts/check-proposal-rate-prefill.ts",
-    "db:check:invoice-rate-sheet": "tsx --env-file=.env.local --conditions=react-server scripts/check-invoice-rate-sheet.ts"
+    "db:check:invoice-rate-sheet": "tsx --env-file=.env.local --conditions=react-server scripts/check-invoice-rate-sheet.ts",
+    "db:check:vendor-invoice-documents": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-invoice-documents.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
