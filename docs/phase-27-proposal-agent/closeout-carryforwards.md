@@ -619,3 +619,96 @@ labels).
   **behavioral change** to draft generation, **not just a parameter**: the agent currently reconciles
   *every* client line to a vendor cost line, and for rate_sheet labor that coupling is wrong (labor
   bills the rate regardless of what the vendor charged; materials still reconcile).
+
+> **→ UNIT 2b SHIPPED v2.16.0.** Materials land **BLANK** (operator judgment) rather than cost-plus —
+> the design evolved from the "materials stay cost-plus" framing above to "rate_sheet materials are
+> operator-priced with a vendor-cost reference." See **"Phase (ii) — UNIT 2b SHIPPED v2.16.0"** below.
+
+### Phase (ii) — UNIT 2b SHIPPED v2.16.0 (invoice agent rate-sheet branch)
+
+Branch `v2.16.0-invoice-rate-sheet` (8 commits: `ccc1e05` draft-build fork · `ea1c39e` materials/chip/
+provenance · `4d85444` harness · `7c3f3e9` RSC fix · `329a8ff` time-unit rule · `29f2192` Unit field ·
+`666dd26` gate removal). **The invoice agent now bills `rate_sheet` clients from the agreed rate sheet
+(labor) while leaving materials/lumped for the operator — decoupled from vendor cost — and never blocks
+client billing.**
+
+**Delivered (the draft-build fork — `invoice-creator/index.ts`):** the agent forks at draft-build on the
+job's **effective `billing_model`**:
+- **`cost_plus` / `flat` → BYTE-IDENTICAL** to pre-2b (vendor cost + rule markup, every line; regression-
+  guarded by harness D5).
+- **`rate_sheet`:**
+  - **Itemized labor/trip** — a vendor line with an **explicit TIME UNIT** (`isTimeUnit`: `hr`/`hrs`/
+    `hour`/`hours` + the man-hour family; case-insensitive, whitespace/punctuation stripped) → **fills
+    the agreed rate** (`unit_price = rate`, `quantity = vendor hours`, extended = qty × rate), **markup
+    null**, `trade_id`/`rate_type` provenance + `suggestedUnitPrice`; the review editor shows an
+    **"agreed rate"/"overridden"** chip (mirrors Unit 2a).
+  - **Lumped labor (no time unit) + bare-quantity + materials/other → BLANK** for the operator, **no
+    markup**, with the **vendor cost surfaced as a read-only `vendor: $X` reference** beside each line
+    (mark up / sanity-check on the spot). The vendor cost is **reference-only under rate_sheet** — it
+    NEVER drives the billed price.
+- **Publish provenance is server-RE-VERIFIED** (`addClientInvoiceLineItem` via `resolveAgreedRateProvenance`
+  — the same single-authority pattern Unit 2a added to the proposal writer): `trade_id`/`rate_type` are
+  recorded ONLY when the explicit price still **equals** the agreed rate; a typed-over or stale-rate
+  price drops provenance and bills the reviewed number.
+- **`db:check:invoice-rate-sheet` 13/13** — sandbox-only (exit-2), self-seed/teardown, 0 leftover. Mock
+  LLM (no reconciliation) → the join loop maps seeded vendor lines verbatim, so the real fork runs on
+  controlled category/unit/cost. Covers D1 (unit=hr fills), D1b (`hrs` variant fills — flexible
+  recognition), Dbare (qty-only → blank), D2/D3/D4 (lump/materials/no-rate → blank), D5 (cost_plus byte-
+  identical), P1–P4 (provenance recorded / override drops / materials no-markup / cost_plus unchanged).
+
+**Browser-verified LIVE (Apple Job #3, real DB):** itemized labor (`unit=hr`) drafted at the agreed
+**$95**, NOT the vendor **$72**, with the **"agreed rate"** chip + **"vendor: $72"** reference; the
+lump (**$300**) and materials (**$50**) came up **blank** with their vendor references; typing **120**
+on the labor line flipped the chip to **"overridden"**.
+
+**CONSERVATIVE DETECTION RULE (durable principle):** fill the agreed rate **ONLY on an explicit time
+unit**; **blank everything else** (blank is the SAFE failure). Rationale: **20k+ vendors, no uniform
+invoice format**, and hours are often hidden in lumps (a `qty 1 / $500` line can be 2 men × 5 hr). A
+**wrong auto-fill bills garbage**; a **blank costs a quick operator fill**. `isTimeUnit` is a **pure
+util** (`src/server/billing/labor-units.ts`, no directive — mirrors `money.ts`/`vendor-invoice-status.ts`)
+**reusable by CF-27.15** (operator-enters-hours).
+
+**FOUR GAPS found by LIVE VERIFY and fixed — none catchable by harness/tsc:**
+1. **RSC boundary bug** (`7c3f3e9`) — `canDraftClientInvoice` lived in a `"use client"` module, so the
+   **server** vendor-invoice list could not invoke it ("cannot invoke a client function from the server").
+   Fixed: relocated the pure predicate to `src/server/billing/vendor-invoice-status.ts` (plain util).
+   Pre-existing latent bug; first fired when a vendor invoice existed (the gated row renders only then).
+2. **Detection on the `unit` field too blunt** (`329a8ff`) — the batch-1 "any non-empty unit ⇒ itemized"
+   rule mis-handled real data → replaced with the conservative `isTimeUnit` rule.
+3. **Vendor-invoice line editor had NO `Unit` input** (`29f2192`) — the rule keys on `unit`, but the
+   intake form never collected it (operators kept typing "hr" into Description) → the auto-fill was
+   **unreachable through normal intake**. Added a `Unit` input (action + data layer already stored it).
+4. **Invoice agent required job status `=== "COMPLETED"`** (`666dd26`) — a status **no code path could
+   produce** (the lifecycle gap), which also **wrongly blocked** multi-vendor / early / late-cancel
+   invoicing → **gate REMOVED** (the vendor invoice is the only precondition).
+
+**PRINCIPLE LOCKED — NEVER block client billing.** No job-status gate, no duplicate block, no dispute
+block. Client-invoicing **tracks VENDOR WORK, not job completion**: a multi-vendor job bills each vendor
+invoice independently (bill Vendor A now while Vendor B drags on), and even a **late-cancelled** job with
+a vendor trip charge is billable. **operator-always-wins, applied to revenue.**
+
+**BANKED NEXT PIECES:**
+- **CF-27.15 — operator-enters-hours-at-review.** For a BLANK labor line, the operator types the hours →
+  fills `hours × agreed rate` (reusing `isTimeUnit` / the rate resolver). The **durable answer to messy
+  inbound** vendor invoices (where hours aren't itemized with a clean time unit).
+- **CF-27.16 — architectural rethink.** Client-billing is currently a **downstream join off a vendor-
+  invoice document**; it should arguably track the **work-unit / dispatch directly**. Revisit when
+  **per-dispatch status** lands.
+- **Minor:** the vendor-line **EDIT** form (if ever built — none exists today, add+remove only) needs the
+  `Unit` field **and** `updateVendorInvoiceLineItemAction` to read `unit`.
+
+---
+
+## Phase (ii) — COMPLETE ✅ (billing-from-rates)
+
+**Unit 1 v2.14.0** (manual authoring — resolver + add-line wiring + multi-trade picker) ·
+**Unit 2a v2.15.0** (proposal agent pre-fills agreed labor rates) ·
+**Unit 2b v2.16.0** (invoice agent rate-sheet branch + never-block-billing).
+
+The agreed rate sheet now flows end-to-end: **manual line authoring**, the **proposal agent**, and the
+**invoice agent** all resolve `client_rates` → billed lines (labor from the rate sheet, markup null,
+provenance), with materials/judgment left to the operator and the LLM kept number-free throughout.
+
+**Remaining in CF-27.7:** **Phase (iii)** — **required-documents + the cost-plus gate** (the documents
+a job must carry before its cost-plus billing can close). That is the next piece, independent of the
+rate-sheet work shipped here.
