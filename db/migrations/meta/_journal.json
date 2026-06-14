@@ -358,6 +358,13 @@
       "when": 1781151015911,
       "tag": "0050_bouncy_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "5",
+      "when": 1781455253288,
+      "tag": "0051_ambitious_carlie_cooper",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,3 @@
+ALTER TABLE `job_attachments` ADD `vendor_invoice_id` varchar(36);--> statement-breakpoint
+ALTER TABLE `job_attachments` ADD CONSTRAINT `job_attachments_vendor_invoice_id_vendor_invoices_id_fk` FOREIGN KEY (`vendor_invoice_id`) REFERENCES `vendor_invoices`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX `job_attachments_tenant_vendor_invoice_idx` ON `job_attachments` (`tenant_id`,`vendor_invoice_id`);

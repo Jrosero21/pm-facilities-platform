@@ -13,6 +13,7 @@ import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
 import { magicLinkTokens } from "./magic-links";
+import { vendorInvoices } from "./vendor-invoices";
 
 const statusEnum = ["active", "inactive", "archived"] as const;
 
@@ -153,9 +154,23 @@ export const jobAttachments = mysqlTable(
       () => magicLinkTokens.id,
       { onDelete: "set null" },
     ),
+    // Phase (iii) 0051 — link an uploaded VENDOR-INVOICE DOCUMENT (attachment_type='invoice') to the
+    // vendor_invoices record it belongs to. MANY docs → one vendor invoice (0..N). NULL for every
+    // other attachment (photos/etc carry no vendor invoice) — additive, no backfill, no default.
+    // ON DELETE SET NULL: deleting the vendor invoice UNLINKS the document but the attachment survives
+    // (it is still a job attachment). FK declared INLINE, mirroring this table's other FKs (job_id /
+    // uploaded_by_user_id / source_token_id). The Part-3 cost-plus gate = EXISTS a job_attachment with
+    // this vendor_invoice_id AND attachment_type='invoice' AND status='active'.
+    vendorInvoiceId: varchar("vendor_invoice_id", { length: 36 }).references(
+      () => vendorInvoices.id,
+      { onDelete: "set null" },
+    ),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
-  (t) => [index("job_attachments_tenant_job_idx").on(t.tenantId, t.jobId)],
+  (t) => [
+    index("job_attachments_tenant_job_idx").on(t.tenantId, t.jobId),
+    index("job_attachments_tenant_vendor_invoice_idx").on(t.tenantId, t.vendorInvoiceId),
+  ],
 );
