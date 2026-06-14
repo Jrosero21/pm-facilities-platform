@@ -16,18 +16,22 @@ import {
   getJobDetailTool,
   getVendorInvoiceTool,
   listVendorInvoiceLineItemsTool,
-  getJobStatusCodeTool,
   createInvoiceDraftTool,
 } from "./tools";
 import { generateInvoice, resolveInvoiceRouting } from "./llm";
 import type { ProposedInvoice, ProposedInvoiceLine } from "./drafts";
 
 // invoice_creator_v1 — the first v2.9.0 "new agent". Fixed pipeline on the shared runner:
-// openRun → read context (job + vendor invoice + lines + status code, all auto-logged) →
-// eligibility gate (job COMPLETED) → resolve DB prompt + policy → LLM transform (PHRASING
-// ONLY) → JOIN the vendor numbers in → decision → write draft (auto-logged) → closeRun. The
-// agent writes ONLY the draft at pending_review; it has NO path to client_invoices — that is
-// the human-gated publish action (2b-ii). §2.9 / R-6.15: ALWAYS queues for review.
+// openRun → read context (job + vendor invoice + lines, all auto-logged) → resolve DB prompt +
+// policy → LLM transform (PHRASING ONLY) → JOIN the vendor numbers in → decision → write draft
+// (auto-logged) → closeRun. The agent writes ONLY the draft at pending_review; it has NO path to
+// client_invoices — that is the human-gated publish action (2b-ii). §2.9 / R-6.15: ALWAYS queues.
+//
+// NO JOB-STATUS GATE (operator workflow): client-invoicing tracks VENDOR WORK, not job lifecycle. A
+// job can have several vendors (bill Vendor A now while Vendor B drags on), and even a CANCELLED job
+// can be billable (late client cancel, tech already on-site → vendor trip charge → bill the client).
+// The PRECONDITION is a submitted vendor invoice (enforced below: VENDOR_INVOICE_NOT_FOUND) — never
+// the job's status. Operator principle: NEVER block client billing.
 //
 // MONEY-SAFETY (D1/D2/D3): the LLM emits no numbers. After generate, every dollar figure is
 // JOINED IN from the vendor lines (cost basis); markup_percent is the rule's default for
@@ -36,12 +40,12 @@ import type { ProposedInvoice, ProposedInvoiceLine } from "./drafts";
 export const AGENT_ID = "invoice_creator_v1";
 
 /**
- * Run the invoice creator against a submitted vendor invoice on a completed job. Produces a
- * draft at pending_review. Logs the full audit chain. On any failure the run closes
- * status='failed' and the error is re-thrown for the caller to surface.
+ * Run the invoice creator against a submitted vendor invoice (any job status — invoicing tracks
+ * vendor work, not job lifecycle). Produces a draft at pending_review. Logs the full audit chain.
+ * On any failure the run closes status='failed' and the error is re-thrown for the caller to surface.
  *
- * Throws: JOB_NOT_FOUND, VENDOR_INVOICE_NOT_FOUND, JOB_NOT_COMPLETED, NoActivePromptError
- * (real path, fail-closed) + any LLM/provider error.
+ * Throws: JOB_NOT_FOUND, VENDOR_INVOICE_NOT_FOUND, NoActivePromptError (real path, fail-closed) +
+ * any LLM/provider error.
  */
 export async function runInvoiceCreator(input: {
   tenantId: string;
@@ -63,20 +67,15 @@ export async function runInvoiceCreator(input: {
     const readJob = registerTool(ctx, getJobDetailTool);
     const readVendorInvoice = registerTool(ctx, getVendorInvoiceTool);
     const readVendorLines = registerTool(ctx, listVendorInvoiceLineItemsTool);
-    const readStatusCode = registerTool(ctx, getJobStatusCodeTool);
 
     const job = await readJob({ tenantId: input.tenantId, jobId: input.jobId });
     if (!job) throw new Error("JOB_NOT_FOUND");
 
+    // PRECONDITION (the only eligibility check): a vendor invoice that exists AND belongs to this job
+    // (no cross-job invoicing). NO job-status gate — invoicing tracks vendor work, not job lifecycle.
     const vendorInvoice = await readVendorInvoice({ tenantId: input.tenantId, id: input.vendorInvoiceId });
-    // The vendor invoice must exist AND belong to this job (no cross-job invoicing).
     if (!vendorInvoice || vendorInvoice.jobId !== input.jobId) throw new Error("VENDOR_INVOICE_NOT_FOUND");
     const vendorLines = await readVendorLines({ tenantId: input.tenantId, vendorInvoiceId: input.vendorInvoiceId });
-
-    // ELIGIBILITY GATE: a submitted vendor invoice on a COMPLETED job (stable status code, not
-    // the tenant-editable name). Not gated on sign-off / required-docs (unmodeled — 26a).
-    const statusCode = await readStatusCode({ tenantId: input.tenantId, jobId: input.jobId });
-    if (statusCode !== "COMPLETED") throw new Error("JOB_NOT_COMPLETED");
 
     const clientId = job.clientId;
 

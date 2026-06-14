@@ -38,7 +38,6 @@ export async function generateInvoiceAction(
     const msg = err instanceof Error ? err.message : "Unknown error";
     if (msg === "JOB_NOT_FOUND") return { error: "Job not found in this tenant." };
     if (msg === "VENDOR_INVOICE_NOT_FOUND") return { error: "Vendor invoice not found on this job." };
-    if (msg === "JOB_NOT_COMPLETED") return { error: "The job must be completed before invoicing the client." };
     return { error: `Invoice drafting failed: ${msg}` };
   }
   revalidatePath(`/jobs/${jobId}`);
