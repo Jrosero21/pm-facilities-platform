@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
-import { createClientRate, archiveClientRate, setClientBillingModel } from "@/server/billing/client-rates";
+import {
+  createClientRate,
+  archiveClientRate,
+  setClientBillingModel,
+  setClientRequireVendorInvoiceForCostPlus,
+} from "@/server/billing/client-rates";
 
 // ── Phase (i) rate-sheet — CLIENT RATE + BILLING-MODEL ACTIONS — requireTenant-only ───
 // Operator admin (mirrors the billing-rules / NTE-rule actions). The writer emits audit_logs.
@@ -91,6 +96,30 @@ export async function setBillingModelAction(
       clientId,
       actorUserId: ctx.user.id,
       billingModel: STR(formData, "billingModel"),
+    });
+    revalidatePath(`/clients/${clientId}`);
+    return null;
+  } catch (e) {
+    const m = operationalMessage(e);
+    if (m) return { error: m };
+    throw e;
+  }
+}
+
+/** Set the per-client "require vendor invoice for cost-plus billing" toggle (the checkbox on the client
+ *  detail page). ADVISORY — never blocks billing; an unchecked box submits no `value` → false. */
+export async function setRequireVendorInvoiceForCostPlusAction(
+  clientId: string,
+  _prev: ClientRateActionState,
+  formData: FormData,
+): Promise<ClientRateActionState> {
+  const ctx = await requireTenant();
+  try {
+    await setClientRequireVendorInvoiceForCostPlus({
+      tenantId: ctx.activeTenant.tenantId,
+      clientId,
+      actorUserId: ctx.user.id,
+      value: STR(formData, "value") === "true",
     });
     revalidatePath(`/clients/${clientId}`);
     return null;

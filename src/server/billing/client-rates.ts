@@ -187,6 +187,41 @@ export async function setClientBillingModel(input: {
   });
 }
 
+/**
+ * Set the per-client "require vendor invoice for cost-plus billing" toggle (Phase iii Part 2). ADVISORY
+ * only — it governs whether Part 3's reminder fires at cost-plus invoice issuance; it NEVER blocks
+ * billing. No-op when unchanged. Audit (from→to) inside the txn. Throws CLIENT_NOT_FOUND. Mirrors
+ * setClientBillingModel.
+ */
+export async function setClientRequireVendorInvoiceForCostPlus(input: {
+  tenantId: string;
+  clientId: string;
+  actorUserId: string | null;
+  value: boolean;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    const cur = (
+      await tx
+        .select({ value: clients.requireVendorInvoiceForCostPlus })
+        .from(clients)
+        .where(and(eq(clients.tenantId, input.tenantId), eq(clients.id, input.clientId)))
+        .for("update")
+    )[0];
+    if (!cur) throw new Error("CLIENT_NOT_FOUND");
+    if (cur.value === input.value) return; // no-op — no write, no audit.
+
+    await tx
+      .update(clients)
+      .set({ requireVendorInvoiceForCostPlus: input.value })
+      .where(and(eq(clients.tenantId, input.tenantId), eq(clients.id, input.clientId)));
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId, userId: input.actorUserId,
+      action: "client.require_vendor_invoice_for_cost_plus_changed", targetType: "client", targetId: input.clientId,
+      metadata: { from: cur.value, to: input.value },
+    });
+  });
+}
+
 // ── Phase (ii) billing-from-rates (Unit 1) — LABOR-RATE RESOLUTION ─────────────────────
 // The READ side of the rate sheet: turn (client, trade, rate_type) into the AGREED billed rate,
 // for rate_sheet clients. Mirrors resolveClientNteRule's specific→general ladder, but the

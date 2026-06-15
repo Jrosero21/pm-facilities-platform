@@ -8,6 +8,7 @@ import { createClientContactAction } from "@/app/(app)/clients/contact-actions";
 import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
 import { BillingModelSelector } from "@/components/billing-model-selector";
+import { RequireVendorInvoiceToggle } from "@/components/require-vendor-invoice-toggle";
 
 export default async function ClientDetailPage({
   params,
@@ -47,6 +48,9 @@ export default async function ClientDetailPage({
 
       {/* Phase (i) rate-sheet — how this client is billed */}
       <BillingModelSelector clientId={id} current={client.billingModel} />
+
+      {/* Phase (iii) Part 2 — advisory: require the vendor invoice doc for cost-plus billing */}
+      <RequireVendorInvoiceToggle clientId={id} current={client.requireVendorInvoiceForCostPlus} />
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
