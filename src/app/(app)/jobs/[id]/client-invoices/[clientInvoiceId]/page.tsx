@@ -7,6 +7,7 @@ import {
   resolveClientMarkupDefault,
 } from "@/server/billing/client-invoices";
 import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
+import { shouldWarnMissingVendorDoc } from "@/server/billing/cost-plus-doc-gate";
 import { listPaymentsForClientInvoice } from "@/server/billing/payments";
 import { isAccountingRole } from "@/server/billing/role-gates";
 import { ClientInvoiceActions } from "@/components/client-invoice-actions";
@@ -38,6 +39,10 @@ export default async function ClientInvoiceDetailPage({
     resolveClientMarkupDefault(tenantId, inv.clientId),
     loadLaborRatePickerContext({ tenantId, jobId: id }),
   ]);
+
+  // Phase (iii) Part 3 — pre-compute the cost-plus "vendor invoice on file" advisory for the Send button
+  // (only a draft can be issued). The action re-verifies server-side; this just surfaces it before click.
+  const needsVendorDocAck = inv.status === "draft" ? await shouldWarnMissingVendorDoc(tenantId, inv) : false;
 
   const header: { label: string; value: string | null }[] = [
     { label: "Invoice #", value: inv.invoiceNumber ?? "—" },
@@ -139,7 +144,7 @@ export default async function ClientInvoiceDetailPage({
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Actions</h2>
         <div className="mt-2">
-          <ClientInvoiceActions clientInvoiceId={inv.id} jobId={id} status={inv.status} canAccount={canAccount} />
+          <ClientInvoiceActions clientInvoiceId={inv.id} jobId={id} status={inv.status} canAccount={canAccount} needsVendorDocAck={needsVendorDocAck} />
         </div>
       </div>
     </div>

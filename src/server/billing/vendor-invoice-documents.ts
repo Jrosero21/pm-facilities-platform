@@ -98,6 +98,27 @@ export async function attachVendorInvoiceDocument(input: {
   return { id: attachmentId };
 }
 
+/**
+ * EXISTS an active invoice-tagged document on file for this vendor invoice (Phase iii Part 3 / A6).
+ * The lookup the cost-plus advisory gate runs: attachment_type='invoice' is the operator's "this is the
+ * vendor invoice document" tag. Tenant-scoped. true ⇒ the document is on file.
+ */
+export async function hasInvoiceDocument(tenantId: string, vendorInvoiceId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: jobAttachments.id })
+    .from(jobAttachments)
+    .where(
+      and(
+        eq(jobAttachments.tenantId, tenantId),
+        eq(jobAttachments.vendorInvoiceId, vendorInvoiceId),
+        eq(jobAttachments.attachmentType, "invoice"),
+        eq(jobAttachments.status, "active"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export type VendorInvoiceDocumentRow = {
   id: string;
   title: string;

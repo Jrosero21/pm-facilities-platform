@@ -281,8 +281,16 @@ export async function removeClientInvoiceLineItem(input: { tenantId: string; id:
 }
 
 /** draft → sent (ISSUANCE). NO role check here — the action layer (billing-actions.ts) gates this
- *  with the accounting role predicate (8c-D2). Stamps issued_at + issued_by_user_id; emits client_invoice.sent. */
-export async function sendClientInvoice(input: { tenantId: string; id: string; actorUserId: string | null }): Promise<void> {
+ *  with the accounting role predicate (8c-D2). Stamps issued_at + issued_by_user_id; emits client_invoice.sent.
+ *  Phase (iii) Part 3: acknowledgedMissingVendorDoc is set true ONLY when the cost-plus doc-advisory
+ *  warning applied AND the operator acknowledged it — recorded in the event metadata (the override
+ *  audit). It never gates the send (the gate is the advisory action layer). */
+export async function sendClientInvoice(input: {
+  tenantId: string;
+  id: string;
+  actorUserId: string | null;
+  acknowledgedMissingVendorDoc?: boolean;
+}): Promise<void> {
   await db.transaction(async (tx) => {
     const ci = await lockClientInvoice(tx, input.tenantId, input.id);
     if (ci.status !== "draft") throw new ClientInvoiceNotSendable(input.id, ci.status);
@@ -295,6 +303,8 @@ export async function sendClientInvoice(input: { tenantId: string; id: string; a
       actorUserId: input.actorUserId,
       summary: `Client invoice sent — ${ci.total}`,
       amount: ci.total, currency: ci.currency, clientInvoiceId: input.id,
+      // Override audit: only present when the operator issued past the missing-vendor-doc advisory.
+      ...(input.acknowledgedMissingVendorDoc ? { metadata: { issuedWithoutVendorDoc: true } } : {}),
     });
   });
 }

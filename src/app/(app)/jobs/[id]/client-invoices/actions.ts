@@ -6,11 +6,13 @@ import { enforceAccountingGate, requireTenant } from "@/server/auth-context";
 import {
   addClientInvoiceLineItem,
   createClientInvoice,
+  getClientInvoice,
   removeClientInvoiceLineItem,
   sendClientInvoice,
   updateClientInvoiceLineItem,
   voidClientInvoice,
 } from "@/server/billing/client-invoices";
+import { shouldWarnMissingVendorDoc } from "@/server/billing/cost-plus-doc-gate";
 import {
   ClientInvoiceNotEditable,
   ClientInvoiceNotSendable,
@@ -24,6 +26,17 @@ import {
 // the useActionState/FormData template + relocated from billing-actions.ts.
 
 export type ClientInvoiceActionState = { error: string } | null;
+
+// Phase (iii) Part 3 — the SEND action returns a richer state than the generic {error}|null: it can ask
+// the operator to ACKNOWLEDGE a missing vendor-invoice document before issuing cost-plus (advisory,
+// never blocks — re-submitting with the ack proceeds). Mirrors previewProposalRoutingAction's union.
+export type SendClientInvoiceState =
+  | { error: string }
+  | { needsVendorDocAck: true; warning: string }
+  | null;
+
+const VENDOR_DOC_WARNING =
+  "No vendor invoice document is on file for this cost-plus invoice. The client is entitled to see the vendor cost. Attach it on the vendor invoice, or acknowledge to issue without it.";
 
 const NUM = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const OPT = (fd: FormData, k: string) => {
@@ -165,12 +178,38 @@ export async function removeClientInvoiceLineItemAction(
   }
 }
 
-/** draft → sent (ISSUANCE) — ACCOUNTING-GATED. Reshaped from the 8c.8 typed-input action. */
-export async function sendClientInvoiceAction(clientInvoiceId: string, jobId: string): Promise<ClientInvoiceActionState> {
+/** draft → sent (ISSUANCE) — ACCOUNTING-GATED. Phase (iii) Part 3: re-shaped to read an ack checkbox.
+ *  At cost-plus issuance with no vendor-invoice document on file (and the client's toggle on), this
+ *  RE-VERIFIES the advisory server-side and returns { needsVendorDocAck } WITHOUT sending unless the
+ *  operator acknowledged it (raw === "true"/"on"/"1", mirroring forceClientReview). The ack ALWAYS lets
+ *  them proceed — it never blocks; the override is recorded in the client_invoice.sent event metadata. */
+export async function sendClientInvoiceAction(
+  clientInvoiceId: string,
+  jobId: string,
+  _prev: SendClientInvoiceState,
+  formData: FormData,
+): Promise<SendClientInvoiceState> {
   const ctx = await requireTenant();
   enforceAccountingGate(ctx); // redirects /forbidden for non-accounting (authorization backstop)
+  const tenantId = ctx.activeTenant.tenantId;
   try {
-    await sendClientInvoice({ tenantId: ctx.activeTenant.tenantId, id: clientInvoiceId, actorUserId: ctx.user.id });
+    const inv = await getClientInvoice(tenantId, clientInvoiceId);
+    if (!inv) return { error: "This client invoice no longer exists — please reload." };
+
+    // RE-VERIFY the advisory server-side (no-trust-client). Acknowledged ⇒ proceed + record override.
+    const warn = await shouldWarnMissingVendorDoc(tenantId, inv);
+    const ackRaw = formData.get("acknowledgeMissingVendorDoc");
+    const acknowledged = ackRaw === "true" || ackRaw === "on" || ackRaw === "1";
+    if (warn && !acknowledged) {
+      return { needsVendorDocAck: true, warning: VENDOR_DOC_WARNING };
+    }
+
+    await sendClientInvoice({
+      tenantId,
+      id: clientInvoiceId,
+      actorUserId: ctx.user.id,
+      acknowledgedMissingVendorDoc: warn && acknowledged, // override audit only when the warning applied
+    });
     revalidatePath(`/jobs/${jobId}/client-invoices/${clientInvoiceId}`);
     revalidatePath(`/jobs/${jobId}`);
     return null;
