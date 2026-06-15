@@ -97,6 +97,18 @@ export const jobs = mysqlTable(
     scheduledStartAt: datetime("scheduled_start_at"),
     scheduledEndAt: datetime("scheduled_end_at"),
     dueAt: datetime("due_at"),
+    // Phase 19 follow-up — the operator's "next action" reminder on a job. NULLABLE: a job has
+    // no follow-up until one is set. follow_up_category is required-by-form only when a date is
+    // set (the form enforces the pairing; the column stays nullable so neither blocks a
+    // migration). The exception reader surfaces a follow_up_overdue kind once follow_up_at has
+    // passed. Distinct from due_at (the SLA seam) — this is a categorized operator reminder.
+    followUpAt: datetime("follow_up_at"),
+    followUpCategory: mysqlEnum("follow_up_category", [
+      "vendor_followup",
+      "confirm_onsite",
+      "proposal_followup",
+      "general",
+    ]),
     completedAt: datetime("completed_at"),
     closedAt: datetime("closed_at"),
     isArchived: boolean("is_archived").notNull().default(false),
@@ -116,6 +128,7 @@ export const jobs = mysqlTable(
     index("jobs_tenant_priority_idx").on(t.tenantId, t.priorityId),
     index("jobs_tenant_created_idx").on(t.tenantId, t.createdAt),
     index("jobs_tenant_due_idx").on(t.tenantId, t.dueAt),
+    index("jobs_tenant_followup_idx").on(t.tenantId, t.followUpAt),
     index("jobs_tenant_source_idx").on(t.tenantId, t.sourceType),
   ],
 );
