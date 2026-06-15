@@ -1,4 +1,5 @@
 import {
+  boolean,
   decimal,
   index,
   mysqlEnum,
@@ -32,6 +33,14 @@ export const clients = mysqlTable(
     billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"])
       .notNull()
       .default("cost_plus"),
+    // Phase (iii) Part 2 (0052) — when ON, Part 3's ADVISORY reminder fires at cost-plus client-invoice
+    // issuance if no vendor-invoice document is on file (the client is entitled to see the vendor cost).
+    // Default OFF is behavior-preserving (existing clients unaffected; a boolean false default needs no
+    // backfill). It NEVER blocks billing — it only governs whether the reminder shows; and it is
+    // cost_plus-only by nature (rate_sheet bills agreed rates, not vendor cost). Mirrors billing_model.
+    requireVendorInvoiceForCostPlus: boolean("require_vendor_invoice_for_cost_plus")
+      .notNull()
+      .default(false),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

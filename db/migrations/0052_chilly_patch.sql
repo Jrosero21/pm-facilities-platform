@@ -1,0 +1,1 @@
+ALTER TABLE `clients` ADD `require_vendor_invoice_for_cost_plus` boolean DEFAULT false NOT NULL;
