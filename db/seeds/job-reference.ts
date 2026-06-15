@@ -14,9 +14,10 @@
 // row via ON DUPLICATE KEY as defense-in-depth.
 //
 // Idempotent: priorities keyed on (tenant_id, code); statuses keyed on code
-// alone; the sequence row is only created if missing (never resets an advanced
-// counter). Safe to re-run; existing rows left as-is. Codes uppercased. No audit
-// rows (bootstrap reference data).
+// alone — a missing status is inserted, and an existing status's sort_order is
+// reflowed to the desired value (ONLY sort_order; name/category/terminal left
+// as-is). The sequence row is only created if missing (never resets an advanced
+// counter). Safe to re-run; converges. Codes uppercased. No audit rows.
 //
 // Run:
 //   pnpm db:seed:job-reference
@@ -113,11 +114,23 @@ const starterStatuses: {
     isTerminal: false,
     description: "Technician is on site or actively performing work.",
   },
+  // Phase 19 follow-up (per-dispatch): operationally-complete-but-not-closed stage,
+  // the auto-follow target when a single vendor reaches WORK_COMPLETE. NON-terminal
+  // (billing/closeout still to come). Inserting it at sort 5 reflows ON_HOLD..CLOSED_BILLED
+  // down by one (handled by the upsert loop below).
+  {
+    name: "Pending Invoice",
+    code: "PENDING_INVOICE",
+    category: "completed",
+    sortOrder: 5,
+    isTerminal: false,
+    description: "Work is operationally complete; awaiting invoicing (accounting handoff).",
+  },
   {
     name: "On Hold",
     code: "ON_HOLD",
     category: "on_hold",
-    sortOrder: 5,
+    sortOrder: 6,
     isTerminal: false,
     description: "Work is paused pending parts, approval, access, or other blocker.",
   },
@@ -125,7 +138,7 @@ const starterStatuses: {
     name: "Completed",
     code: "COMPLETED",
     category: "completed",
-    sortOrder: 6,
+    sortOrder: 7,
     isTerminal: true,
     description:
       "Vendor has marked the work complete. Awaiting closeout, invoicing, or final review.",
@@ -134,7 +147,7 @@ const starterStatuses: {
     name: "Cancelled",
     code: "CANCELLED",
     category: "cancelled",
-    sortOrder: 7,
+    sortOrder: 8,
     isTerminal: true,
     description: "Job was cancelled before work was completed. No invoicing expected.",
   },
@@ -142,7 +155,7 @@ const starterStatuses: {
     name: "Closed",
     code: "CLOSED",
     category: "completed",
-    sortOrder: 8,
+    sortOrder: 9,
     isTerminal: true,
     description:
       "Job is fully closed including all closeout documents, invoicing, and final review. No further activity expected.",
@@ -154,7 +167,7 @@ const starterStatuses: {
     name: "Closed (Billed)",
     code: "CLOSED_BILLED",
     category: "completed",
-    sortOrder: 9,
+    sortOrder: 10,
     isTerminal: true,
     description:
       "Billing is complete for the job (final invoice issued/paid). Distinct from operational CLOSED; reached via an explicit accounting-gated billing-close action.",
@@ -195,8 +208,13 @@ async function main() {
     `[seed:job-reference] priorities: ${prioInserted} inserted, ${starterPriorities.length - prioInserted} already present`,
   );
 
-  // job_statuses are GLOBAL — keyed on code alone, no tenant dimension.
+  // job_statuses are GLOBAL — keyed on code alone, no tenant dimension. A missing
+  // status is inserted; an existing status's sort_order is reflowed to the desired
+  // value (idempotent convergence — adding PENDING_INVOICE at sort 5 shifts
+  // ON_HOLD..CLOSED_BILLED down by one). ONLY sort_order is touched on existing rows;
+  // name / category / is_terminal are left as-is.
   let statusInserted = 0;
+  let statusReflowed = 0;
   for (const s of starterStatuses) {
     const code = s.code.trim().toUpperCase();
     const existing = await db
@@ -214,10 +232,16 @@ async function main() {
         isTerminal: s.isTerminal,
       });
       statusInserted += 1;
+    } else {
+      await db
+        .update(jobStatuses)
+        .set({ sortOrder: s.sortOrder })
+        .where(eq(jobStatuses.id, existing[0].id));
+      statusReflowed += 1;
     }
   }
   console.log(
-    `[seed:job-reference] job_statuses (global): ${statusInserted} inserted, ${starterStatuses.length - statusInserted} already present`,
+    `[seed:job-reference] job_statuses (global): ${statusInserted} inserted, ${statusReflowed} sort_order-reflowed`,
   );
 
   // tenant_job_sequences: one row per tenant for job_number allocation.
