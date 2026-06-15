@@ -42,6 +42,13 @@ export type ProposedInvoiceLine = {
   tradeId?: string | null;
   rateType?: RateType;
   suggestedUnitPrice?: string;
+  // CF-27.15 (operator-enters-hours) — the AGREED RATE available for a rate_sheet labor/trip line that
+  // came up BLANK (lumped / no time unit, so the agent couldn't determine hours) but DOES have a rate on
+  // file. DISTINCT from suggestedUnitPrice: the line stays blank (unit_price "") — agreedRate is not a
+  // pre-fill and does NOT trigger the chip; it's the rate the review offers via "enter hours → bill at
+  // the agreed rate." Carried with tradeId/rateType so an hours-filled line is provenanced. Absent on
+  // itemized lines (those use suggestedUnitPrice), on no-rate-on-file lines, and on materials/cost_plus.
+  agreedRate?: string | null;
   // Phase (ii) Unit 2b — the VENDOR COST for this line (the source vendor line's unit_price), carried
   // as a READ-ONLY REFERENCE so the review editor can show "vendor: $X" beside the price the operator
   // bills. Under rate_sheet it NEVER drives the billed price (labor = agreed rate, materials =

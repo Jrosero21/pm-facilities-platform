@@ -40,6 +40,10 @@ type EditableLine = {
   tradeId: string | null;
   rateType: string | null;
   vendorUnitPrice: string | null;
+  // CF-27.15 — the agreed rate available for a BLANK rate_sheet labor line (lumped — hours unknown).
+  // Distinct from suggestedUnitPrice: the line stays blank; the editor offers "use agreed rate" so the
+  // operator types HOURS (Quantity) and bills hours × this rate. null ⇒ no rate / not a labor line.
+  agreedRate: string | null;
 };
 
 function toEditable(lines: ProposedInvoiceLine[]): EditableLine[] {
@@ -58,6 +62,7 @@ function toEditable(lines: ProposedInvoiceLine[]): EditableLine[] {
     tradeId: l.tradeId ?? null,
     rateType: l.rateType ?? null,
     vendorUnitPrice: l.vendorUnitPrice ?? null,
+    agreedRate: l.agreedRate ?? null,
   }));
 }
 
@@ -68,7 +73,11 @@ function toEditable(lines: ProposedInvoiceLine[]): EditableLine[] {
 function serialize(lines: EditableLine[], lumpFlag: boolean): string {
   return JSON.stringify({
     lineItems: lines.map((l) => {
-      const keptRate = l.suggestedUnitPrice !== null && l.unitPrice === l.suggestedUnitPrice;
+      // Emit agreed-rate provenance when the operator KEPT the pre-filled rate (suggestedUnitPrice) OR
+      // filled a blank line at the agreed rate (CF-27.15 — agreedRate). publish re-verifies either way.
+      const keptRate =
+        (l.suggestedUnitPrice !== null && l.unitPrice === l.suggestedUnitPrice) ||
+        (l.agreedRate !== null && l.unitPrice === l.agreedRate);
       return {
         category: l.category,
         description: l.description,
@@ -120,14 +129,32 @@ function InvoiceApproveEditor({ jobId, draft }: { jobId: string; draft: InvoiceD
               <label className="text-xs text-neutral-600">
                 <span className="flex items-center gap-1">
                   Unit price
-                  {l.suggestedUnitPrice !== null &&
-                    (l.unitPrice === l.suggestedUnitPrice ? (
+                  {/* The contractual rate, from the pre-fill (suggestedUnitPrice) OR an hours-filled blank
+                      line (agreedRate, CF-27.15). The chip only shows once a price is present — a blank
+                      line never reads "overridden". */}
+                  {(l.suggestedUnitPrice ?? l.agreedRate) !== null && l.unitPrice !== "" &&
+                    (l.unitPrice === (l.suggestedUnitPrice ?? l.agreedRate) ? (
                       <span className="rounded bg-emerald-50 px-1 text-[10px] font-medium text-emerald-700">agreed rate</span>
                     ) : (
                       <span className="rounded bg-amber-50 px-1 text-[10px] font-medium text-amber-700">overridden</span>
                     ))}
                 </span>
                 <input value={l.unitPrice} onChange={(e) => update(i, { unitPrice: e.target.value })} inputMode="decimal" placeholder={l.suggestedUnitPrice === null && l.vendorUnitPrice !== null ? "author price" : undefined} className={inputClass} />
+                {/* CF-27.15 — a BLANK rate_sheet labor line that has a known agreed rate: the operator types
+                    HOURS in Quantity above, then bills hours × the agreed rate. Plain editable input is kept
+                    (they can still type a raw price). */}
+                {l.agreedRate !== null && l.unitPrice === "" && (
+                  <span className="mt-0.5 block">
+                    <button
+                      type="button"
+                      onClick={() => update(i, { unitPrice: l.agreedRate ?? "" })}
+                      className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 hover:border-emerald-500"
+                    >
+                      Use agreed rate (${l.agreedRate}/hr)
+                    </button>
+                    <span className="ml-1 text-[10px] text-neutral-400">enter the hours in Quantity, then bill at the agreed rate</span>
+                  </span>
+                )}
                 {l.vendorUnitPrice !== null && (
                   <span className="mt-0.5 block text-[10px] text-neutral-400">vendor: ${l.vendorUnitPrice}</span>
                 )}

@@ -208,9 +208,12 @@ export async function runInvoiceCreator(input: {
               };
             }
             if (defaultRateTypeForCategory(category)) {
-              // labor/trip with NO explicit time unit (bare quantity / lump / qty=1 / unit=null) OR no
-              // agreed rate on file → BLANK for the operator (no guessed hours, no markup). No
-              // provenance — it is not billing the rate.
+              // labor/trip with NO explicit time unit (bare quantity / lump / qty=1 / unit=null) → BLANK
+              // for the operator (no guessed hours, no markup). CF-27.15: when a rate IS on file (only the
+              // HOURS were unknown), carry it as agreedRate + tradeId/rateType so the review can offer
+              // "enter hours → bill at the agreed rate" — unit_price STAYS BLANK (suggestedUnitPrice is
+              // deliberately absent, so this is not a pre-fill and triggers no chip). No rate on file →
+              // fully blank as before.
               return {
                 category,
                 description,
@@ -220,6 +223,9 @@ export async function runInvoiceCreator(input: {
                 markupPercent: null,
                 reconcilesToVendorLineId: vl.id,
                 vendorUnitPrice: vl.unitPrice,
+                ...(agreed
+                  ? { agreedRate: agreed.rate, tradeId: job.primaryTradeId, rateType: agreed.rateType }
+                  : {}),
               };
             }
             // MATERIALS / other on rate_sheet (batch 2): OPERATOR JUDGMENT — leave the price BLANK with
