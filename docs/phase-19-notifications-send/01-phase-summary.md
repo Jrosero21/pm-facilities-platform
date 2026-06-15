@@ -52,3 +52,21 @@ B idempotency / C capture-honesty / D exception readers + isolation / E write-bo
 tsc --noEmit` → exit 0; `pnpm run lint` → 0 errors; `pnpm run build` → clean, `/notifications` present.
 The CaptureProvider keeps the harness honest: with `SEND_CAPTURE=1` and no key, `ResendProvider` is
 never constructed and no real email is sent.
+
+## Session update (follow-up pass — 2026-06-15)
+
+A later pass on the Phase-19 substrate. Two things landed; no Phase-19 file was rewritten — both are additive.
+
+- **Send backend LIVE-VERIFIED.** A real email was delivered end-to-end through `ResendProvider` (a real
+  `providerMessageId` came back), and the fail-loud path was confirmed (a bad recipient returned a Resend
+  `403 validation_error`, flipping the row to `failed` — never a silent mis-send). Still **capture-by-default**:
+  real send requires `RESEND_API_KEY` **and** a verified-domain `RESEND_FROM`. Today `RESEND_FROM` is the
+  Resend sandbox sender (`onboarding@resend.dev`), which only delivers to the account owner. **No prod host
+  yet** — prod send config (key + verified-domain From on the host, `SEND_CAPTURE` absent) is a future
+  when-hosted step. The exception/notifications surface and the exact send wire were re-confirmed against the
+  real DB (read-only) as part of this pass.
+- **NEW feature — job follow-up (next action).** `jobs.follow_up_at` + `jobs.follow_up_category` (migration
+  0053): a categorized "next action" reminder, settable on the job **edit** form, shown on the detail page,
+  audited via a `job.follow_up_changed` timeline event. An overdue follow-up surfaces as a **4th exception
+  kind**, `follow_up_overdue` (purple "Follow-up due"), in the `/notifications` queue — open-job + tenant
+  scoped. See `02-decisions.md` (D-19.12+), `08-db-changes.md` (0053), `09-api-routes.md`, `10-known-limitations.md`.

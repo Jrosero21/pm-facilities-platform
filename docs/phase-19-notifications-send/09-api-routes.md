@@ -41,3 +41,19 @@ The job-detail **Send** button (`delivery-transition-buttons.tsx`) was rewired: 
 | Script | Command |
 |---|---|
 | `db:check:notifications-send` | `tsx --env-file=.env.local --conditions=react-server scripts/check-notifications-send.ts` |
+
+## Follow-up pass — job follow-up + the 4th exception kind
+
+| Function / action | File | Behavior |
+|---|---|---|
+| `updateJobAction` (extended) | `src/app/(app)/jobs/actions.ts` | now parses/validates `follow_up_at` (datetime-local → `parseDateTime`) + `follow_up_category`; blank date → clear both; a set date requires a valid category (else returns the pairing error) |
+| `updateJob` / `JobPatch` (extended) | `src/server/jobs.ts` | `JobPatch` += `followUpAt` / `followUpCategory`; writes a `job.follow_up_changed` timeline event; a cleared date force-nulls the category |
+| `getJobDetail` (extended) | `src/server/jobs.ts` | selects the two new columns (detail render + edit-form prefill) |
+| `listFollowUpOverdue(tenantId)` | `src/server/analytics/exceptions.ts` | open-job + tenant scoped; **overdue test + ageSeconds computed in JS** (not SQL `NOW()` — see D-19.17) |
+| `getExceptions(tenantId)` (extended) | `src/server/analytics/exceptions.ts` | gains the 4th `Promise.all` reader + a `follow_up_overdue` push loop; same final sort |
+
+Shared pure helpers added (neutral `src/lib/`, importable by both server and the client form):
+`src/lib/datetime.ts` (`parseDateTime`, `toLocalInputValue`) and `src/lib/follow-up.ts`
+(`FOLLOW_UP_CATEGORIES`, `FollowUpCategory`, `FOLLOW_UP_CATEGORY_LABELS`, `isFollowUpCategory`). The
+`/notifications` route is unchanged — it renders the new kind via the existing `ExceptionQueue`
+(`KIND_META` gained a purple "Follow-up due" entry).

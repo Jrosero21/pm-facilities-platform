@@ -87,6 +87,22 @@ Discharged: the live email send backend (NOT a CF-12 retirement — see note), �
 exception surface. New: CF-19.1, CF-19.2, CF-19.3, CF-19.4 + soft notes. The full Phase-18 bank — incl.
 **CF-12.1–12.5 untouched** — rolls forward verbatim. See `closeout-carryforwards.md`.
 
+## Follow-up pass (2026-06-15)
+
+A later pass extended this shipped phase. **Send backend live-verified** end-to-end (real Resend delivery
++ `providerMessageId`; fail-loud `403` confirmed) — still capture-by-default, prod send config banked.
+**New feature: job follow-up (next action)** — `jobs.follow_up_at` + `follow_up_category` (migration
+**0053**, applied to prod by-name; `due_at` untouched), settable on the edit form, shown on detail,
+audited via `job.follow_up_changed`, surfacing overdue as the **4th exception kind** `follow_up_overdue`
+in `/notifications`.
+
+Verification this pass: migration 0053 sandbox→prod (pre/post contract-verified, row count unchanged);
+`tsc` 0 + `pnpm build` clean on both authoring batches; two sandbox harnesses — the follow-up
+set/clear/pairing + timezone round-trip, and the `follow_up_overdue` boundary (**8/8**, which **caught and
+fixed** the UTC-vs-server-tz comparison bug, D-19.17); plus operator browser eyeballs of the edit form and
+the purple `follow_up_due` row. Decisions D-19.12–D-19.17 (`02-decisions.md`); new banked items in
+`closeout-carryforwards.md`. Commits: migration `93c2c68`, feature `1eb0555` (local; unpushed at writing).
+
 ## Recommended next phase focus
 
 **Phase 20 — Vendor Edge Completion: photo/attachment physical storage + vendor-updates inbox hardening**

@@ -39,6 +39,25 @@
   CF-12.1–12.5 (the ServiceChannel external-platform track, all still open). Tracked as **CF-19.4** — a
   separate, gated roadmap doc-fix (not edited in this phase).
 
+## Follow-up pass (2026-06-15)
+
+- **Render layer verified by operator eyeball only.** There was no browser-automation agent this pass, so
+  the edit-form inputs, the detail "Follow-up" lines, and the purple `follow_up_overdue` row were confirmed
+  by Jonny in the browser; the *logic* (set/clear/pairing, timezone round-trip, exception boundary) was
+  proven by sandbox harnesses (the follow-up round-trip + the `follow_up_overdue` harness, 8/8 — which
+  caught the timezone bug, D-19.17).
+- **Send is still capture-by-default and not production-configured.** Real send was verified locally, but
+  needs a verified-domain `RESEND_FROM` (today the `onboarding@resend.dev` sandbox sender reaches only the
+  account owner) and, when hosted, the prod env (`RESEND_API_KEY` + verified From, `SEND_CAPTURE` absent).
+  Both **banked** (see `closeout-carryforwards.md`).
+- **Notifications surface is still passive PULL** — no per-user read/unread, no badge (by design).
+- **Same job can appear under multiple exception kinds** (e.g. `operational` **and** `follow_up_overdue`).
+  By design today; a group-by-job tidy is **banked**.
+- **Follow-up is edit-only + single.** No create-time set, and one follow-up per job (not a stack of
+  categorized "sticky notes"). Both **banked**.
+- **Operator hand-send UI is thin.** The send engine works (verified), but there's no clean in-app
+  compose-and-send surface yet — **banked**.
+
 ## Inherited / standing
 
 - Standard watchpoints (pnpm not npm; MariaDB JSON parse-at-read; SSH tunnel for DB scripts; sandbox→prod

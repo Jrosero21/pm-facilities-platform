@@ -833,3 +833,27 @@ lumped lines (vendor lump / no time unit → hours unknown). Now it's CARRIED on
 **STILL BANKED (roll forward):** CF-27.16 (client-billing as a work-unit/dispatch entity, not a downstream
 join off a vendor-invoice document), CF-iii.1 (R2 config — Jonny's action: `R2_*` in dev `.env.local` +
 prod), presigned-PUT direct-to-R2 (upload SCALE answer), vendor-line EDIT form Unit field (if ever built).
+
+---
+
+## Phase-19 follow-up pass (2026-06-15) — new banked items
+
+A later pass on the shipped Phase-19 substrate: live-verified the send backend end-to-end and added the
+job **follow-up (next action)** feature + the `follow_up_overdue` exception kind (migration 0053, prod-applied
+by-name; commits `93c2c68` migration + `1eb0555` feature, local/unpushed at writing). Full detail in
+`docs/phase-19-notifications-send/` (01/02/08/09/10/11 — session-update sections). New bank:
+
+| Id | Item | Why deferred |
+|---|---|---|
+| **FU-1** | **Real-domain send** — verify a domain at resend.com + set `RESEND_FROM` on it (real client/vendor email; today's `onboarding@resend.dev` reaches only the account owner). **[Jonny action]** | Wire proven; needs a verified domain. |
+| **FU-2** | **Prod send config (when hosted)** — `RESEND_API_KEY` + verified-domain `RESEND_FROM` on the host, `SEND_CAPTURE` absent. **[Jonny action]** | No prod host yet. |
+| **FU-3** | **Create-time follow-up** — set a follow-up at job creation (today: edit-only). | MVP scope; fast follow-on. |
+| **FU-4** | **Multi "sticky-note" follow-ups** — several live categorized follow-ups per job, all upcoming visible, each cleared independently. | The designed next-round upgrade; today's single follow-up slots in with no rework. |
+| **FU-5** | **Operator hand-send UI** — a clean in-app compose-and-send surface (engine proven; surface thin). | Out of this pass's scope. |
+| **FU-6** | **Group-by-job de-dup in the exception queue** — one job can surface under multiple kinds (e.g. `operational` + `follow_up_overdue`). | By design today; tidy later. |
+| **FU-7** | **Vendor "not accepted" grace period** — don't flag in the first N minutes after send. | Current behavior flags immediately. |
+
+**CF-19.1 (business-hours clock) — STILL BANKED**, now also relevant to `follow_up_overdue` overdue timing
+and the future SLA `due_at`. Needs **both** the JS business-hours logic AND `client_location_hours` data
+(empty in prod). The rest of the open bank above (CF-27.16, CF-iii.1, presigned-PUT, vendor-line Unit field)
+**rolls forward unchanged**.

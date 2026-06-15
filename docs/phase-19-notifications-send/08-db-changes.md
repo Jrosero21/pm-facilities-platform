@@ -42,3 +42,24 @@ Each gated. Both sandbox and prod carry the columns; git schema-source matches l
 Added now as the **seam** for CF-19.1 (business-hours SLA clock). Nullable, no backfill, no consumer in
 Phase 19. The 17a/roadmap-§6 "client_location_hours + timezones" invariant was half-satisfiable — hours
 existed, timezones did not; this column closes the data-model gap so the clock logic can land later.
+
+## Follow-up pass — migration 0053 (additive)
+
+The follow-up feature added **two nullable columns + one index on `jobs`**, no new tables, no FK changes,
+`due_at` untouched.
+
+| Table | Column / index | Type | Null | Purpose |
+|---|---|---|---|---|
+| `jobs` | `follow_up_at` | datetime | YES | the operator's next-action reminder timestamp |
+| `jobs` | `follow_up_category` | enum(`vendor_followup`,`confirm_onsite`,`proposal_followup`,`general`) | YES | the reminder's type (paired with the date by the form/action) |
+| `jobs` | `jobs_tenant_followup_idx` | index `(tenant_id, follow_up_at)` | — | supports the open-job follow-up scan in `listFollowUpOverdue` |
+
+`0053_ambitious_wither.sql` is exactly two `ADD COLUMN` + one `CREATE INDEX` — no DROP, no table create,
+no FK. `check-migration-identifiers` OK (longest id 24 chars); `fix-mysql-engine` nothing to do.
+
+**Applied to prod by-name** (consistent with 0045–0052): the generated SQL was applied directly to
+`jonnyrosero_pm` (markers stripped — `--> statement-breakpoint` is not a valid mysql-client comment),
+after the same sandbox→verify→prod-confirm cadence. As with 0045–0052, **no `__drizzle_migrations`
+tracking row** was written (the established by-name convention; `drizzle-kit migrate` targets the prod
+URL and is not used). Pre/post verified: `due_at` intact, both columns present (datetime/enum, nullable),
+index present `(tenant_id, follow_up_at)`, jobs row count unchanged.
