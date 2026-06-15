@@ -805,3 +805,31 @@ From a vendor's cost to the client's invoice — rate-sheet vs cost-plus pricing
 agents (LLM number-free throughout), the agreed rate sheet, document attachment, and the cost-plus
 entitlement advisory — the arc is complete. **Open carry-forwards:** CF-iii.1 (R2 config — Jonny),
 CF-27.15 / CF-27.16, presigned-PUT, and the vendor-line edit-form Unit field.
+
+> **→ CF-27.15 SHIPPED v2.18.0** (see below) — RETIRED from the open carry-forwards above.
+
+### CF-27.15 — SHIPPED v2.18.0 (operator-enters-hours-at-review)
+
+Branch `v2.18.0-operator-enters-hours`. **The Unit-2b lumped-labor blank-line fallback is now a fast,
+provenanced hours fill.** The agreed rate was always RESOLVED at invoice draft-build but DISCARDED on
+lumped lines (vendor lump / no time unit → hours unknown). Now it's CARRIED onto the blank line as a new
+**`agreedRate`** field — distinct from `suggestedUnitPrice` (the line stays blank; no pre-fill, no chip).
+
+- On a blank rate_sheet labor line that has a rate on file, the operator types **hours in Quantity**, clicks
+  **"Use agreed rate ($X/hr)"** → `unit_price` = the agreed rate → bills **hours × the contractual rate**,
+  fully provenanced (`serialize` emits `trade_id`/`rate_type` when `unitPrice == agreedRate`; publish
+  RE-VERIFIES; markup forced null for rate_sheet). The vendor cost is still shown as a reference, and the
+  price stays a plain editable input (a raw price is still allowed).
+- **Money-safe:** the operator supplies the HOURS (never guessed/invented); only the rate is contractual.
+  Harness **P3 proves a blank line never auto-fills** — the fill is operator-initiated only. The chip is
+  gated on `unit_price != ""`, so a blank line never falsely reads "overridden".
+- **`db:check:operator-enters-hours` 9/9** — D1 (rate carried onto the blank lumped line), D3 (no rate →
+  no agreedRate), D2 itemized unchanged, D4 materials none; P1 (5 hrs × agreed 75 → agreed-rate line +
+  provenance, extended 375), P2 (raw override → no false provenance), P3 (blank → publish throws).
+- **Scope:** invoice review ONLY — the manual line editor already does operator-quantity + rate-fill, and
+  proposals have no lumped-vendor-line problem (authored fresh). **No migration** (provenance columns + the
+  resolved rate all exist; only the `serialize` condition changed).
+
+**STILL BANKED (roll forward):** CF-27.16 (client-billing as a work-unit/dispatch entity, not a downstream
+join off a vendor-invoice document), CF-iii.1 (R2 config — Jonny's action: `R2_*` in dev `.env.local` +
+prod), presigned-PUT direct-to-R2 (upload SCALE answer), vendor-line EDIT form Unit field (if ever built).
