@@ -11,18 +11,20 @@ import "server-only";
 // DETECTION ONLY — no auto-response (Phase 28), no autonomous send (Phase 23). Wall-clock dwell
 // (Option B); the business-hours clock is banked (CF-19.1).
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   changeOrders,
   clients,
   dispatchAssignmentStatuses,
+  jobStatuses,
   jobVendorAssignments,
   jobs,
   vendors,
 } from "@/server/schema";
 import { operationalQueue } from "@/server/analytics/operational-queue";
 import type { UrgencyTier } from "@/server/analytics/stalled-rules";
+import type { FollowUpCategory } from "@/lib/follow-up";
 
 // ── Reader rows ───────────────────────────────────────────────────────────────────────
 
@@ -102,6 +104,59 @@ export async function listNteIncreaseRequested(tenantId: string): Promise<NteInc
     .where(and(eq(changeOrders.tenantId, tenantId), eq(changeOrders.status, "submitted")));
 }
 
+export type FollowUpOverdueRow = {
+  jobId: string;
+  jobNumber: number;
+  clientName: string;
+  followUpAt: Date;
+  category: FollowUpCategory | null;
+  ageSeconds: number;
+};
+
+/**
+ * Jobs whose operator follow-up reminder (jobs.follow_up_at) is in the past — the "next action is
+ * overdue" signal. OPEN-job-scoped like operationalQueue (is_terminal=false AND is_archived=false) so
+ * a closed/archived job's stale follow-up doesn't nag.
+ *
+ * The OVERDUE comparison + ageSeconds are computed in JS (Date.now), NOT in SQL — follow_up_at is
+ * written CLIENT-side (an operator-picked Date via mysql2), so the stored value and the server's
+ * NOW() live in different timezone frames; a SQL `follow_up_at < NOW()` skews by the server's UTC
+ * offset. mysql2 round-trips the stored datetime back to the correct instant, so `getTime() <
+ * Date.now()` is frame-safe. This mirrors operationalQueue's dueAt overdue check exactly. Wall-clock
+ * dwell (Option B; CF-19.1 banked). The SQL stage only does the structural filters (open + has a
+ * follow-up), which the jobs_tenant_followup_idx still supports.
+ */
+export async function listFollowUpOverdue(tenantId: string): Promise<FollowUpOverdueRow[]> {
+  const rows = await db
+    .select({
+      jobId: jobs.id,
+      jobNumber: jobs.jobNumber,
+      clientName: clients.name,
+      followUpAt: jobs.followUpAt,
+      category: jobs.followUpCategory,
+    })
+    .from(jobs)
+    .innerJoin(clients, eq(clients.id, jobs.clientId))
+    .innerJoin(jobStatuses, eq(jobStatuses.id, jobs.currentStatusId))
+    .where(
+      and(
+        eq(jobs.tenantId, tenantId),
+        isNotNull(jobs.followUpAt),
+        eq(jobs.isArchived, false),
+        eq(jobStatuses.isTerminal, false),
+      ),
+    );
+  const nowMs = Date.now();
+  const out: FollowUpOverdueRow[] = [];
+  for (const r of rows) {
+    const at = r.followUpAt as Date; // isNotNull-filtered above
+    const ageSeconds = Math.floor((nowMs - at.getTime()) / 1000);
+    if (ageSeconds <= 0) continue; // future-dated → not yet due, skip
+    out.push({ jobId: r.jobId, jobNumber: r.jobNumber, clientName: r.clientName, followUpAt: at, category: r.category, ageSeconds });
+  }
+  return out;
+}
+
 // ── The composed exception feed ───────────────────────────────────────────────────────
 
 type ExceptionBase = {
@@ -138,6 +193,11 @@ export type Exception = ExceptionBase &
         isStalled: boolean;
         isUnassignedHighPriority: boolean;
       }
+    | {
+        kind: "follow_up_overdue";
+        followUpAt: Date;
+        category: FollowUpCategory | null;
+      }
   );
 
 /**
@@ -146,10 +206,11 @@ export type Exception = ExceptionBase &
  * operational rows are EXCLUDED (only overdue/stalled/unassigned-high-priority qualify).
  */
 export async function getExceptions(tenantId: string): Promise<Exception[]> {
-  const [notAccepted, nteRequested, queue] = await Promise.all([
+  const [notAccepted, nteRequested, queue, followUps] = await Promise.all([
     listVendorNotAccepted(tenantId),
     listNteIncreaseRequested(tenantId),
     operationalQueue(tenantId, Number.MAX_SAFE_INTEGER),
+    listFollowUpOverdue(tenantId),
   ]);
 
   const nowMs = Date.now();
@@ -198,6 +259,18 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       isStalled: q.isStalled,
       isUnassignedHighPriority: q.isUnassignedHighPriority,
       sortKey: q.ageInCurrentStatusSeconds,
+    });
+  }
+
+  for (const r of followUps) {
+    exceptions.push({
+      kind: "follow_up_overdue",
+      jobId: r.jobId,
+      jobNumber: r.jobNumber,
+      clientName: r.clientName,
+      followUpAt: r.followUpAt,
+      category: r.category,
+      sortKey: r.ageSeconds,
     });
   }
 

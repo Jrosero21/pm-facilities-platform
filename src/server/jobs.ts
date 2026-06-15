@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, desc, eq, ne, sql } from "drizzle-orm";
+import type { FollowUpCategory } from "@/lib/follow-up";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
 import {
@@ -151,6 +152,8 @@ export type JobDetail = {
   scheduledStartAt: Date | null;
   scheduledEndAt: Date | null;
   dueAt: Date | null;
+  followUpAt: Date | null;
+  followUpCategory: FollowUpCategory | null;
   completedAt: Date | null;
   closedAt: Date | null;
   isArchived: boolean;
@@ -192,6 +195,8 @@ export async function getJobDetail(
       scheduledStartAt: jobs.scheduledStartAt,
       scheduledEndAt: jobs.scheduledEndAt,
       dueAt: jobs.dueAt,
+      followUpAt: jobs.followUpAt,
+      followUpCategory: jobs.followUpCategory,
       completedAt: jobs.completedAt,
       closedAt: jobs.closedAt,
       isArchived: jobs.isArchived,
@@ -422,6 +427,10 @@ export type JobPatch = {
   clientLocationId?: string;
   problemDescription?: string;
   scopeOfWork?: string | null;
+  // Phase 19 follow-up — the next-action reminder. A null followUpAt CLEARS the follow-up; the
+  // writer forces followUpCategory null alongside it (never an orphan category on no date).
+  followUpAt?: Date | null;
+  followUpCategory?: FollowUpCategory | null;
 };
 
 export type UpdateJobInput = {
@@ -454,6 +463,8 @@ export async function updateJob(input: UpdateJobInput): Promise<JobRow> {
         problemDescription: jobs.problemDescription,
         scopeOfWork: jobs.scopeOfWork,
         sourceType: jobs.sourceType,
+        followUpAt: jobs.followUpAt,
+        followUpCategory: jobs.followUpCategory,
       })
       .from(jobs)
       .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)))
@@ -540,6 +551,44 @@ export async function updateJob(input: UpdateJobInput): Promise<JobRow> {
       await tx.insert(jobEvents).values({
         tenantId, jobId, eventType: "job.scope_updated", actorUserId,
         summary: "Scope / description updated", metadata: scopeMeta,
+      });
+    }
+
+    // follow_up_at + follow_up_category — job_events flavor (like location/scope; no typed history
+    // table). Dates compared by epoch (Date|null). Clearing the date (null) forces the category null
+    // too in the SAME set — never an orphan category on a cleared date. One event covers both fields.
+    let followUpChanged = false;
+    if (patch.followUpAt !== undefined) {
+      const newAt = patch.followUpAt; // Date | null
+      if ((newAt?.getTime() ?? null) !== (cur.followUpAt?.getTime() ?? null)) {
+        set.followUpAt = newAt;
+        changedFields.push("followUpAt");
+        followUpChanged = true;
+        if (newAt === null && cur.followUpCategory !== null) {
+          set.followUpCategory = null; // clear the orphan category alongside the date
+          changedFields.push("followUpCategory");
+        }
+      }
+    }
+    if (patch.followUpCategory !== undefined && set.followUpCategory === undefined) {
+      // only if a date-clear above didn't already force it null
+      const newCat = patch.followUpCategory; // FollowUpCategory | null
+      if (newCat !== cur.followUpCategory) {
+        set.followUpCategory = newCat;
+        changedFields.push("followUpCategory");
+        followUpChanged = true;
+      }
+    }
+    if (followUpChanged) {
+      await tx.insert(jobEvents).values({
+        tenantId, jobId, eventType: "job.follow_up_changed", actorUserId,
+        summary: "Follow-up updated",
+        metadata: {
+          fromAt: cur.followUpAt,
+          toAt: set.followUpAt !== undefined ? set.followUpAt : cur.followUpAt,
+          fromCategory: cur.followUpCategory,
+          toCategory: set.followUpCategory !== undefined ? set.followUpCategory : cur.followUpCategory,
+        },
       });
     }
 

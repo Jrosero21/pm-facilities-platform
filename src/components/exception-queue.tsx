@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Exception } from "@/server/analytics/exceptions";
+import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
 
 // Phase 19e — the exception queue (the "manage by exception" feed). Display-only: a flat
 // sorted list over getExceptions, one row per Exception kind. No interactivity → a Server
@@ -10,6 +11,7 @@ const KIND_META: Record<Exception["kind"], { label: string; badge: string }> = {
   vendor_not_accepted: { label: "Vendor not accepted", badge: "bg-amber-100 text-amber-800" },
   nte_increase_requested: { label: "NTE increase requested", badge: "bg-blue-100 text-blue-800" },
   operational: { label: "Operational", badge: "bg-neutral-100 text-neutral-700" },
+  follow_up_overdue: { label: "Follow-up due", badge: "bg-purple-100 text-purple-800" },
 };
 
 // Humanize an elapsed-seconds count into a compact age ("6h", "2d", "45m").
@@ -42,6 +44,8 @@ function rowKey(item: Exception): string {
       return `nte_${item.changeOrderId}`;
     case "operational":
       return `op_${item.jobId}`;
+    case "follow_up_overdue":
+      return `fu_${item.jobId}`;
   }
 }
 
@@ -90,6 +94,14 @@ function Detail({ item }: { item: Exception }) {
         <p className="text-sm text-neutral-800">
           {tierLabel[item.urgencyTier] ?? item.urgencyTier} —{" "}
           {humanizeAge(item.ageInCurrentStatusSeconds)} in current status.
+        </p>
+      );
+    }
+    case "follow_up_overdue": {
+      const cat = item.category ? FOLLOW_UP_CATEGORY_LABELS[item.category] : null;
+      return (
+        <p className="text-sm text-neutral-800">
+          Follow-up{cat ? ` (${cat})` : ""} was due {humanizeAge(item.sortKey)} ago.
         </p>
       );
     }

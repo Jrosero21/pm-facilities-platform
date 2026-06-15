@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getJobDetail } from "@/server/jobs";
+import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
 import { listJobContacts } from "@/server/job-contacts";
 import { listJobNotes } from "@/server/job-notes";
 import { listJobEvents } from "@/server/job-events";
@@ -205,6 +206,11 @@ export default async function JobDetailPage({
           { label: "Scheduled start", value: fmt(job.scheduledStartAt) },
           { label: "Scheduled end", value: fmt(job.scheduledEndAt) },
           { label: "Due", value: fmt(job.dueAt) },
+          { label: "Follow-up", value: fmt(job.followUpAt) },
+          {
+            label: "Follow-up type",
+            value: job.followUpAt && job.followUpCategory ? FOLLOW_UP_CATEGORY_LABELS[job.followUpCategory] : "—",
+          },
           { label: "Completed", value: fmt(job.completedAt) },
           { label: "Closed", value: fmt(job.closedAt) },
           { label: "Created", value: job.createdAt.toLocaleString() },

@@ -45,6 +45,8 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
             notToExceedAmount: job.notToExceedAmount,
             problemDescription: job.problemDescription,
             scopeOfWork: job.scopeOfWork,
+            followUpAt: job.followUpAt,
+            followUpCategory: job.followUpCategory,
           }}
           clients={clients.map((c) => ({ id: c.id, name: c.name }))}
           locations={locations}

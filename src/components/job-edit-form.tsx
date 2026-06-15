@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { updateJobAction, type UpdateJobState } from "@/app/(app)/jobs/actions";
+import { toLocalInputValue } from "@/lib/datetime";
+import { FOLLOW_UP_CATEGORIES, FOLLOW_UP_CATEGORY_LABELS, type FollowUpCategory } from "@/lib/follow-up";
 
 const inputClass =
   "mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900";
@@ -23,6 +25,8 @@ export type JobEditCurrent = {
   notToExceedAmount: string | null;
   problemDescription: string;
   scopeOfWork: string | null;
+  followUpAt: Date | null;
+  followUpCategory: FollowUpCategory | null;
 };
 
 export function JobEditForm({
@@ -119,6 +123,28 @@ export function JobEditForm({
           className={inputClass}
         />
       </label>
+
+      {/* Follow-up (next action). Both inputs are optional; the server enforces the pairing
+          (a date requires a type) and treats a blank date as an explicit CLEAR of both. */}
+      <div className="block">
+        <span className="text-sm font-medium text-neutral-800">
+          Follow-up (next action) <span className="font-normal text-neutral-500">(optional — clear the date to remove)</span>
+        </span>
+        <input
+          type="datetime-local"
+          name="followUpAt"
+          defaultValue={toLocalInputValue(current.followUpAt)}
+          className={inputClass}
+        />
+        <select name="followUpCategory" defaultValue={current.followUpCategory ?? ""} className={inputClass}>
+          <option value="">No follow-up type</option>
+          {FOLLOW_UP_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {FOLLOW_UP_CATEGORY_LABELS[c]}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="block">
         <span className="text-sm font-medium text-neutral-800">Problem description</span>

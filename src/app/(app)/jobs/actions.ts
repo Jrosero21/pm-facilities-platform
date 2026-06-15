@@ -7,6 +7,8 @@ import { createJob, updateJob, type JobPatch } from "@/server/jobs";
 // canonicalizeNte lives in the pure money util (NOT here) — every export of a "use server" module
 // must be an async function, so a sync helper cannot be exported from this file (v2.11.0 fix).
 import { canonicalizeNte } from "@/server/billing/money";
+import { parseDateTime } from "@/lib/datetime";
+import { isFollowUpCategory } from "@/lib/follow-up";
 
 export type CreateJobState = { error: string } | null;
 // v2.11.0 — same shape as CreateJobState; named separately for the edit form's clarity.
@@ -126,6 +128,25 @@ export async function updateJobAction(
     }
     patch.notToExceedAmount = canonical;
   } // empty NTE → omit (leave unchanged)
+
+  // follow-up (next action). The form ALWAYS submits followUpAt, so a present-but-blank value is an
+  // explicit CLEAR (→ null both fields); an absent key leaves it unchanged. A set date requires one
+  // of the four categories (the pairing rule from the schema). A cleared date drops any posted
+  // category, and the writer re-forces category null on a date-clear regardless.
+  if (formData.has("followUpAt")) {
+    const followUpAt = parseDateTime(String(formData.get("followUpAt") ?? ""));
+    if (followUpAt === null) {
+      patch.followUpAt = null;
+      patch.followUpCategory = null; // clearing the date clears the type
+    } else {
+      const category = String(formData.get("followUpCategory") ?? "").trim();
+      if (!isFollowUpCategory(category)) {
+        return { error: "Pick a follow-up type when setting a follow-up date." };
+      }
+      patch.followUpAt = followUpAt;
+      patch.followUpCategory = category;
+    }
+  }
 
   try {
     await updateJob({ tenantId: ctx.activeTenant.tenantId, jobId, actorUserId: ctx.user.id, patch });
