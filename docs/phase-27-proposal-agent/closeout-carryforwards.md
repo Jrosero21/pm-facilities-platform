@@ -712,3 +712,96 @@ provenance), with materials/judgment left to the operator and the LLM kept numbe
 **Remaining in CF-27.7:** **Phase (iii)** — **required-documents + the cost-plus gate** (the documents
 a job must carry before its cost-plus billing can close). That is the next piece, independent of the
 rate-sheet work shipped here.
+
+> **→ PHASE (iii) SHIPPED v2.17.0.** See **"Phase (iii) — SHIPPED v2.17.0"** below.
+
+### Phase (iii) — SHIPPED v2.17.0 (required-documents + cost-plus gate)
+
+Branch `v2.17.0-vendor-invoice-docs`. **Operators attach the vendor-invoice DOCUMENT to a vendor invoice;
+a per-client toggle makes cost-plus issuance ADVISE (never block) when that document isn't on file.** All
+three parts harnessed; both migrations (0051, 0052) PROD-APPLIED.
+
+**Part 1 — upload-as-vendor-invoice-document (the first operator attachment surface):**
+- **Migration 0051** (`0051_ambitious_carlie_cooper`, **PROD-APPLIED**) — `job_attachments.vendor_invoice_id`
+  nullable FK → `vendor_invoices`, `ON DELETE SET NULL`, + index `(tenant_id, vendor_invoice_id)`. **MANY
+  docs → one vendor invoice** (0..N). Columns-only, table count 124 unchanged.
+- **Capability:** operators attach **tagged** documents to a vendor invoice (`attachVendorInvoiceDocument`,
+  put-before-insert, reusing the photo storage seam). **PERMISSIVE MIME** — PDF/Word/Excel/images/csv/txt/
+  unknown allowed; **only executables/scripts blocked, by MIME AND filename extension** (`document-mime.ts`,
+  pure util). **Body-size 16 MB** (`next.config.ts serverActions.bodySizeLimit`). Tenant-scoped presigned
+  GET read. **"Attached documents"** section on the vendor-invoice detail page, shown in **ALL states** (docs
+  arrive on their own schedule; attaching changes no money — only the line-item editor stays money-locked).
+- **Tag → attachment_type** map: invoice→invoice (the gate's key), signoff→signature, receipt→document,
+  photo→photo, other→other.
+- **`db:check:vendor-invoice-documents` 15/15.** **Browser-verified** (a `.docx` + `.pdf` uploaded + tagged
+  live — permissive types work).
+
+**Part 2 — per-client toggle:**
+- **Migration 0052** (`0052_chilly_patch`, **PROD-APPLIED**) — `clients.require_vendor_invoice_for_cost_plus`
+  boolean `NOT NULL DEFAULT false` (behavior-preserving; existing clients off). Columns-only, 124 unchanged.
+- **Toggle UI** beside the billing-model selector (`setClientRequireVendorInvoiceForCostPlus`, mirrors
+  `setClientBillingModel`). Advisory-framed copy ("you can always proceed — it never blocks billing").
+
+**Part 3 — advisory cost-plus doc gate at issuance:**
+- At cost-plus client-invoice issuance, **WARN (never block)** when the source vendor invoice has **no
+  invoice-tagged document** AND the client's toggle is on. **`shouldWarnMissingVendorDoc` is the single
+  authority**: effective `cost_plus` (job ?? client) + toggle on + source VI exists + no invoice doc.
+- **Pre-computed inline** (warning + "Issue without the vendor invoice document" ack checkbox shown before
+  the click — mirrors `forceClientReview`); `sendClientInvoiceAction` **RE-VERIFIES server-side**
+  (no-trust-client) + a stale-page belt-and-suspenders re-surfaces it. The ack **always** lets the operator
+  proceed.
+- **Override audit:** `{ issuedWithoutVendorDoc: true }` in the **`client_invoice.sent` event metadata**,
+  ONLY when the warning applied AND was acknowledged (no new event type).
+- **`db:check:cost-plus-doc-gate` 11/11.**
+
+**KEY DESIGN (durable):**
+- The gate is **ADVISORY, not hard** — **billing ≠ dispatch eligibility** (vendor_compliance is a hard
+  floor; billing carries the never-block-client-billing principle, so this warns + lets the operator
+  proceed). The ack always proceeds; the override is recorded, never silently bypassed.
+- Fires ONLY when **cost_plus + toggle on + source VI exists + no invoice doc** (effective model = job
+  override ?? client). A **sign-off doc does NOT satisfy** it — the client is owed the **INVOICE** document
+  (the A6 distinction). **Manual** client invoices (no source vendor invoice) **skip** the gate.
+- **Many docs per VI** (the everyday case = invoice + sign-off). **Permissive file types** (20k+ vendors
+  send everything). **Scope:** started SPECIFIC (the one cost_plus→vendor-invoice rule), structured to
+  generalize — no premature `document_requirements` config table.
+
+**TWO PROD FINDINGS from the live verify (roll forward):**
+- **CF-iii.1 — PROD-BLOCKER (config, Jonny's action):** Cloudflare **R2 must be configured** in dev
+  `.env.local` AND the prod runtime (`R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` /
+  `R2_BUCKET`). Without them `getStorageProvider()` now throws `STORAGE_NOT_CONFIGURED` (after CF-iii.2;
+  previously a **silent capture fallback → data loss**: uploads "succeeded" then evaporated — dev blank-tab,
+  prod serverless per-instance ephemeral). **R2 is MANDATORY** for vendor-invoice documents AND photos in
+  prod. The code is correct — this is configuration. Jonny sets R2 + re-uploads (the two captured files are
+  not recoverable).
+- **CF-iii.2 — SHIPPED (`a19ce2b`):** the storage factory now **fails LOUD**. Capture is **explicit-only**
+  (`STORAGE_CAPTURE=1`, the harness flag); a real runtime with no R2 creds **throws
+  `STORAGE_NOT_CONFIGURED`** at the factory chokepoint (protecting BOTH document and photo uploads/reads).
+  Closed the silent-data-loss masking. Harnesses unaffected (`cost-plus-doc-gate` re-run 11/11 green).
+
+**STILL BANKED (roll forward):**
+- **CF-27.15** — operator-enters-hours-at-review (fills `hours × agreed rate` for a blank labor line).
+- **CF-27.16** — client-billing as a work-unit/dispatch entity, not a downstream join off a vendor-invoice
+  document (revisit when per-dispatch status lands).
+- **Presigned-PUT direct-to-R2** — the upload SCALE answer (client uploads direct to R2, bypassing the
+  16 MB Server Action body cap). The provider only presigns GET today; a `getSignedPutUrl` + a 2-step
+  client flow is the next storage step when large files / volume demand it.
+- **Vendor-line EDIT form** — if ever built (none today; add+remove only), it needs the `Unit` field +
+  `updateVendorInvoiceLineItemAction` to read `unit`.
+
+---
+
+## CF-27.7 — BILLING ARC COMPLETE ✅
+
+The whole billing story shipped, end to end:
+
+- **Seam 0 v2.12.0** — the billing seam / foundation.
+- **Phase (i) v2.13.0** — rate-sheet STORAGE + UI.
+- **Phase (ii) v2.14.0–v2.16.0** — billing-from-rates: Unit 1 (manual authoring), Unit 2a (proposal agent
+  pre-fill), Unit 2b (invoice agent rate-sheet branch + never-block-billing).
+- **Phase (iii) v2.17.0** — required-documents + the cost-plus gate (vendor-invoice document capability +
+  per-client toggle + advisory issuance gate + storage hardening).
+
+From a vendor's cost to the client's invoice — rate-sheet vs cost-plus pricing, the proposal and invoice
+agents (LLM number-free throughout), the agreed rate sheet, document attachment, and the cost-plus
+entitlement advisory — the arc is complete. **Open carry-forwards:** CF-iii.1 (R2 config — Jonny),
+CF-27.15 / CF-27.16, presigned-PUT, and the vendor-line edit-form Unit field.
