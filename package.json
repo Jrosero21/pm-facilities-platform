@@ -45,7 +45,8 @@
     "db:check:proposal-rate-prefill": "tsx --env-file=.env.local --conditions=react-server scripts/check-proposal-rate-prefill.ts",
     "db:check:invoice-rate-sheet": "tsx --env-file=.env.local --conditions=react-server scripts/check-invoice-rate-sheet.ts",
     "db:check:vendor-invoice-documents": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-invoice-documents.ts",
-    "db:check:cost-plus-doc-gate": "tsx --env-file=.env.local --conditions=react-server scripts/check-cost-plus-doc-gate.ts"
+    "db:check:cost-plus-doc-gate": "tsx --env-file=.env.local --conditions=react-server scripts/check-cost-plus-doc-gate.ts",
+    "db:check:operator-enters-hours": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-enters-hours.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
