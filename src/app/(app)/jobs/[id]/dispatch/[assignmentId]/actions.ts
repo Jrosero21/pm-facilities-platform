@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
-import { sendDispatch } from "@/server/dispatch";
+import { sendDispatch, setAssignmentStatus } from "@/server/dispatch";
 import { sendAssignmentLink } from "@/server/magic-links/send-link";
 import { revokeToken } from "@/server/magic-links/token-core";
 
 export type SendDispatchState = { error: string } | null;
 export type LinkControlState = { error?: string; info?: string } | null;
+export type SetStatusState = { error?: string; info?: string } | null;
 
 // Operator mints + emails a fresh magic link to the assignment's vendor contact. Recipient is
 // checked before minting (no orphan token on a missing email). Bound with (jobId, assignmentId).
@@ -82,6 +83,47 @@ export async function sendDispatchAction(
         case "JOB_NOT_FOUND":
         case "STATUS_NOT_FOUND":
           return { error: "Could not send the dispatch — please reload and try again." };
+      }
+    }
+    throw err;
+  }
+}
+
+// Operator hand-advance: set the dispatch's status directly (vendor-called-in workflow). Bound
+// with assignmentId; reads toCode (+ optional note) from the form. Mirrors sendDispatchAction's
+// requireTenant + revalidate shape. The DRAFT/SENT guard + ASSIGNMENT_NOT_FOUND map to messages.
+export async function setAssignmentStatusAction(
+  assignmentId: string,
+  _prev: SetStatusState,
+  formData: FormData,
+): Promise<SetStatusState> {
+  const ctx = await requireTenant();
+  const toCode = String(formData.get("toCode") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (!toCode) return { error: "Pick a status." };
+
+  try {
+    const result = await setAssignmentStatus({
+      tenantId: ctx.activeTenant.tenantId,
+      assignmentId,
+      toCode,
+      actorUserId: ctx.user.id,
+      note,
+    });
+    revalidatePath(`/jobs/${result.jobId}/dispatch/${assignmentId}`);
+    revalidatePath(`/jobs/${result.jobId}`);
+    return result.changed
+      ? { info: `Status set to ${result.toCode}.` }
+      : { info: "Status unchanged." };
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "STATUS_NOT_OPERATOR_SETTABLE":
+          return { error: "Draft and Sent are set through the Send action, not here." };
+        case "STATUS_NOT_FOUND":
+          return { error: "That status is not valid." };
+        case "ASSIGNMENT_NOT_FOUND":
+          return { error: "This dispatch no longer exists." };
       }
     }
     throw err;

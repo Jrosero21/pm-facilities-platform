@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getAssignmentDetail } from "@/server/dispatch";
+import { listActiveDispatchStatuses } from "@/server/dispatch-reference";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { SendDispatchButton } from "@/components/send-dispatch-button";
+import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { listAssignmentTokens } from "@/server/magic-links/list-assignment-tokens";
@@ -49,6 +51,12 @@ export default async function AssignmentDetailPage({
     ? (await getVendorContact(tenantId, a.vendorContactId))?.email ?? null
     : null;
   const linkTokens = await listAssignmentTokens(tenantId, assignmentId);
+
+  // Operator hand-advance options: every active status EXCEPT DRAFT/SENT (Send-button territory)
+  // and the assignment's current status (no same-status pick). The server action backstops the guard.
+  const statusOptions = (await listActiveDispatchStatuses())
+    .filter((s) => s.code !== "DRAFT" && s.code !== "SENT" && s.code !== a.statusCode)
+    .map((s) => ({ code: s.code, name: s.name }));
 
   const facts: { label: string; value: string | null }[] = [
     { label: "Vendor", value: a.vendorName },
@@ -136,6 +144,13 @@ export default async function AssignmentDetailPage({
             Sending notifies the vendor and moves the job to Dispatched (if it was
             New or Scheduled).
           </p>
+        </div>
+      )}
+
+      {/* Operator hand-advance — set the dispatch status when a vendor calls/texts it in (not DRAFT). */}
+      {a.statusCode !== "DRAFT" && (
+        <div className="mt-6 max-w-sm rounded-lg border border-neutral-200 bg-white p-4">
+          <DispatchStatusPicker assignmentId={assignmentId} options={statusOptions} />
         </div>
       )}
 

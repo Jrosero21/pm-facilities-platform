@@ -469,3 +469,99 @@ export async function sendDispatch(
     throw new Error("Assignment send succeeded but row could not be reloaded.");
   return { assignment: reloaded, jobStatusAdvanced };
 }
+
+// ── Operator hand-advance — set a dispatch's status directly ────────────────────────────
+// The coordinator-driven counterpart to the vendor portal's performTransition: when a vendor
+// phones/texts in (instead of using the magic link), the operator moves the dispatch. FREE
+// MOVEMENT — no vendorScope (operator acts across all vendors) and no required-from guard (read
+// the current status as `from`, allow any `to`, allow re-open from a terminal status). PURE status
+// set: it writes ONLY the status + history + audit — it does NOT fabricate the vendor-side side
+// effects (check-in / check-out / ETA rows) that the genuine vendor transitions carry.
+//
+// Provenance: the history table has no actor column, so operator vs vendor is recorded in
+// audit_logs.metadata ({ actor:'operator', via:'operator_console' }) — same convention as the
+// vendor path's { actor:'vendor', via:... }.
+//
+// DRAFT / SENT are NOT settable here: DRAFT is the create-time state and DRAFT→SENT must go through
+// sendDispatch (which also stamps sent_at, dispatches the job, and fires the magic-link send). The
+// picker excludes them too; this is the server backstop.
+export async function setAssignmentStatus(input: {
+  tenantId: string;
+  assignmentId: string;
+  toCode: string;
+  actorUserId: string;
+  note?: string | null;
+}): Promise<{ changed: boolean; fromCode: string; toCode: string; jobId: string }> {
+  if (input.toCode === "DRAFT" || input.toCode === "SENT") {
+    throw new Error("STATUS_NOT_OPERATOR_SETTABLE");
+  }
+  const to = await getDispatchAssignmentStatusByCode(input.toCode);
+  if (!to) throw new Error("STATUS_NOT_FOUND");
+
+  let result: { changed: boolean; fromCode: string; toCode: string; jobId: string } = {
+    changed: false,
+    fromCode: input.toCode,
+    toCode: input.toCode,
+    jobId: "",
+  };
+
+  await db.transaction(async (tx) => {
+    const [assignment] = await tx
+      .select()
+      .from(jobVendorAssignments)
+      .where(
+        and(
+          eq(jobVendorAssignments.id, input.assignmentId),
+          eq(jobVendorAssignments.tenantId, input.tenantId),
+        ),
+      )
+      .for("update");
+    if (!assignment) throw new Error("ASSIGNMENT_NOT_FOUND");
+
+    // Resolve the current (from) status code for provenance + the same-status no-op.
+    const [fromStatus] = await tx
+      .select({ code: dispatchAssignmentStatuses.code })
+      .from(dispatchAssignmentStatuses)
+      .where(eq(dispatchAssignmentStatuses.id, assignment.currentStatusId))
+      .limit(1);
+    const fromCode = fromStatus?.code ?? "";
+    result = { changed: false, fromCode, toCode: input.toCode, jobId: assignment.jobId };
+
+    // Same-status no-op — no history/audit write.
+    if (assignment.currentStatusId === to.id) return;
+
+    await tx
+      .update(jobVendorAssignments)
+      .set({ currentStatusId: to.id })
+      .where(eq(jobVendorAssignments.id, input.assignmentId));
+
+    await tx.insert(jobVendorAssignmentStatusHistory).values({
+      tenantId: input.tenantId,
+      assignmentId: input.assignmentId,
+      fromStatusId: assignment.currentStatusId,
+      toStatusId: to.id,
+      changedByUserId: input.actorUserId,
+      note: input.note ?? null,
+    });
+
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "job_vendor_assignment.status_set",
+      targetType: "job_vendor_assignment",
+      targetId: input.assignmentId,
+      metadata: {
+        jobId: assignment.jobId,
+        vendorId: assignment.vendorId,
+        actor: "operator",
+        via: "operator_console",
+        fromCode,
+        toCode: input.toCode,
+      },
+    });
+
+    result = { changed: true, fromCode, toCode: input.toCode, jobId: assignment.jobId };
+  });
+
+  return result;
+}
