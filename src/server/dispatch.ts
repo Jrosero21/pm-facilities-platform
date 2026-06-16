@@ -7,7 +7,6 @@ import {
   auditLogs,
   dispatchAssignmentStatuses,
   jobEvents,
-  jobStatusHistory,
   jobStatuses,
   jobVendorAssignments,
   jobVendorAssignmentStatusHistory,
@@ -22,6 +21,7 @@ import { getVendor } from "@/server/vendors";
 import { getVendorLocation } from "@/server/vendor-locations";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
+import { advanceJobStatus } from "@/server/job-status";
 import { branchCoversTrade } from "@/server/vendor-trade-coverage";
 import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 
@@ -438,22 +438,16 @@ export async function sendDispatch(
 
     // 8. CONDITIONAL job-side advance — only from {NEW, SCHEDULED} (R-2a). Never
     //    regresses IN_PROGRESS; ON_HOLD stays ON_HOLD (explicit-transitions rule).
-    if (lockedCode && ADVANCE_FROM_JOB_CODES.includes(lockedCode)) {
-      await tx
-        .update(jobs)
-        .set({ currentStatusId: dispatchedId })
-        .where(
-          and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, assignment.jobId)),
-        );
-
-      await tx.insert(jobStatusHistory).values({
-        tenantId: input.tenantId,
-        jobId: assignment.jobId,
-        fromStatusId: lockedStatusId,
-        toStatusId: dispatchedId,
-        changedByUserId: input.actorUserId,
-      });
-
+    //    The status flip + history are the shared advanceJobStatus core (fromCodes gates
+    //    the forward-only rule); the job.dispatched audit + flag stay here (site-specific).
+    const { advanced } = await advanceJobStatus(tx, {
+      tenantId: input.tenantId,
+      jobId: assignment.jobId,
+      toCode: DISPATCHED_JOB_CODE,
+      fromCodes: ADVANCE_FROM_JOB_CODES,
+      actorUserId: input.actorUserId,
+    });
+    if (advanced) {
       await tx.insert(auditLogs).values({
         tenantId: input.tenantId,
         userId: input.actorUserId,

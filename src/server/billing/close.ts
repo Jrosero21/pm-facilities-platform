@@ -7,12 +7,12 @@ import {
   changeOrders,
   clientInvoices,
   jobEvents,
-  jobStatusHistory,
   jobStatuses,
   jobs,
   proposals,
   vendorInvoices,
 } from "@/server/schema";
+import { advanceJobStatus } from "@/server/job-status";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { getJobMargin } from "@/server/billing/margin";
 import { JobAlreadyBillingClosed } from "@/server/billing/errors";
@@ -66,17 +66,17 @@ export async function markBillingClosed(input: {
     if (job.statusId === closedBilled.id) throw new JobAlreadyBillingClosed(input.jobId);
 
     const now = new Date();
-    // jobs UPDATE: ONLY status + closed_at (first-close-wins). NEVER the job NTE column.
-    await tx
-      .update(jobs)
-      .set({ currentStatusId: closedBilled.id, closedAt: job.closedAt ?? now })
-      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)));
-
-    // Operational history (the Phase-4 inline pattern, replicated).
-    await tx.insert(jobStatusHistory).values({
-      tenantId: input.tenantId, jobId: input.jobId,
-      fromStatusId: job.statusId, toStatusId: closedBilled.id,
-      changedByUserId: input.actorUserId, note: input.note ?? null,
+    // Status flip + operational history via the shared advanceJobStatus core; closed_at rides in
+    // the SAME jobs update via extraSet (first-close-wins; NEVER the job NTE column). The
+    // already-closed guard above stays here — it THROWS, distinct from the helper's silent
+    // fromCodes skip, so the advance is unconditional (no fromCodes).
+    await advanceJobStatus(tx, {
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+      toCode: "CLOSED_BILLED",
+      actorUserId: input.actorUserId,
+      note: input.note ?? null,
+      extraSet: { closedAt: job.closedAt ?? now },
     });
     await tx.insert(jobEvents).values({
       tenantId: input.tenantId, jobId: input.jobId,
