@@ -20,6 +20,7 @@ import {
   tenantJobSequences,
   trades,
 } from "@/server/schema";
+import { advanceJobStatus } from "@/server/job-status";
 import { getClient } from "@/server/clients";
 import { getLocation } from "@/server/client-locations";
 import { getJobStatusByCode, getPriority } from "@/server/job-reference";
@@ -629,4 +630,74 @@ export async function hasActiveAssignment(tenantId: string, jobId: string): Prom
     )
     .limit(1);
   return rows.length > 0;
+}
+
+// ── CF-27.16 Piece 1 — ops→accounting handoff (mark a job ready to bill) ────────────────
+// The OPERATIONS inverse of markBillingClosed (close.ts): when ops considers the job done, this
+// moves it to PENDING_INVOICE = "ops is done, accounting bill the client". It's a PROMPT, not a
+// gate — it never blocks billing (any job is billable without this), and it's purely job-level
+// (advanceJobStatus flips status + writes job_status_history; dispatches + vendor invoices are
+// UNTOUCHED — the vendor/AP side is independent).
+//
+// Operator JUDGMENT — NO dispatch precondition (ops decides "done"; a slow vendor doesn't block).
+// Allowed from any NON-TERMINAL status except already-PENDING_INVOICE (so an on-hold job ops decides
+// is done is handoffable — NOT strict forward-only). The guard THROWS (mirrors markBillingClosed's
+// already-closed throw), distinct from advanceJobStatus's silent fromCodes skip.
+export const READY_TO_BILL_FROM_CODES = [
+  "NEW",
+  "SCHEDULED",
+  "DISPATCHED",
+  "IN_PROGRESS",
+  "ON_HOLD",
+] as const;
+
+/**
+ * Mark a job ready to bill (→ PENDING_INVOICE), operator-judgment ops→accounting handoff.
+ * Throws JOB_NOT_FOUND, JOB_NOT_HANDOFFABLE (already PENDING_INVOICE or in a terminal status).
+ */
+export async function markJobReadyToBill(input: {
+  tenantId: string;
+  jobId: string;
+  actorUserId: string | null;
+  note?: string | null;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [job] = await tx
+      .select({ statusId: jobs.currentStatusId, code: jobStatuses.code })
+      .from(jobs)
+      .innerJoin(jobStatuses, eq(jobStatuses.id, jobs.currentStatusId))
+      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)))
+      .for("update");
+    if (!job) throw new Error("JOB_NOT_FOUND");
+    if (!(READY_TO_BILL_FROM_CODES as readonly string[]).includes(job.code)) {
+      throw new Error("JOB_NOT_HANDOFFABLE"); // already PENDING_INVOICE or terminal
+    }
+
+    // Status flip + history via the shared writer (guard above → unconditional advance, no fromCodes).
+    await advanceJobStatus(tx, {
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+      toCode: "PENDING_INVOICE",
+      actorUserId: input.actorUserId,
+      note: input.note ?? null,
+    });
+
+    await tx.insert(jobEvents).values({
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+      eventType: "job.status_changed",
+      actorUserId: input.actorUserId,
+      summary: "Marked ready to bill — sent to accounting",
+      metadata: { fromStatusId: job.statusId, toStatus: "PENDING_INVOICE", reason: "ops_handoff" },
+    });
+
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "job.ready_to_bill",
+      targetType: "job",
+      targetId: input.jobId,
+      metadata: { note: input.note ?? null, fromStatusCode: job.code },
+    });
+  });
 }

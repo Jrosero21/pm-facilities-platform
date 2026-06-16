@@ -42,7 +42,9 @@ import { VendorInvoiceList } from "@/components/vendor-invoice-list";
 import { ClientInvoiceList } from "@/components/client-invoice-list";
 import { LinkedPayments } from "@/components/linked-payments";
 import { CloseBillingButton } from "@/components/close-billing-button";
+import { MarkReadyToBillButton } from "@/components/mark-ready-to-bill-button";
 import { isAccountingRole } from "@/server/billing/role-gates";
+import { canSeeOperations } from "@/server/role-predicates";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 import { listInvoiceDraftsForJobDetailed } from "@/server/agents/invoice-creator/drafts";
 import { listProposalDraftsForJobDetailed } from "@/server/agents/proposal-generator/drafts";
@@ -113,6 +115,13 @@ export default async function JobDetailPage({
   // safe defense-in-depth (not the enforcement).
   const canAccount = isAccountingRole(ctx.roleKeys, ctx.isSuperAdmin);
   const alreadyBillingClosed = job.statusName === "Closed (Billed)";
+  // CF-27.16 Piece 1 — ops→accounting handoff eligibility (by status name; the action is the real
+  // backstop — defense-in-depth, mirroring the alreadyBillingClosed name-compare). Eligible = a
+  // non-terminal job not yet handed off (the allowed-from set: New/Scheduled/Dispatched/In Progress/On Hold).
+  const canOperate = canSeeOperations(ctx);
+  const alreadyReadyToBill = job.statusName === "Pending Invoice";
+  const handoffTerminalNames = new Set(["Completed", "Cancelled", "Closed", "Closed (Billed)"]);
+  const eligibleForHandoff = !alreadyReadyToBill && !handoffTerminalNames.has(job.statusName);
   const notesById = Object.fromEntries(notes.map((n) => [n.id, n.body]));
   const addContact = createJobContactAction.bind(null, id);
   const addNote = createJobNoteAction.bind(null, id);
@@ -485,6 +494,22 @@ export default async function JobDetailPage({
         </div>
         <LinkedPayments payments={payments} />
       </div>
+
+      {/* CF-27.16 Piece 1 — ops→accounting handoff (operations-gated; the ops inverse of Close billing).
+          A PROMPT, not a gate — surfaces the job for accounting; never blocks billing. */}
+      {(canOperate || alreadyReadyToBill) && (eligibleForHandoff || alreadyReadyToBill) && (
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-neutral-900">Ready to bill</h2>
+          <div className="mt-3">
+            <MarkReadyToBillButton
+              jobId={id}
+              canOperate={canOperate}
+              alreadyReady={alreadyReadyToBill}
+              eligible={eligibleForHandoff}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Billing close (8c.11e — accounting-gated; readiness shown in the Billing section above) */}
       <div className="mt-8">

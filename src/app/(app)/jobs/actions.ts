@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
-import { createJob, updateJob, type JobPatch } from "@/server/jobs";
+import { canSeeOperations } from "@/server/role-predicates";
+import { createJob, updateJob, markJobReadyToBill, type JobPatch } from "@/server/jobs";
 // canonicalizeNte lives in the pure money util (NOT here) — every export of a "use server" module
 // must be an async function, so a sync helper cannot be exported from this file (v2.11.0 fix).
 import { canonicalizeNte } from "@/server/billing/money";
@@ -178,4 +179,42 @@ export async function updateJobAction(
 
   revalidatePath(`/jobs/${jobId}`);
   redirect(`/jobs/${jobId}`);
+}
+
+// ── CF-27.16 Piece 1 — ops→accounting handoff action ───────────────────────────────────
+export type ReadyToBillState = { error: string } | null;
+
+// Operator marks a job ready to bill (→ PENDING_INVOICE) — the ops→accounting handoff. OPERATIONS-
+// gated (canSeeOperations), the inverse of the accounting-gated billing-close. A PROMPT, not a gate:
+// it surfaces the job for accounting; it never blocks billing. note is optional (FormData). Bound (jobId).
+export async function markJobReadyToBillAction(
+  jobId: string,
+  _prev: ReadyToBillState,
+  formData: FormData,
+): Promise<ReadyToBillState> {
+  const ctx = await requireTenant();
+  if (!canSeeOperations(ctx)) {
+    return { error: "Marking a job ready to bill requires the operator role." };
+  }
+  const note = String(formData.get("note") ?? "").trim() || null;
+  try {
+    await markJobReadyToBill({
+      tenantId: ctx.activeTenant.tenantId,
+      jobId,
+      actorUserId: ctx.user.id,
+      note,
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "JOB_NOT_FOUND":
+          return { error: "Job not found in this tenant." };
+        case "JOB_NOT_HANDOFFABLE":
+          return { error: "This job is already sent to accounting or closed — can't send it again." };
+      }
+    }
+    throw err;
+  }
+  revalidatePath(`/jobs/${jobId}`);
+  return null;
 }

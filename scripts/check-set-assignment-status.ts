@@ -119,7 +119,7 @@ async function main() {
     // 3) AUDIT provenance actor=operator / via=operator_console / fromCode/toCode present
     const [aud] = await db.select({ metadata: auditLogs.metadata, action: auditLogs.action })
       .from(auditLogs).where(and(eq(auditLogs.tenantId, tId), eq(auditLogs.targetId, aId), eq(auditLogs.action, "job_vendor_assignment.status_set")));
-    const meta: any = typeof aud?.metadata === "string" ? JSON.parse(aud.metadata) : aud?.metadata;
+    const meta = (typeof aud?.metadata === "string" ? JSON.parse(aud.metadata) : aud?.metadata) as Record<string, unknown> | null;
     check("audit provenance actor=operator / via=operator_console / fromCode=ACCEPTED toCode=ON_SITE",
       !!meta && meta.actor === "operator" && meta.via === "operator_console" && meta.fromCode === "ACCEPTED" && meta.toCode === "ON_SITE",
       JSON.stringify(meta));
