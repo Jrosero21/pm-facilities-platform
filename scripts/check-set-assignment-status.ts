@@ -33,7 +33,7 @@ async function main() {
   const { v7: uuidv7 } = await import("uuid");
   const { db } = await import("@/server/db");
   const {
-    tenants, clients, clientLocations, jobs, jobStatuses, users, trades, vendors,
+    tenants, clients, clientLocations, jobs, jobStatuses, jobStatusHistory, users, trades, vendors,
     jobVendorAssignments, jobVendorAssignmentStatusHistory, auditLogs,
   } = await import("@/server/schema");
   const { eq, and, sql } = await import("drizzle-orm");
@@ -44,6 +44,8 @@ async function main() {
     await db.transaction(async (tx) => {
       await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       await tx.delete(jobVendorAssignmentStatusHistory).where(eq(jobVendorAssignmentStatusHistory.tenantId, id));
+      // The single-vendor auto-follow advances the job status → a job_status_history row.
+      await tx.delete(jobStatusHistory).where(eq(jobStatusHistory.tenantId, id));
       await tx.delete(auditLogs).where(eq(auditLogs.tenantId, id));
       await tx.delete(jobVendorAssignments).where(eq(jobVendorAssignments.tenantId, id));
       await tx.delete(jobs).where(eq(jobs.tenantId, id));

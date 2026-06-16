@@ -48,6 +48,7 @@
     "db:check:cost-plus-doc-gate": "tsx --env-file=.env.local --conditions=react-server scripts/check-cost-plus-doc-gate.ts",
     "db:check:billing-close": "tsx --env-file=.env.local --conditions=react-server scripts/check-billing-close.ts",
     "db:check:set-assignment-status": "tsx --env-file=.env.local --conditions=react-server scripts/check-set-assignment-status.ts",
+    "db:check:dispatch-job-follow": "tsx --env-file=.env.local --conditions=react-server scripts/check-dispatch-job-follow.ts",
     "db:check:operator-enters-hours": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-enters-hours.ts"
   },
   "dependencies": {
