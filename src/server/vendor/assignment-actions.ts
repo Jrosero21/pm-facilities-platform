@@ -11,6 +11,7 @@ import {
   auditLogs,
 } from "@/server/schema";
 import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
+import { applyDispatchJobFollow } from "@/server/job-status";
 import { type VendorActor, LINKLESS_ACTOR_LABEL } from "@/server/vendor/types";
 
 // ── Phase 10 batch 10k-actions — VENDOR ASSIGNMENT TRANSITIONS ──────────────
@@ -113,6 +114,15 @@ async function performTransition(
     });
 
     if (opts.sideEffect) await opts.sideEffect(tx, assignment);
+
+    // Single-vendor auto-follow — carry the job forward if this is the job's one active dispatch.
+    // A linkless/magic-link vendor has no user id → a null-actor (system) job advance, intended.
+    await applyDispatchJobFollow(tx, {
+      tenantId: input.tenantId,
+      jobId: assignment.jobId,
+      dispatchToCode: to.code,
+      actorUserId: changedByUserId,
+    });
 
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId,

@@ -21,7 +21,7 @@ import { getVendor } from "@/server/vendors";
 import { getVendorLocation } from "@/server/vendor-locations";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
-import { advanceJobStatus } from "@/server/job-status";
+import { advanceJobStatus, applyDispatchJobFollow } from "@/server/job-status";
 import { branchCoversTrade } from "@/server/vendor-trade-coverage";
 import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 
@@ -542,6 +542,14 @@ export async function setAssignmentStatus(input: {
       toStatusId: to.id,
       changedByUserId: input.actorUserId,
       note: input.note ?? null,
+    });
+
+    // Single-vendor auto-follow — carry the job forward if this is the job's one active dispatch.
+    await applyDispatchJobFollow(tx, {
+      tenantId: input.tenantId,
+      jobId: assignment.jobId,
+      dispatchToCode: input.toCode,
+      actorUserId: input.actorUserId,
     });
 
     await tx.insert(auditLogs).values({
