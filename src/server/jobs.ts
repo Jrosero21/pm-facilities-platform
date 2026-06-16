@@ -63,11 +63,12 @@ export type JobListItem = {
  */
 export async function listJobs(
   tenantId: string,
-  filters?: { statusId?: string; priorityId?: string },
+  filters?: { statusId?: string; priorityId?: string; clientId?: string },
 ): Promise<JobListItem[]> {
   const conditions = [eq(jobs.tenantId, tenantId), eq(jobs.isArchived, false)];
   if (filters?.statusId) conditions.push(eq(jobs.currentStatusId, filters.statusId));
   if (filters?.priorityId) conditions.push(eq(jobs.priorityId, filters.priorityId));
+  if (filters?.clientId) conditions.push(eq(jobs.clientId, filters.clientId));
 
   return db
     .select({
@@ -96,9 +97,9 @@ export async function listJobs(
  */
 export async function resolveJobsFilters(
   tenantId: string,
-  params: { status?: string; priority?: string },
-): Promise<{ statusId?: string; priorityId?: string }> {
-  const out: { statusId?: string; priorityId?: string } = {};
+  params: { status?: string; priority?: string; client?: string },
+): Promise<{ statusId?: string; priorityId?: string; clientId?: string }> {
+  const out: { statusId?: string; priorityId?: string; clientId?: string } = {};
   if (params.status) {
     const rows = await db
       .select({ id: jobStatuses.id })
@@ -114,6 +115,16 @@ export async function resolveJobsFilters(
       .where(and(eq(priorities.tenantId, tenantId), eq(priorities.id, params.priority)))
       .limit(1);
     if (rows.length) out.priorityId = rows[0].id;
+  }
+  if (params.client) {
+    // Tenant-scoped validation (mirrors priority); a stale/foreign client id falls through
+    // to an unfiltered dimension, never a 404.
+    const rows = await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(and(eq(clients.tenantId, tenantId), eq(clients.id, params.client)))
+      .limit(1);
+    if (rows.length) out.clientId = rows[0].id;
   }
   return out;
 }
