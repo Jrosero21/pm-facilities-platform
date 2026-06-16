@@ -857,3 +857,25 @@ by-name; commits `93c2c68` migration + `1eb0555` feature, local/unpushed at writ
 and the future SLA `due_at`. Needs **both** the JS business-hours logic AND `client_location_hours` data
 (empty in prod). The rest of the open bank above (CF-27.16, CF-iii.1, presigned-PUT, vendor-line Unit field)
 **rolls forward unchanged**.
+
+---
+
+## Per-dispatch status-tracking build — new banked items
+
+Per-dispatch (per-trip) status tracking shipped: `PENDING_INVOICE` job status (seed + reflow, sandbox+prod),
+shared `advanceJobStatus`, operator hand-advance (`setAssignmentStatus` + picker), and single-vendor
+auto-follow (`ON_SITE→IN_PROGRESS`, `WORK_COMPLETE→PENDING_INVOICE`). Full detail in
+`docs/per-dispatch-status-tracking/`. Commits `0959aa2`, `b9b5792`, `120f8f4`, `0dcd202`, `377a9b5`,
+`d3db56c`, `a9d722a` (local/unpushed at writing). New bank:
+
+| Id | Item | Why deferred |
+|---|---|---|
+| **PD-1** | **Work-order PDF packet + resend-to-vendor** — assemble a layered work-order PDF (tenant SOPs + SOW + client SOPs + sign-off sheet) and a send/**resend**-to-vendor action, independent of dispatch status. (Resend matters operationally — vendors lose work orders.) | Out of this build's scope; needs the PDF-assembly + storage/send wiring. |
+| **PD-2** | **Cross-job "dispatches by status" operator view** — a tenant-wide list (e.g. all dispatches at On Site / not accepted), not just per-job. | The deferred fast follow-on; per-assignment controls shipped first. |
+| **PD-3** | **Multi-vendor job-status coupling rule** — how a job's status resolves when several active dispatches sit at different stages (the auto-follow only fires at exactly one active dispatch today). | Genuinely ambiguous; needs a product rule. Single-vendor covers the common case. |
+| **PD-4** | **Tenant-configurable reference-data admin UI** — manage job/dispatch statuses, trades, priorities per tenant (add / rename / reorder). | Reference data is MVP seed-managed; lookup-by-code already insulates the platform, so this is an addition, not a rewrite. |
+
+**CF-27.16 (client-billing as a work-unit/dispatch entity) — STILL BANKED, now UNBLOCKED** by per-dispatch
+status + the `PENDING_INVOICE` seam: a single vendor's `WORK_COMPLETE` lands the job at `PENDING_INVOICE`, the
+natural trigger/handoff for invoicing → `CLOSED_BILLED`. The rest of the open bank (CF-iii.1, presigned-PUT,
+vendor-line Unit field, FU-1..FU-7, CF-19.1) **rolls forward unchanged**.
