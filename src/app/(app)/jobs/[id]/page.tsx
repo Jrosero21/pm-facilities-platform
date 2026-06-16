@@ -44,7 +44,8 @@ import { LinkedPayments } from "@/components/linked-payments";
 import { CloseBillingButton } from "@/components/close-billing-button";
 import { MarkReadyToBillButton } from "@/components/mark-ready-to-bill-button";
 import { isAccountingRole } from "@/server/billing/role-gates";
-import { canSeeOperations } from "@/server/role-predicates";
+import { canSeeOperations, canSeeFinancials } from "@/server/role-predicates";
+import { billJobAction } from "@/app/(app)/jobs/bill-actions";
 import { ScopeDraftsSection } from "@/components/scope-drafts-section";
 import { listInvoiceDraftsForJobDetailed } from "@/server/agents/invoice-creator/drafts";
 import { listProposalDraftsForJobDetailed } from "@/server/agents/proposal-generator/drafts";
@@ -476,7 +477,21 @@ export default async function JobDetailPage({
 
       {/* Client invoices (AR) (8c.11d) */}
       <div className="mt-8">
-        <h2 className="text-sm font-semibold text-neutral-900">Client invoices (AR)</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-neutral-900">Client invoices (AR)</h2>
+          {/* CF-27.16 Piece 3 — job-first "Bill this job": a pre-filled draft from all work-to-date
+              (no vendor-invoice precondition). Financial users only; review/trim/send on the draft. */}
+          {canSeeFinancials(ctx) && (
+            <form action={billJobAction.bind(null, id)}>
+              <button
+                type="submit"
+                className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+              >
+                Bill this job
+              </button>
+            </form>
+          )}
+        </div>
         <div className="mt-3">
           <ClientInvoiceList clientInvoices={clientInvoices} jobId={id} />
         </div>

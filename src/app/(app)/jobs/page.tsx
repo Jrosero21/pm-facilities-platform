@@ -5,6 +5,7 @@ import { canSeeFinancials } from "@/server/role-predicates";
 import { getJobStatusByCode } from "@/server/job-reference";
 import { getReadyToBillRows, type ReadyToBillRow } from "@/server/analytics/ready-to-bill";
 import { listClients } from "@/server/clients";
+import { billJobAction } from "@/app/(app)/jobs/bill-actions";
 
 // (9e) searchParams is async (a Promise) per Next 15 — first searchParams-driven route in the app
 // (manifest §6 establishes the convention). ?status= / ?priority= / ?client= carry validated entity
@@ -130,6 +131,7 @@ export default async function JobsPage({
                     <th className="px-4 py-2 font-medium">Billed</th>
                     <th className="px-4 py-2 font-medium">Margin</th>
                     <th className="px-4 py-2 font-medium">Vendors</th>
+                    <th className="px-4 py-2 font-medium">Bill</th>
                   </>
                 )}
               </tr>
@@ -158,6 +160,17 @@ export default async function JobsPage({
                       <td className="px-4 py-2 text-neutral-600">${(j as ReadyToBillRow).billedSoFar}</td>
                       <td className="px-4 py-2 text-neutral-600">${(j as ReadyToBillRow).margin}</td>
                       <td className="px-4 py-2 text-neutral-600">{(j as ReadyToBillRow).vendorCount}</td>
+                      <td className="px-4 py-2">
+                        {/* CF-27.16 Piece 3 — job-first "Bill this job": creates a pre-filled draft. */}
+                        <form action={billJobAction.bind(null, j.id)}>
+                          <button
+                            type="submit"
+                            className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 hover:border-neutral-500"
+                          >
+                            Bill
+                          </button>
+                        </form>
+                      </td>
                     </>
                   )}
                 </tr>
