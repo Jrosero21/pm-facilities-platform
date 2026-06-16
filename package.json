@@ -49,6 +49,7 @@
     "db:check:billing-close": "tsx --env-file=.env.local --conditions=react-server scripts/check-billing-close.ts",
     "db:check:set-assignment-status": "tsx --env-file=.env.local --conditions=react-server scripts/check-set-assignment-status.ts",
     "db:check:dispatch-job-follow": "tsx --env-file=.env.local --conditions=react-server scripts/check-dispatch-job-follow.ts",
+    "db:check:mark-ready-to-bill": "tsx --env-file=.env.local --conditions=react-server scripts/check-mark-ready-to-bill.ts",
     "db:check:operator-enters-hours": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-enters-hours.ts"
   },
   "dependencies": {
