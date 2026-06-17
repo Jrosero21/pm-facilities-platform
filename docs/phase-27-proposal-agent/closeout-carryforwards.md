@@ -879,3 +879,77 @@ auto-follow (`ON_SITE→IN_PROGRESS`, `WORK_COMPLETE→PENDING_INVOICE`). Full d
 status + the `PENDING_INVOICE` seam: a single vendor's `WORK_COMPLETE` lands the job at `PENDING_INVOICE`, the
 natural trigger/handoff for invoicing → `CLOSED_BILLED`. The rest of the open bank (CF-iii.1, presigned-PUT,
 vendor-line Unit field, FU-1..FU-7, CF-19.1) **rolls forward unchanged**.
+
+---
+
+### CF-27.16 SHIPPED v2.21.0 (billing rethink: job-first, work-driven)
+
+**THE FIX (what was antiquated).** Client billing used to key off the vendor-invoice **document**: the AI
+invoice-creator drafted FROM a specific vendor invoice, and the launch button sat on the per-vendor-invoice
+row. Billing is now **JOB-FIRST / WORK-DRIVEN**. A job reaches the ops→accounting handoff, then accounting
+bills the **JOB**, rolling up its dispatches' work + vendor costs. Vendor invoices are demoted to cost
+**INPUTS** for margin — never the trigger and never a gate.
+
+**OPERATOR MODEL (the spine).** Vendor side (AP) is per-dispatch and **independent** — never gated on job
+status, so a slow Vendor B doesn't block billing the rest. `PENDING_INVOICE` is the **ops→accounting handoff**
+(job-level, a prompt not a gate). Client side (AR) bills the **JOB** — mostly one invoice/job, but
+multiple-invoices-per-job and bill-an-open-job are supported. **Split BY PORTION = BY DISPATCH.**
+
+**THREE PIECES (all harnessed + live-verified).**
+
+- **Piece 1 — ops→accounting handoff (`markJobReadyToBill` → `PENDING_INVOICE`).** A focused
+  operations-gated action (the ops inverse of `markBillingClosed`); operator-judgment with **NO dispatch
+  precondition** — multi-vendor jobs are handoffable with incomplete dispatches; purely job-level
+  (dispatches / vendor invoices untouched); allowed-from any non-terminal status except already-pending;
+  light confirm (reversible); never-block. Harness `db:check:mark-ready-to-bill` **14/14** (H6 multi-vendor
+  untouched; H7 never-block). Live-verified.
+- **Piece 2 — Ready-to-invoice view (client-aware) on the jobs list.** Additive, `canSeeFinancials`-gated. A
+  chip sets `?status=PENDING_INVOICE` (the existing dashboard-card filter mechanism), reveals a **CLIENT
+  filter** (accounting batches BY CLIENT — shared requirements), and swaps in billing columns
+  (Handoff | Cost | Billed | Margin | Vendors). **Status IS the queue membership** — jobs leave the view when
+  billing closes. Base jobs list untouched for operators. Harness `db:check:ready-to-bill-view` **15/15**.
+  Live-verified (handoff → appears in view, end-to-end with Piece 1).
+- **Piece 3 — job-first "Bill this job" entry.** A deterministic **pre-filled MANUAL** client invoice — NOT
+  an agent reshape — which sidesteps `invoice_drafts.vendor_invoice_id` NOT-NULL (no migration) and reuses
+  `addClientInvoiceLineItem` (the agreed-rate + provenance authority). Pre-fills ALL work-to-date; the
+  operator removes what they're not billing (= the split, via `removeClientInvoiceLineItem`). never-block: no
+  vendor-invoice precondition (Job #4 — work done, no vendor invoice — is still billable; no resolvable rate
+  → $0 line, not a failure). Harness `db:check:job-bill-prefill` **11/11**. Live-verified ("Bill this job" →
+  draft for Job #4 no-invoice + Job #3 multi-invoice; the gate+redirect wrapper confirmed in-browser). Plus a
+  **UX polish**: the read-only client-invoice line row now shows the line's **TRADE** (e.g.
+  "Labor — Sunbelt HVAC (HVAC) · HVAC") so each line's trade is unambiguous at a glance (display-only;
+  surfaced after a live-verify misread the trade against the add-new-line form's default).
+
+**BILLING-MODEL MATRIX (all client-safe — the durable rules).**
+
+| Model | Labor | Materials / lump | Vendor cost exposed? |
+|---|---|---|---|
+| **rate_sheet** | AGREED RATE (never vendor cost) | $0 — operator prices via judgment | No |
+| **cost_plus** | vendor cost + markup | vendor cost + markup | **Yes** — the ONLY model that exposes cost (contractual; clients shown cost by agreement) |
+| **flat** | $0 — operator enters agreed amount | $0 | No |
+
+`rate_sheet` + `flat` **NEVER** bill at the vendor cost **NOR leak it into the client-visible line
+DESCRIPTION** (the cost-privacy guard — caught in live-verify, harness P7). A no-invoice dispatch →
+agreed-rate line with **BLANK hours** (the CF-27.15 shape), `rate_sheet`-only by construction.
+
+**MULTI-TRADE FIX (`84aac6f`, caught by browser-verify).** A line's trade now comes from the **DISPATCH's
+matched trade** (the trade that did the work), not the job's primary trade — so a multi-trade job bills each
+line at the correct trade's agreed rate (HVAC work → HVAC rate, not the job-primary plumbing rate).
+`listAssignmentsForJob` now returns `matchedTradeId`; both prefill branches use it (fall back to primary only
+if absent). The harness's old seed implicitly asserted the BUG — corrected to prove dispatch-trade sourcing.
+Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
+
+**BANKED FUTURES (roll forward).**
+
+| Id | Item |
+|---|---|
+| **CF-27.16-portion** | A dedicated portion-**PICKER** (select-to-include). Pre-fill-all + remove already gives the split; the picker is polish. |
+| **CF-27.16-batch** | **BATCH INVOICING** (the endgame Jonny described) — one-click invoice a whole client-filtered batch (mass-create for all ready-to-invoice jobs for a client that MEET CRITERIA). **PREREQ:** a per-job "billing-ready per this client's requirements" check (portal upload, sign-off where required, proposal generated, the cost-plus doc gate — already a "client requirement" primitive). Piece 2's client-filtered view + Piece 3's `billJobAction` ARE its foundation. |
+| **CF-27.16-opt1** | Batched `GROUP BY job_id` margin rollup (replace the per-row N+1 in `getReadyToBillRows`) when the ready-to-invoice list routinely runs large (Jonny's ~50-jobs/client batches). |
+| **CF-27.16-agent-trade** | The v2.16 `runInvoiceCreator` (agent path) has the SAME job-primary-trade behavior on its itemized labor lines (now the secondary path; lower urgency). Fix it OR retire the per-vendor-invoice agent trigger (job-first is now primary) — either resolves it. |
+| **CF-27.16-addform-default** (minor) | The add-NEW-line form on the client invoice defaults its trade to the JOB PRIMARY trade; on a multi-trade job that's arguably a poor default (could default to blank "— select trade —"). Pre-existing, defensible elsewhere, low priority. |
+
+**NOTE (process):** the lint-gate gap — the v2.20 per-dispatch batches gated `tsc` + `build` but not `lint`
+(fixed `scripts/check-set-assignment-status.ts` in Piece 1). Ensure the gate sequence includes `pnpm lint`.
+
+**STILL BANKED (unchanged):** CF-iii.1 (R2 config — Jonny), presigned-PUT, vendor-line edit-form Unit field.
