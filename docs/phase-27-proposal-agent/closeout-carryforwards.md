@@ -41,6 +41,13 @@ No other inherited item is retired by Phase 27 — **no evidence** supports one.
 correction source* feeding Phase 25 — `proposalCorrectionPairs` — but **resolves none** of
 CF-25.1–25.4, and resolves none of CF-26.1/26.2.)
 
+**CF-20.3 — Roadmap §6/§9 CF-13.4 doc-correction — DISCHARGED (by the CF-20.1 sub-feature, post-Phase-27).**
+The §6/§9 text already reads correctly: Phase 20 retires **FB-10a.4** (vendor photos), **NOT CF-13.4**
+(the email-attachments backend, which stays open). No roadmap edit was required — the correction CF-20.3
+called for is already present. Relocated here from the Phase-20 "(open)" table: it is fully closed, not
+open. (The standing §6/§9 over-attribution watchpoint below still lists CF-20.3 — that guard is
+correctly persistent and is left untouched.)
+
 ## New Phase-27 banked items (open)
 
 | Id | Item | What's needed | Why deferred |
@@ -130,9 +137,9 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 ### Phase-20 banked items (open)
 | Id | Item |
 |---|---|
-| CF-20.1 | Operator-side attachment reader + photo viewing. |
+| CF-20.1 | Operator-side attachment reader + photo viewing. **BUILD-COMPLETE** via the CF-20.1 sub-feature (`docs/cf-20-1-operator-photo-viewing/`) — tenant+job-scoped reader (`listJobPhotos`/`getJobPhotoUrl`, no-existence-leak) + thumbnail panel on the job-detail page; `db:check:job-photos` 15/15 green. **Retirement pending the R2 live-verify** (an operator rendering a real photo post-R2, gated by CF-iii.1) — NOT fully retired. |
+| CF-20.1b | *(newly banked)* Cross-job vendor-photo feed in the Phase-18 review inbox. Deferred by decision; the per-job job-detail panel discharges the CF-20.1 spirit. |
 | CF-20.2 | Orphan-object sweep (storage keys ↔ `job_attachments.storage_key`). |
-| CF-20.3 | Roadmap §6/§9 CF-13.4 doc-correction (conflated email-attachments backend with FB-10a.4 vendor photos). |
 | — (soft) | `vendor_documents` could reuse the storage adapter; FB-10a.4 legacy-placeholder backfill not performed. |
 
 ### Phase-19 banked items (open)
