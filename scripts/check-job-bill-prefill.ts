@@ -145,10 +145,12 @@ async function main() {
       await db.insert(jobs).values({ id, tenantId: tId, jobNumber: ++jn, clientId, clientLocationId: locId, primaryTradeId: tradeId, currentStatusId: inProg.id, problemDescription: "jbp" });
       return id;
     };
-    const mkAssign = async (jobId: string, statusId: string) => {
+    // matchedTradeId defaults to HANDY (the rated trade). The line trade now keys off the DISPATCH's
+    // matched trade, so the no-rate case must seed a dispatch whose trade has NO client_rate (ELEC).
+    const mkAssign = async (jobId: string, statusId: string, tradeId: string = handy.id) => {
       const id = uuidv7();
       await db.insert(jobVendorAssignments).values({ id, tenantId: tId, jobId, vendorId, currentStatusId: statusId,
-        matchedTradeId: handy.id, matchedTradeWasPrimary: true, tightestGeoAtDispatch: "postal_code", matchedGeoTypesAtDispatch: ["postal_code"], complianceStatusAtDispatch: "ok" });
+        matchedTradeId: tradeId, matchedTradeWasPrimary: true, tightestGeoAtDispatch: "postal_code", matchedGeoTypesAtDispatch: ["postal_code"], complianceStatusAtDispatch: "ok" });
       return id;
     };
     const mkVendorInvoice = async (jobId: string, assignmentId: string, lines: { category: string; description: string; quantity: string; unit: string | null; unitPrice: string }[]) => {
@@ -184,9 +186,11 @@ async function main() {
     const aFLAT = await mkAssign(jFLAT, accepted.id);
     await mkVendorInvoice(jFLAT, aFLAT, [{ category: "labor", description: "Flat job work", quantity: "1", unit: null, unitPrice: "70" }]);
 
-    // no-rate RS job: primary trade ELEC (no client_rate), one dispatch, no vendor invoice
-    const jNoRate = await mkJob(cRS, lRS, elec.id);
-    await mkAssign(jNoRate, wc.id);
+    // no-rate RS job: job PRIMARY trade = HANDY (rated 95), but the DISPATCH's trade = ELEC (no
+    // client_rate). The line must key off the DISPATCH trade → no rate → $0. A non-$0 here would mean
+    // it wrongly used the job primary (the bug). So $0 PROVES the line uses the trade that did the work.
+    const jNoRate = await mkJob(cRS, lRS, handy.id);
+    await mkAssign(jNoRate, wc.id, elec.id);
 
     // ════ buildJobBillPrefill ════
     const pRS = await buildJobBillPrefill(tId, jRS);

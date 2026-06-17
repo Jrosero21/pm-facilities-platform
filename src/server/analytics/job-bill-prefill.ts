@@ -66,6 +66,11 @@ export async function buildJobBillPrefill(tenantId: string, jobId: string): Prom
   const invoicedAssignmentIds = new Set(
     vendorInvoices.map((vi) => vi.assignmentId).filter((x): x is string => x != null),
   );
+  // The agreed rate must resolve for the TRADE THAT DID THE WORK — the dispatch's matched trade —
+  // NOT the job's primary trade (on a multi-trade job they differ: HVAC work billed at the plumbing
+  // rate is wrong). Each dispatch carries its matched trade; map it by assignment id so a vendor
+  // invoice (linked via assignment_id) and the no-invoice line both key off the right trade.
+  const tradeByAssignment = new Map(dispatches.map((d) => [d.id, d.matchedTradeId]));
 
   // 1. Lines from each vendor invoice's lines (the cost basis / agreed-rate treatment).
   for (const vi of vendorInvoices) {
@@ -96,24 +101,27 @@ export async function buildJobBillPrefill(tenantId: string, jobId: string): Prom
       );
       continue;
     }
+    // The trade that did THIS vendor invoice's work — the linked dispatch's matched trade — drives the
+    // agreed-rate lookup; fall back to the job primary only when the invoice has no dispatch.
+    const viTradeId = (vi.assignmentId ? tradeByAssignment.get(vi.assignmentId) : null) ?? primaryTradeId;
     for (const vl of vlines) {
       const category = vl.category;
       const rateType = defaultRateTypeForCategory(category);
-      if (isRateSheet && rateType && primaryTradeId) {
+      if (isRateSheet && rateType && viTradeId) {
         // rate_sheet LABOR/TRIP → AGREED RATE (contractual), NEVER vendor cost. unitPrice omitted ⇒
         // addClientInvoiceLineItem resolves the agreed rate + records provenance + forces markup null.
         //  - itemized (explicit time unit): trust the vendor hours as the quantity.
         //  - ambiguous (no time unit, qty not trustable as hours): quantity "1" — the operator enters
         //    the real hours (CF-27.15 shape: rate known, hours unknown). Same as the no-invoice line.
-        // If no agreed rate resolves for the trade, billJobAction falls the line back to $0 (operator
-        // prices) — NEVER to the vendor cost.
+        // The rate resolves for viTradeId (the dispatch's trade). If no agreed rate resolves for that
+        // trade, billJobAction falls the line back to $0 (operator prices) — NEVER to the vendor cost.
         const itemized = isTimeUnit(vl.unit);
         lines.push({
           category,
           description: vl.description,
           quantity: itemized ? vl.quantity : "1",
           unit: itemized ? vl.unit : null,
-          tradeId: primaryTradeId,
+          tradeId: viTradeId,
           rateType,
         });
       } else if (isRateSheet) {
@@ -142,13 +150,16 @@ export async function buildJobBillPrefill(tenantId: string, jobId: string): Prom
   }
 
   // 2. Dispatches with NO vendor invoice yet → one agreed-rate labor line each (never-block; Job #4).
+  //    tradeId is the DISPATCH's matched trade (the trade that did the work) — same source as the
+  //    description's trade, so the dropdown matches and the correct rate resolves; fall back to the job
+  //    primary only if the dispatch somehow has no trade.
   for (const d of dispatches) {
     if (invoicedAssignmentIds.has(d.id)) continue;
     lines.push({
       category: "labor",
       description: `Labor — ${d.vendorName}${d.matchedTradeName ? ` (${d.matchedTradeName})` : ""}`,
       quantity: "1",
-      tradeId: primaryTradeId,
+      tradeId: d.matchedTradeId ?? primaryTradeId,
       rateType: defaultRateTypeForCategory("labor") ?? undefined,
     });
   }

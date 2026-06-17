@@ -78,6 +78,7 @@ export async function listAssignmentsForJob(tenantId: string, jobId: string) {
       statusCode: dispatchAssignmentStatuses.code,
       statusName: dispatchAssignmentStatuses.name,
       statusCategory: dispatchAssignmentStatuses.category,
+      matchedTradeId: jobVendorAssignments.matchedTradeId,
       matchedTradeName: trades.name,
       matchedTradeWasPrimary: jobVendorAssignments.matchedTradeWasPrimary,
       tightestGeoAtDispatch: jobVendorAssignments.tightestGeoAtDispatch,
