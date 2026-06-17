@@ -54,6 +54,8 @@ import { ProposalDraftsSection } from "@/components/proposal-drafts-section";
 import { GenerateProposalButton } from "@/components/generate-proposal-button";
 import { isJobStalled } from "@/server/analytics/stalled-jobs";
 import { tierBadge } from "@/components/dashboard/tier-colors";
+import { listJobPhotos, getJobPhotoUrl } from "@/server/job-attachments";
+import { JobPhotosPanel, type JobPhotoTile } from "@/components/job-photos-panel";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -95,6 +97,22 @@ export default async function JobDetailPage({
       // 9f — per-job aging callout; SAME predicate/query as the dashboard queue (null for terminal jobs).
       isJobStalled(tenantId, id),
     ]);
+  // CF-20.1 — operator-side vendor photos: list rows, then presign each up-front
+  // (server-side, mirroring the vendor-invoice-document loader). Any non-url result
+  // (placeholder / unavailable / forbidden) collapses to url: null — the panel degrades.
+  const photoRows = await listJobPhotos(tenantId, id);
+  const photos: JobPhotoTile[] = await Promise.all(
+    photoRows.map(async (p) => {
+      const served = await getJobPhotoUrl({ tenantId, jobId: id, attachmentId: p.id });
+      return {
+        id: p.id,
+        title: p.title,
+        sizeBytes: p.fileSizeBytes,
+        mimeType: p.fileMimeType,
+        url: served.kind === "url" ? served.url : null,
+      };
+    }),
+  );
   // 8c.11a billing reads — all existing verified readers (+ listJobBillingEvents, actorName-enhanced).
   const [proposals, changeOrders, vendorInvoices, clientInvoices, payments, margin, readiness, billingEvents, invoiceDrafts, proposalDrafts] =
     await Promise.all([
@@ -320,6 +338,9 @@ export default async function JobDetailPage({
           </div>
         )}
       </div>
+
+      {/* Photos — CF-20.1 operator-side vendor photo viewing (carries its own mt-8 wrapper + empty state) */}
+      <JobPhotosPanel photos={photos} />
 
       {/* Contacts */}
       <div className="mt-8">
