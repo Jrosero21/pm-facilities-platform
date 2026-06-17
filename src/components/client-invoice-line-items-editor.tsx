@@ -24,7 +24,9 @@ const CATEGORIES = ["labor", "materials", "equipment", "trip", "permit", "fee", 
 const inputClass =
   "mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900";
 
-type LineRow = { id: string; lineNumber: number; description: string };
+// tradeName: the stored trade on agreed-rate labor lines (display-only). Resolved by the page from
+// the line's tradeId; null/absent on materials/untraded lines (nothing extra rendered).
+type LineRow = { id: string; lineNumber: number; description: string; tradeName?: string | null };
 
 function RemoveLineButton({ lineId, clientInvoiceId, jobId }: { lineId: string; clientInvoiceId: string; jobId: string }) {
   const action = removeClientInvoiceLineItemAction.bind(null, lineId, clientInvoiceId, jobId) as (
@@ -70,6 +72,7 @@ export function ClientInvoiceLineItemsEditor({
             <li key={l.id} className="flex items-center justify-between gap-3 text-sm">
               <span className="text-neutral-700">
                 #{l.lineNumber} · {l.description}
+                {l.tradeName && <span className="text-neutral-400"> · {l.tradeName}</span>}
               </span>
               <RemoveLineButton lineId={l.id} clientInvoiceId={clientInvoiceId} jobId={jobId} />
             </li>

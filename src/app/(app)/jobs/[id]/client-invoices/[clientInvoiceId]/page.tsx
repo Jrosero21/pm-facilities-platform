@@ -40,6 +40,10 @@ export default async function ClientInvoiceDetailPage({
     loadLaborRatePickerContext({ tenantId, jobId: id }),
   ]);
 
+  // Trade-name lookup for the read-only line list (display-only). Reuses the rate-picker's trade list
+  // (all active trades, loaded for rate_sheet jobs) so labor lines show the stored trade with no extra read.
+  const tradeNameById = new Map(rateContext.trades.map((t) => [t.id, t.name]));
+
   // Phase (iii) Part 3 — pre-compute the cost-plus "vendor invoice on file" advisory for the Send button
   // (only a draft can be issued). The action re-verifies server-side; this just surfaces it before click.
   const needsVendorDocAck = inv.status === "draft" ? await shouldWarnMissingVendorDoc(tenantId, inv) : false;
@@ -127,7 +131,15 @@ export default async function ClientInvoiceDetailPage({
               clientInvoiceId={inv.id}
               jobId={id}
               defaultMarkup={defaultMarkup}
-              lines={lines.map((l) => ({ id: l.id, lineNumber: l.lineNumber, description: l.description }))}
+              lines={lines.map((l) => ({
+                id: l.id,
+                lineNumber: l.lineNumber,
+                description: l.description,
+                // Resolve the stored trade name for display (agreed-rate labor lines carry tradeId).
+                // rateContext.trades is the full active-trade list (populated for rate_sheet jobs — the
+                // only model that sets a line tradeId). Untraded lines → null, nothing extra rendered.
+                tradeName: l.tradeId ? (tradeNameById.get(l.tradeId) ?? null) : null,
+              }))}
               rateContext={rateContext}
             />
           </div>
