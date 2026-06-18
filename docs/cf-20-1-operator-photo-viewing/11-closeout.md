@@ -57,4 +57,4 @@ This sub-feature set carries no `closeout-carryforwards.md` (the bank stays phas
 - **CF-20.3 — confirmed discharged** (roadmap text already correct; no edit).
 
 ## Recommended Next Focus
-With CF-20.1 retired and dev R2 verified, the genuinely-next items are: (1) **prod R2 setup** (CF-iii.1 prod half) once a live host exists — the same R2 gate also clears the still-queued vendor-invoice-doc and CF-27.15 live-verifies; and/or (2) **B-16.4** (vendor performance reader) as the next strategic spine item, data-permitting.
+With CF-20.1 retired and dev R2 verified, the genuinely-next items are: (1) **prod R2 setup** (CF-iii.1 prod half) once a live host exists — the same R2 gate also clears the still-queued vendor-invoice-doc render verify; and/or (2) **B-16.4** (vendor performance reader) as the next strategic spine item, data-permitting.

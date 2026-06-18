@@ -7,7 +7,7 @@ To enable live rendering, set the four R2 variables in both environments:
 - Dev: `.env.local` — `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`
 - Prod runtime: same four variables
 
-Once set, `getStorageProvider()` constructs the R2 provider and presigned URLs become real, fetchable image URLs. This same configuration unblocks the still-pending vendor-invoice-document and CF-27.15 live-verifies (all wait on the same R2 gate).
+Once set, `getStorageProvider()` constructs the R2 provider and presigned URLs become real, fetchable image URLs. This same configuration unblocks the still-pending vendor-invoice-document render verify (it waits on the same R2 gate).
 
 ## Verifying the reader (gate)
 Run the phase-blocking harness against the sandbox:
