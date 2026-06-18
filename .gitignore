@@ -17,3 +17,6 @@ pnpm-debug.log*
 
 /pmsr.md
 /srsr.md
+
+# Generated seed artifacts (run-specific uuidv7 ids; regenerated per run, read from disk by the harness)
+scripts/seed-b16-4/manifest.json
