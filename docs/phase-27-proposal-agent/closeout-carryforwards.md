@@ -48,6 +48,16 @@ called for is already present. Relocated here from the Phase-20 "(open)" table: 
 open. (The standing §6/§9 over-attribution watchpoint below still lists CF-20.3 — that guard is
 correctly persistent and is left untouched.)
 
+**CF-20.1 — Operator-side attachment reader + photo viewing — RETIRED (live-verified 2026-06-17).**
+Shipped as the CF-20.1 sub-feature (`docs/cf-20-1-operator-photo-viewing/`, tagged `v2.22.0`): tenant+job-scoped
+reader (`listJobPhotos`/`getJobPhotoUrl`, no-existence-leak) + thumbnail panel on the job-detail page;
+`db:check:job-photos` 15/15 green. **Live-verify now PASSED end-to-end** — an operator rendered a real
+uploaded photo against configured R2 (eyes-on the rendered thumbnail, plus data confirmation: real
+`storage_key`, R2 object present in `pm-facilities-attachments` with matching 92,452-byte size, and
+`getJobPhotoUrl` returns a live `https://…r2.cloudflarestorage.com` presigned URL — **not** `capture://`).
+The prior "build-complete / retirement-pending R2" caveat is discharged; relocated here from the Phase-20
+"(open)" table. **CF-20.1b** (cross-job feed) and **CF-20.2** (orphan-object sweep) remain open, untouched.
+
 ## New Phase-27 banked items (open)
 
 | Id | Item | What's needed | Why deferred |
@@ -137,7 +147,6 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 ### Phase-20 banked items (open)
 | Id | Item |
 |---|---|
-| CF-20.1 | Operator-side attachment reader + photo viewing. **BUILD-COMPLETE** via the CF-20.1 sub-feature (`docs/cf-20-1-operator-photo-viewing/`) — tenant+job-scoped reader (`listJobPhotos`/`getJobPhotoUrl`, no-existence-leak) + thumbnail panel on the job-detail page; `db:check:job-photos` 15/15 green. **Retirement pending the R2 live-verify** (an operator rendering a real photo post-R2, gated by CF-iii.1) — NOT fully retired. |
 | CF-20.1b | *(newly banked)* Cross-job vendor-photo feed in the Phase-18 review inbox. Deferred by decision; the per-job job-detail panel discharges the CF-20.1 spirit. |
 | CF-20.2 | Orphan-object sweep (storage keys ↔ `job_attachments.storage_key`). |
 | — (soft) | `vendor_documents` could reuse the storage adapter; FB-10a.4 legacy-placeholder backfill not performed. |
@@ -780,6 +789,11 @@ three parts harnessed; both migrations (0051, 0052) PROD-APPLIED.
   prod serverless per-instance ephemeral). **R2 is MANDATORY** for vendor-invoice documents AND photos in
   prod. The code is correct — this is configuration. Jonny sets R2 + re-uploads (the two captured files are
   not recoverable).
+  **DEV HALF DISCHARGED (2026-06-17):** the four `R2_*` vars are set in dev `.env.local` and **verified live**
+  against bucket `pm-facilities-attachments` — a round-trip PUT/GET/DELETE passed, and a real operator
+  photo upload→render was confirmed end-to-end (see CF-20.1, RETIRED). **CF-iii.1 stays OPEN for the PROD
+  half only:** the prod runtime still needs the same four vars — deferred because no live prod host exists
+  yet (set them when prod hosting is stood up).
 - **CF-iii.2 — SHIPPED (`a19ce2b`):** the storage factory now **fails LOUD**. Capture is **explicit-only**
   (`STORAGE_CAPTURE=1`, the harness flag); a real runtime with no R2 creds **throws
   `STORAGE_NOT_CONFIGURED`** at the factory chokepoint (protecting BOTH document and photo uploads/reads).

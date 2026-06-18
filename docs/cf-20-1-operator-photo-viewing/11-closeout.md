@@ -49,12 +49,12 @@ incl. no-leak: cross-tenant probe → forbidden; cross-job probe → forbidden
 See 10-known-limitations.md: ungated panel (L1, deviation from banked spec), R2-blocked live render (L2), orphan sweep open (L3, CF-20.2), job-detail-only (L4, CF-20.1b banked), no pagination (L5).
 
 ## Carry-Forward Items
-This sub-feature set carries no `closeout-carryforwards.md` (the bank stays phase-level). Recorded in the live phase bank (`docs/phase-27-proposal-agent/closeout-carryforwards.md`, "Phase-20 banked items") as part of this closeout commit:
-- **CF-20.1 — BUILD-COMPLETE, retirement pending R2 live-verify.** Marked accordingly in the live Phase-27 bank; NOT fully retired until an operator renders a real photo post-R2.
+This sub-feature set carries no `closeout-carryforwards.md` (the bank stays phase-level). Dispositions are recorded in the live phase bank (`docs/phase-27-proposal-agent/closeout-carryforwards.md`); CF-20.1 was recorded build-complete at this closeout and updated to **RETIRED** on 2026-06-17 after the live-verify passed:
+- **CF-20.1 — RETIRED (live-verified 2026-06-17).** An operator rendered the real uploaded thumbnail; data confirmed — real `storage_key`, R2 object present in `pm-facilities-attachments` at matching 92,452 bytes, and `getJobPhotoUrl` returns a live `https://…r2.cloudflarestorage.com` presigned URL (not `capture://`). Moved to the bank's Retired/discharged section.
 - **CF-20.1b — newly banked.** Cross-job vendor-photo feed in the Phase-18 inbox (deferred by decision).
 - **CF-20.2 — still open.** Orphan-object sweep (untouched).
-- **CF-iii.1 (R2) — still open**, now the live-verify dependency gating CF-20.1's retirement (and still blocking v2.17 / CF-27.15 verifies).
+- **CF-iii.1 (R2) — dev half discharged** (R2 live + verified against `pm-facilities-attachments`); **prod half remains open** until a live prod host exists. (Was the live-verify dependency gating CF-20.1; now discharged for dev.)
 - **CF-20.3 — confirmed discharged** (roadmap text already correct; no edit).
 
 ## Recommended Next Focus
-Configure R2 (CF-iii.1) to retire CF-20.1 and unblock the queued live-verifies; or proceed to B-16.4 (vendor performance reader) as the next strategic spine item, data-permitting.
+With CF-20.1 retired and dev R2 verified, the genuinely-next items are: (1) **prod R2 setup** (CF-iii.1 prod half) once a live host exists — the same R2 gate also clears the still-queued vendor-invoice-doc and CF-27.15 live-verifies; and/or (2) **B-16.4** (vendor performance reader) as the next strategic spine item, data-permitting.
