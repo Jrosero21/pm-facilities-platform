@@ -750,7 +750,7 @@ three parts harnessed; both migrations (0051, 0052) PROD-APPLIED.
 - **Tag → attachment_type** map: invoice→invoice (the gate's key), signoff→signature, receipt→document,
   photo→photo, other→other.
 - **`db:check:vendor-invoice-documents` 15/15.** **Browser-verified** (a `.docx` + `.pdf` uploaded + tagged
-  live — permissive types work).
+  live — permissive types work) **(real-R2 render confirmed 2026-06-17 — see CF-iii.1)**.
 
 **Part 2 — per-client toggle:**
 - **Migration 0052** (`0052_chilly_patch`, **PROD-APPLIED**) — `clients.require_vendor_invoice_for_cost_plus`
@@ -787,11 +787,15 @@ three parts harnessed; both migrations (0051, 0052) PROD-APPLIED.
   `R2_BUCKET`). Without them `getStorageProvider()` now throws `STORAGE_NOT_CONFIGURED` (after CF-iii.2;
   previously a **silent capture fallback → data loss**: uploads "succeeded" then evaporated — dev blank-tab,
   prod serverless per-instance ephemeral). **R2 is MANDATORY** for vendor-invoice documents AND photos in
-  prod. The code is correct — this is configuration. Jonny sets R2 + re-uploads (the two captured files are
-  not recoverable).
+  prod. The code is correct — this is configuration. Jonny sets R2 + re-uploads (the two ORIGINAL
+  capture-provider files are not recoverable — but a fresh real-R2 vendor-invoice doc now exists,
+  uploaded + verified 2026-06-17; see the dev-discharge note below).
   **DEV HALF DISCHARGED (2026-06-17):** the four `R2_*` vars are set in dev `.env.local` and **verified live**
-  against bucket `pm-facilities-attachments` — a round-trip PUT/GET/DELETE passed, and a real operator
-  photo upload→render was confirmed end-to-end (see CF-20.1, RETIRED). **CF-iii.1 stays OPEN for the PROD
+  against bucket `pm-facilities-attachments` — a round-trip PUT/GET/DELETE passed, and **BOTH R2-gated
+  render verifies were confirmed end-to-end**: (1) **operator photo** upload→render (see CF-20.1, RETIRED);
+  and (2) **vendor-invoice document** upload→render — a `.pdf` opened via the View link, R2 object present
+  at matching 48,941 bytes, `getVendorInvoiceDocumentUrl` returns a live presigned HTTPS URL (not
+  `capture://`). **CF-iii.1 stays OPEN for the PROD
   half only:** the prod runtime still needs the same four vars — deferred because no live prod host exists
   yet (set them when prod hosting is stood up).
 - **CF-iii.2 — SHIPPED (`a19ce2b`):** the storage factory now **fails LOUD**. Capture is **explicit-only**
