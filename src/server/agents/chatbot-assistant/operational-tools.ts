@@ -3,6 +3,7 @@ import "server-only";
 import type { AgentTool } from "@/server/agents/runner";
 import { getJobDetail } from "@/server/jobs";
 import { getVendor } from "@/server/vendors";
+import { getVendorPerformanceScores } from "@/server/analytics/vendor-performance";
 import { isJobStalled } from "@/server/analytics/stalled-jobs";
 import { countStalledJobs } from "@/server/analytics/stalled-jobs";
 import { operationalQueue, type QueueEntry } from "@/server/analytics/operational-queue";
@@ -216,7 +217,23 @@ export function flagInvoiceAnomaliesTool(
   };
 }
 
-// ── 5. summarizeVendorPerformance (SCOPE-CUT: profile + activity summary, NOT a score) ──
+// ── 5. summarizeVendorPerformance (B-16.4: real scores when computed, profile-only fallback) ──
+// Dispatch-weighted rollup across the vendor's per-(vendor,trade) score rows + the per-trade
+// breakdown. Null when no scores have been computed for the vendor yet.
+export type VendorPerformanceSummary = {
+  overallScore: number;
+  completionRate: number;
+  onTimeRate: number;
+  totalDispatches: number;
+  byTrade: {
+    tradeId: string | null;
+    score: number;
+    completionRate: number;
+    onTimeRate: number;
+    totalDispatches: number;
+  }[];
+} | null;
+
 export type VendorSummary =
   | { found: false; vendorId: string; reason: "not_found_or_not_in_tenant" }
   | {
@@ -228,8 +245,9 @@ export type VendorSummary =
       mainPhone: string | null;
       mainEmail: string | null;
       status: string;
-      // No per-vendor activity reader exists (no jobs/assignments-by-vendor reader); activity
-      // counts + the empty vendor_performance_scores table are deferred (banked B-16.4).
+      // Computed from dispatch history (vendor_performance_scores); null until the scorer
+      // has run for this vendor. note carries the fallback message when null.
+      performance: VendorPerformanceSummary;
       note: string;
     };
 
@@ -242,6 +260,36 @@ export function summarizeVendorPerformanceTool(
     run: async ({ vendorId }) => {
       const v = await getVendor(tenantId, vendorId);
       if (!v) return { found: false, vendorId, reason: "not_found_or_not_in_tenant" };
+
+      // Dispatch-weighted rollup over the vendor's per-(vendor,trade) score rows (decimals
+      // come back as string|null — num() coerces, matching the scorer harness).
+      const scoreRows = await getVendorPerformanceScores(tenantId, vendorId);
+      let performance: VendorPerformanceSummary = null;
+      if (scoreRows.length > 0) {
+        const num = (s: string | null) => Number(s ?? 0);
+        let wSum = 0, sScore = 0, sComp = 0, sOnTime = 0;
+        for (const r of scoreRows) {
+          const w = r.totalDispatches ?? 0;
+          wSum += w;
+          sScore += num(r.score) * w;
+          sComp += num(r.completionRate) * w;
+          sOnTime += num(r.onTimeRate) * w;
+        }
+        performance = wSum > 0 ? {
+          overallScore: Math.round((sScore / wSum) * 10) / 10,
+          completionRate: Math.round((sComp / wSum) * 10) / 10,
+          onTimeRate: Math.round((sOnTime / wSum) * 10) / 10,
+          totalDispatches: wSum,
+          byTrade: scoreRows.map((r) => ({
+            tradeId: r.tradeId,
+            score: num(r.score),
+            completionRate: num(r.completionRate),
+            onTimeRate: num(r.onTimeRate),
+            totalDispatches: r.totalDispatches ?? 0,
+          })),
+        } : null;
+      }
+
       return {
         found: true,
         vendorId: v.id,
@@ -251,7 +299,10 @@ export function summarizeVendorPerformanceTool(
         mainPhone: v.mainPhone ?? null,
         mainEmail: v.mainEmail ?? null,
         status: v.status,
-        note: "Profile only — per-vendor activity/performance scoring not yet available (banked).",
+        performance,
+        note: performance
+          ? "Performance computed from dispatch history (completion-weighted; thin history shrunk toward average)."
+          : "Profile only — per-vendor activity/performance scoring not yet available (banked).",
       };
     },
   };
