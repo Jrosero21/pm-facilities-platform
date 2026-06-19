@@ -73,6 +73,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "dispatch_draft",
     testOnly: false,
   },
+  dispatch_tiebreaker_v1: {
+    id: "dispatch_tiebreaker_v1",
+    name: "Dispatch Tiebreaker",
+    description:
+      "LLM semantic-fit tiebreaker for AI-assisted dispatch. Fires ONLY on a deterministic close call between two near-equal eligible vendors; picks the better specialization fit within that pair, never beyond it. Number-free. Degrades to the deterministic ranking when unavailable, over token budget, or low-confidence. Per-tenant firing mode (autonomy_only default).",
+    inputSourceTypes: ["job"],
+    outputType: "dispatch_tiebreak",
+    testOnly: false,
+  },
   test_stub_v1: {
     id: "test_stub_v1",
     name: "Test Stub Agent",

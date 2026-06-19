@@ -3,7 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
-import { dispatchAssignmentStatuses, jobVendorAssignments, jobs } from "@/server/schema";
+import { dispatchAssignmentStatuses, jobVendorAssignments } from "@/server/schema";
 import { createDispatch, sendDispatch } from "@/server/dispatch";
 import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { openRun, closeRun, logDecision } from "@/server/agents/runner";
@@ -12,8 +12,12 @@ import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config
 import { getJob } from "@/server/jobs";
 import { getVendorPerformanceScoresForVendors } from "@/server/analytics/vendor-performance";
 import { toScoredCandidate, rankCandidates, isCloseCall } from "@/server/scorer";
+import { resolveDispatchTiebreakerRouting, generateDispatchTiebreak } from "@/server/agents/dispatch-tiebreaker/llm";
+import { resolveActivePrompt } from "@/server/agents/config/prompts";
+import { parseTiebreakerMode, shouldFireTiebreaker, applyTiebreak } from "@/server/agents/dispatch-tiebreaker/decide";
 
 const DISPATCH_AGENT_ID = "dispatch_router_v1";
+const DISPATCH_TIEBREAKER_AGENT_ID = "dispatch_tiebreaker_v1";
 
 // Phase 22 (slice 4) → Phase 23 23f-2 — rule-based auto-dispatch, Tier 2, NOW GOVERNED.
 // The deterministic picker over the existing eligibility floor: TOP candidate of the
@@ -110,9 +114,75 @@ export async function autoDispatchDraftForJob(
   );
   const closeCall = isCloseCall(ranked);
   const runnerUp = ranked.length > 1 ? ranked[1] : null;
-  // The pick: ranked top (preference dispositive, then track record, then matcher order).
-  // createDispatch re-validates (its own VENDOR_NO_LONGER_CANDIDATE check) and snapshots
-  // facets server-side, then lands at DRAFT. NULL createdByUserId = system actor.
+
+  // ── Hoisted policy/ceiling resolve (single source of truth; the router run below REUSES these) ──
+  // Reuses `job` from the re-rank block above — no second getJob fetch.
+  const clientId = job?.clientId ?? null;
+  const resolved = await resolveAgentPolicy(tenantId, DISPATCH_AGENT_ID, clientId);
+  const token = await withinTokenCeilings(tenantId);
+
+  // ── AI-assisted dispatch tiebreaker: fires ONLY on a close call, per per-tenant mode + token headroom ──
+  let tiebreak: { source: "deterministic" | "llm_tiebreak"; changedByLlm: boolean; confidence?: string; rationale?: string } | null = null;
+  const mode = parseTiebreakerMode(resolved.raw);
+  if (shouldFireTiebreaker({ closeCall, mode, autonomyEnabled: resolved.autonomyEnabled, tokenOk: token.ok })) {
+    const a = ranked[0];
+    const b = ranked[1];
+    const tctx = await openRun({
+      tenantId,
+      agentId: DISPATCH_TIEBREAKER_AGENT_ID,
+      jobId,
+      triggerSource: "auto_dispatch",
+      inputSummary: `Tiebreak close call: ${a.vendorId} vs ${b.vendorId}`,
+    });
+    try {
+      const routing = resolveDispatchTiebreakerRouting();
+      let systemPrompt = ""; let promptVersion = "mock"; let temperature = 0.2;
+      if (routing.mode !== "mock") {
+        const prompt = await resolveActivePrompt(tenantId, DISPATCH_TIEBREAKER_AGENT_ID);
+        systemPrompt = prompt.systemPrompt;
+        promptVersion = String(prompt.version);
+        if (prompt.temperature != null) temperature = Number(prompt.temperature);
+      }
+      const failoverOrder = (resolved.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
+      const { object, usage, model } = await generateDispatchTiebreak({
+        routing, systemPrompt, temperature, failoverOrder,
+        problemDescription: job?.problemDescription ?? "",
+        pair: [
+          { vendorId: a.vendorId, vendorName: a.vendorName, tradeContext: a.primaryTradeMatch ? "primary-trade specialist" : "covers this trade" },
+          { vendorId: b.vendorId, vendorName: b.vendorName, tradeContext: b.primaryTradeMatch ? "primary-trade specialist" : "covers this trade" },
+        ],
+      });
+      const decision = applyTiebreak({
+        deterministicWinnerId: a.vendorId,
+        pairIds: [a.vendorId, b.vendorId],
+        llm: { vendorId: object.vendorId, confidence: object.confidence, rationale: object.rationale },
+      });
+      if (decision.changedByLlm) {
+        // reorder: put the LLM-chosen vendor at [0], its former partner at [1]
+        ranked[0] = b; ranked[1] = a;
+      }
+      tiebreak = { source: decision.source, changedByLlm: decision.changedByLlm, confidence: decision.llmConfidence, rationale: decision.llmRationale };
+      await logDecision(tctx, {
+        decisionType: "dispatch_tiebreak",
+        proposedAction: `Break close call between ${a.vendorId} and ${b.vendorId}`,
+        reasoning: decision.llmRationale ?? "deterministic leader retained",
+        confidence: decision.llmConfidence ?? null,
+        policyCheck: "review_not_required",
+        disposition: "auto_executed",
+        metadata: { chosen: ranked[0].vendorId, changedByLlm: decision.changedByLlm, source: decision.source },
+      });
+      await closeRun(tctx, { status: "succeeded", outputSummary: `Tiebreak: ${decision.source} (chose ${ranked[0].vendorId})`, model, promptVersion, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
+    } catch (err) {
+      // degradation: any tiebreaker failure → deterministic ranking stands, run closes failed, dispatch continues
+      await closeRun(tctx, { status: "failed", errorMessage: err instanceof Error ? err.message : String(err) });
+      tiebreak = { source: "deterministic", changedByLlm: false };
+    }
+  }
+
+  // The pick: ranked top (preference dispositive, then track record, then matcher order; the
+  // tiebreaker above may have reordered the close pair). createDispatch re-validates (its own
+  // VENDOR_NO_LONGER_CANDIDATE check) and snapshots facets server-side, then lands at DRAFT.
+  // NULL createdByUserId = system actor.
   const top = ranked[0];
   let assignment;
   try {
@@ -154,21 +224,17 @@ export async function autoDispatchDraftForJob(
         trackRecordScore: c.trackRecordScore,
         hasRecord: c.hasRecord,
       })),
+      tiebreakSource: tiebreak?.source ?? "deterministic",
+      tiebreakChangedPick: tiebreak?.changedByLlm ?? false,
+      tiebreakRationale: tiebreak?.rationale ?? null,
     },
   });
 
   // e. THE GOVERNANCE GATE + ENFORCEMENT. The draft above stays no matter what; the gate
   // only decides whether to auto-advance it. Open a synthetic run FIRST so a BLOCK is also
   // recorded (provenance for the not-permitted path, not just the executed one).
-  const jobRow = (
-    await db
-      .select({ clientId: jobs.clientId })
-      .from(jobs)
-      .where(and(eq(jobs.tenantId, tenantId), eq(jobs.id, jobId)))
-      .limit(1)
-  )[0];
-  const clientId = jobRow?.clientId ?? null;
-
+  // clientId + resolved + token are HOISTED above (the tiebreaker needs them pre-draft); the
+  // router run REUSES them — only `spend` is resolved here.
   const ctx = await openRun({
     tenantId,
     agentId: DISPATCH_AGENT_ID,
@@ -177,10 +243,8 @@ export async function autoDispatchDraftForJob(
     inputSummary: `Auto-dispatch candidate vendor ${top.vendorId}`,
   });
 
-  // Compose the three gates. resolveAgentPolicy applies the kill-switch step-0 + policy
-  // halves; the two guardrails are the §2.4 spend-breakers.
-  const resolved = await resolveAgentPolicy(tenantId, DISPATCH_AGENT_ID, clientId);
-  const token = await withinTokenCeilings(tenantId);
+  // Compose the three gates: hoisted resolved (kill-switch step-0 + policy halves) + hoisted
+  // token + spend (§2.4 spend-breaker).
   const spend = await withinSpendCeilings(tenantId, jobId);
   const permitted = resolved.autonomyEnabled && token.ok && spend.ok;
 
