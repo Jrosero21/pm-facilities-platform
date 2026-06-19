@@ -38,6 +38,7 @@
     "db:check:feedback": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-25.ts",
     "db:check:invoice": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-26.ts",
     "db:check:proposal": "tsx --env-file=.env.local --conditions=react-server scripts/check-phase-27.ts",
+    "db:check:ai-dispatch": "tsx --env-file=.env.local --conditions=react-server scripts/check-ai-dispatch.ts",
     "db:check:job-edit": "tsx --env-file=.env.local --conditions=react-server scripts/check-job-edit.ts",
     "db:check:billing-rules": "tsx --env-file=.env.local --conditions=react-server scripts/check-billing-rules.ts",
     "db:check:client-rates": "tsx --env-file=.env.local --conditions=react-server scripts/check-client-rates.ts",
