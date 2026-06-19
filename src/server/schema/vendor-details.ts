@@ -194,6 +194,10 @@ export const vendorPerformanceScores = mysqlTable(
     periodEnd: date("period_end"),
     jobsCompleted: int("jobs_completed"),
     jobsOnTime: int("jobs_on_time"),
+    // B-16.4 (0054): completion = jobs_completed / total_dispatches (declines+cancels count
+    // against). Additive, nullable, backfill-free — beside the on-time pair.
+    totalDispatches: int("total_dispatches"),
+    completionRate: decimal("completion_rate", { precision: 5, scale: 2 }),
     onTimeRate: decimal("on_time_rate", { precision: 5, scale: 2 }),
     avgRating: decimal("avg_rating", { precision: 3, scale: 2 }),
     score: decimal("score", { precision: 6, scale: 2 }),
