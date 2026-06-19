@@ -40,6 +40,13 @@ if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
 process.env.DATABASE_URL = sandboxUrl;
 console.log(`[check-ai-dispatch] sandbox target confirmed: ${sandboxUrl.replace(/.*@/, "...@")}`);
 
+// Force the tiebreaker's OFFLINE path: .env.local carries ANTHROPIC_API_KEY, which would otherwise
+// make resolveDispatchTiebreakerRouting() resolve to a REAL Anthropic call when the tiebreaker fires
+// (S4). Unset the provider keys in-process so routing falls through to mock (no-key → mock) — keeping
+// the harness deterministic + network-free. The real-key degradation path is a separate manual probe.
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.AI_GATEWAY_API_KEY;
+
 let passed = 0;
 const failed: string[] = [];
 function check(label: string, cond: boolean, detail = "") {
@@ -49,6 +56,7 @@ function check(label: string, cond: boolean, detail = "") {
 
 const SEED_TENANT_SLUG = "phase9-seed-tenant";
 const AGENT = "dispatch_router_v1";
+const TIEBREAKER_AGENT = "dispatch_tiebreaker_v1";
 const AUTO_DRAFTED = "job_vendor_assignment.auto_drafted";
 
 type RankEntry = { vendorId: string; preferenceRank: number | null; trackRecordScore: number; hasRecord: boolean };
@@ -59,6 +67,9 @@ type RankMeta = {
   preferenceRank?: number | null;
   trackRecordScore?: number;
   ranking?: RankEntry[];
+  tiebreakSource?: string;
+  tiebreakChangedPick?: boolean;
+  tiebreakRationale?: string | null;
 };
 
 async function main() {
@@ -75,6 +86,8 @@ async function main() {
   const { createJob } = await import("@/server/jobs");
   const { autoDispatchDraftForJob } = await import("@/server/auto-dispatch");
   const { createLocationPreferredVendor } = await import("@/server/dispatch-routing");
+  const { resolveAgentPolicy } = await import("@/server/agents/config/policies");
+  const { resolveDispatchTiebreakerRouting } = await import("@/server/agents/dispatch-tiebreaker/llm");
 
   const createdClientIds: string[] = [];
   const createdLocationIds: string[] = [];
@@ -89,7 +102,7 @@ async function main() {
         if (createdJobIds.length) {
           const aRows = await tx.select({ id: jobVendorAssignments.id }).from(jobVendorAssignments).where(inArray(jobVendorAssignments.jobId, createdJobIds));
           const aIds = aRows.map((r) => r.id);
-          const runRows = await tx.select({ id: agentRuns.id }).from(agentRuns).where(and(eq(agentRuns.agentId, AGENT), inArray(agentRuns.jobId, createdJobIds)));
+          const runRows = await tx.select({ id: agentRuns.id }).from(agentRuns).where(and(inArray(agentRuns.agentId, [AGENT, TIEBREAKER_AGENT]), inArray(agentRuns.jobId, createdJobIds)));
           const runIds = runRows.map((r) => r.id);
           if (runIds.length) {
             await tx.delete(agentDecisions).where(inArray(agentDecisions.agentRunId, runIds));
@@ -185,6 +198,12 @@ async function main() {
       const m = rows[0].metadata;
       return (typeof m === "string" ? JSON.parse(m) : (m ?? null)) as RankMeta | null;
     }
+    // Tiebreaker provenance for a job: the dispatch_tiebreaker_v1 run rows (status/model/tokens).
+    async function tiebreakerRunsFor(jobId: string) {
+      return db.select({ status: agentRuns.status, model: agentRuns.model, inputTokens: agentRuns.inputTokens, outputTokens: agentRuns.outputTokens })
+        .from(agentRuns)
+        .where(and(eq(agentRuns.tenantId, tAId), eq(agentRuns.agentId, TIEBREAKER_AGENT), eq(agentRuns.jobId, jobId)));
+    }
     // Shared per-scenario harness: dispatch, silent-break guards, gate-intact + ranking-present checks.
     // Returns { meta, vendorId } or null when a silent-break guard already failed (caller short-circuits).
     async function runScenario(tag: string, jobId: string): Promise<{ meta: RankMeta; vendorId: string } | null> {
@@ -258,6 +277,41 @@ async function main() {
       check("S3a: top two === [vD, vE]", JSON.stringify(ids.slice(0, 2)) === JSON.stringify([vD, vE]), JSON.stringify(ids));
       check("S3b: closeCall === true", s3.meta.closeCall === true, JSON.stringify(s3.meta.closeCall));
       check("S3c: picked vendor === vD", s3.vendorId === vD, `${s3.vendorId}`);
+      const tbRuns3 = await tiebreakerRunsFor(J3);
+      check("S3d: tiebreaker did NOT fire (autonomy off + autonomy_only mode) — 0 dispatch_tiebreaker_v1 runs", tbRuns3.length === 0, `runs=${tbRuns3.length}`);
+      check("S3e: audit tiebreakSource === deterministic (no AI spend)", s3.meta.tiebreakSource === "deterministic", JSON.stringify(s3.meta.tiebreakSource));
+    }
+
+    // ════════ S4 — FORCE firing (mode always_on_close_call) while autonomy stays OFF; mock path ════════
+    console.log("\n[S4] tiebreaker FIRES on close call (always_on_close_call); mock retains deterministic leader (L4 / TX)");
+    // Enable firing via a TENANT-scoped dispatch_router_v1 policy carrying the firing mode in its JSON.
+    // autonomyEnabled stays unset (false) → the router gate still gates (drafted_pending/not_enabled);
+    // only the tiebreaker mode flips on. (resolved.raw.tiebreakerMode is read off the ROUTER policy.)
+    await db.insert(agentPolicies).values({
+      tenantId: tAId, clientId: null, agentId: AGENT,
+      policy: { requiresReview: true, tiebreakerMode: "always_on_close_call" }, status: "active",
+    });
+    const resForS4 = await resolveAgentPolicy(tAId, AGENT, clientA);
+    const modeForS4 = (resForS4.raw as { tiebreakerMode?: unknown } | null)?.tiebreakerMode;
+    check("S4-pre: resolver sees tiebreakerMode='always_on_close_call' + autonomy still off",
+      modeForS4 === "always_on_close_call" && resForS4.autonomyEnabled === false, JSON.stringify({ modeForS4, autonomyEnabled: resForS4.autonomyEnabled }));
+    check("S4-pre: tiebreaker routing resolves to mock (keys unset in harness env)",
+      JSON.stringify(resolveDispatchTiebreakerRouting()) === JSON.stringify({ mode: "mock" }), JSON.stringify(resolveDispatchTiebreakerRouting()));
+
+    const L4 = await mkLocation("AI-dispatch Loc L4", "TX");
+    const vD4 = await seedVendor("AID_vD4", "TX"); await perf(vD4, "80.00", 30); // ~0.757
+    const vE4 = await seedVendor("AID_vE4", "TX"); await perf(vE4, "78.00", 30); // ~0.74 (close)
+    const J4 = await mkJob(L4, "AI-dispatch S4 HVAC job");
+    const s4 = await runScenario("S4", J4);
+    if (s4) {
+      check("S4a: closeCall === true", s4.meta.closeCall === true, JSON.stringify(s4.meta.closeCall));
+      const tbRuns4 = await tiebreakerRunsFor(J4);
+      check("S4b: tiebreaker FIRED — exactly 1 dispatch_tiebreaker_v1 run for J4", tbRuns4.length === 1, `runs=${tbRuns4.length}`);
+      check("S4c: tiebreaker run succeeded, model 'mock', zero tokens",
+        tbRuns4[0]?.status === "succeeded" && tbRuns4[0]?.model === "mock" && Number(tbRuns4[0]?.inputTokens) === 0 && Number(tbRuns4[0]?.outputTokens) === 0, JSON.stringify(tbRuns4[0]));
+      check("S4d: audit tiebreakSource === deterministic (mock returns pair[0] → no change)", s4.meta.tiebreakSource === "deterministic", JSON.stringify(s4.meta.tiebreakSource));
+      check("S4e: tiebreakChangedPick === false (mock retains deterministic leader)", s4.meta.tiebreakChangedPick === false, JSON.stringify(s4.meta.tiebreakChangedPick));
+      check("S4f: picked vendor === vD4 (deterministic leader, autonomy off → drafted not sent)", s4.vendorId === vD4, `${s4.vendorId}`);
     }
 
     return finish(failed.length > 0 ? 1 : 0);
