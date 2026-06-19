@@ -58,6 +58,22 @@ uploaded photo against configured R2 (eyes-on the rendered thumbnail, plus data 
 The prior "build-complete / retirement-pending R2" caveat is discharged; relocated here from the Phase-20
 "(open)" table. **CF-20.1b** (cross-job feed) and **CF-20.2** (orphan-object sweep) remain open, untouched.
 
+**B-16.4 — Vendor performance reader + populate `vendor_performance_scores` — RETIRED (built + validated 2026-06-18).**
+Shipped as the B-16.4 sub-feature (`docs/b-16-4-vendor-performance-scorer/`) — the data keystone the
+roadmap's Phase-27 (AI-Assisted Dispatch, Tier 3) is blocked on. Four-commit vertical slice: `ddd4592`
+synthetic fixture (55 vendors, 6 archetypes, sandbox-guarded) · `244e2f1` migration 0054
+(`total_dispatches` + `completion_rate`, additive) · `30ca4bf` the scorer (`computeVendorPerformanceScores`
+two-pass completion/on-time + K=5 shrinkage; `getVendorPerformanceScores` reader) · `7792cca` chatbot read
+surface. **`db:check:vendor-performance` 14/14 green**, cohort ranking correct: reliable_fast **77.7** >
+reliable_slow **68.8** > newcomer_thin **58.0** > flaky_fast **49.5** > flaky_unreliable **28.7** (the
+completion-dominant 70/30 weighting ranks "done-but-late" above "fast-but-flaky," as intended). Relocated
+here from the Phase-16 "(open)" table. **Phase-27 / AI-Assisted Dispatch is now data-UNBLOCKED** (the
+`vendor_performance_scores` data dependency is delivered) — though the dispatch agent itself stays unbuilt.
+**Remaining gate: migration 0054 PROD-APPLY** (the two direct ALTERs, sandbox→prod; NOT CF-iii.1, which is
+unrelated R2 storage). The earlier "B-16.4 phase-slot note CORRECTED" entry above is superseded by this
+retirement. *(§9 lists B-16.4 as "retired by Phase 27" — loose wording; it actually shipped standalone
+post-`v2.22.0`, not inside `phase-27-proposal-agent`. Recorded, no doc-correction CF opened.)*
+
 ## New Phase-27 banked items (open)
 
 | Id | Item | What's needed | Why deferred |
@@ -86,7 +102,7 @@ The prior "build-complete / retirement-pending R2" caveat is discharged; relocat
 ### Phase-26 banked items (open)
 | Id | Item | What's needed | Why deferred |
 |---|---|---|---|
-| **CF-26.1** | **No agent-assisted breakdown of lazy/lumped vendor invoices** — a single non-itemized vendor charge is kept WHOLE at the vendor total with `lumpFlag=true` (money-safe; never split into invented sub-amounts). A smarter agent that *breaks out* a lumped charge into itemized client lines is not built. | Authored vendor rate-book data to attribute costs, then a breakdown step in the agent. `vendor_rates` and `vendor_performance_scores` **exist** but carry **no authored rate data** (no rate-book ingestion/authoring surface; B-16.4 confirms `vendor_performance_scores` is unpopulated). | No rate data to break a lump down safely; keep-whole-and-flag is the correct money-safe floor until that data lands. |
+| **CF-26.1** | **No agent-assisted breakdown of lazy/lumped vendor invoices** — a single non-itemized vendor charge is kept WHOLE at the vendor total with `lumpFlag=true` (money-safe; never split into invented sub-amounts). A smarter agent that *breaks out* a lumped charge into itemized client lines is not built. | Authored vendor rate-book data to attribute costs, then a breakdown step in the agent. CF-26.1's real blocker is **`vendor_rates` (the authored rate-book), which is still EMPTY** — no rate-book ingestion/authoring surface exists. (`vendor_performance_scores` is now POPULATED by the B-16.4 scorer, but that's quality scoring, not the cost/rate data a lump-breakdown needs — so it does not unblock CF-26.1.) | No rate data to break a lump down safely; keep-whole-and-flag is the correct money-safe floor until that data lands. |
 | **CF-26.2** | **Invoice publish partial-failure window** — publish is a NON-atomic sequence (`createClientInvoice` + N×`addClientInvoiceLineItem` before the finalize txn stamps `published_client_invoice_id`). A mid-sequence crash or a concurrent publish can orphan a `client_invoices` DRAFT (never issued, operator-deletable, recoverable). | A no-cost atomicity guard (a `materializing` status value, or a provisional marker before `createClientInvoice`) — each needs a follow-up migration or breaks the `published_client_invoice_id` NULL-means-unpublished semantics. | §2.6 ACCEPTED trade-off: the idempotency guard (`published_client_invoice_id` non-null → `InvoiceAlreadyMaterialized`, pre-flight + under the finalize lock) prevents double-materialize; we did NOT refactor the billing writers for cross-writer atomicity. Close only if a no-cost guard appears. |
 
 *(Phase-26 factual note, historical:* migration `0047` is CONSUMED — `invoice_drafts` + `invoice_reviews`,
@@ -170,7 +186,6 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 | Id | Item |
 |---|---|
 | B-16.3 | Chat UI + vendor-direction publish target. Stays OPEN (magic-link send only partially unblocks). |
-| B-16.4 | Vendor performance reader + populate `vendor_performance_scores`. *(Tier-3 AI dispatch — the proposal generator took the v2.10.0/Phase-27 slot, so dispatch shifts to a later phase; it remains data-blocked on this. Also CF-26.1's rate-data blocker relates here.)* |
 | **B-16.5** | **LLM-assisted draft phrasing (provider seam + `ai_prompt_templates`). PARTIALLY RETIRED by Phases 26–27** (invoice creator + proposal generator per-agent shares). **Stays OPEN; residual = NTE negotiator.** |
 | CF-16.1 | `source_type` intent-tag enum value on `update_rewrite_drafts`. |
 | CF-16.2 | Invoice-aging anomaly rule (extend `flagInvoiceAnomalies`). |
