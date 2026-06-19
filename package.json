@@ -53,7 +53,8 @@
     "db:check:ready-to-bill-view": "tsx --env-file=.env.local --conditions=react-server scripts/check-ready-to-bill-view.ts",
     "db:check:job-bill-prefill": "tsx --env-file=.env.local --conditions=react-server scripts/check-job-bill-prefill.ts",
     "db:check:operator-enters-hours": "tsx --env-file=.env.local --conditions=react-server scripts/check-operator-enters-hours.ts",
-    "db:check:job-photos": "tsx --env-file=.env.local --conditions=react-server scripts/check-job-photos.ts"
+    "db:check:job-photos": "tsx --env-file=.env.local --conditions=react-server scripts/check-job-photos.ts",
+    "db:check:vendor-performance": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-performance.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.79",
