@@ -250,3 +250,35 @@ export async function getVendorPerformanceScores(
       ),
     );
 }
+
+export async function getVendorPerformanceScoresForVendors(
+  tenantId: string,
+  vendorIds: string[],
+  tradeId: string,
+): Promise<VendorPerformanceScoreRow[]> {
+  if (vendorIds.length === 0) return [];
+  return db
+    .select({
+      vendorId: vendorPerformanceScores.vendorId,
+      tradeId: vendorPerformanceScores.tradeId,
+      totalDispatches: vendorPerformanceScores.totalDispatches,
+      jobsCompleted: vendorPerformanceScores.jobsCompleted,
+      jobsOnTime: vendorPerformanceScores.jobsOnTime,
+      completionRate: vendorPerformanceScores.completionRate,
+      onTimeRate: vendorPerformanceScores.onTimeRate,
+      score: vendorPerformanceScores.score,
+      computedAt: vendorPerformanceScores.computedAt,
+    })
+    .from(vendorPerformanceScores)
+    .where(
+      and(
+        eq(vendorPerformanceScores.tenantId, tenantId),
+        inArray(vendorPerformanceScores.vendorId, vendorIds),
+        eq(vendorPerformanceScores.tradeId, tradeId),
+        eq(vendorPerformanceScores.status, "active"),
+      ),
+    );
+}
+// Grain is one active row per (vendor, trade), so vendorIds + tradeId returns
+// at most one row per vendor. Trade-filtered on purpose: vendor-only would pull
+// unrelated-trade rows into a single-trade dispatch decision.

@@ -9,6 +9,9 @@ import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { openRun, closeRun, logDecision } from "@/server/agents/runner";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
 import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config/guardrails";
+import { getJob } from "@/server/jobs";
+import { getVendorPerformanceScoresForVendors } from "@/server/analytics/vendor-performance";
+import { toScoredCandidate, rankCandidates, isCloseCall } from "@/server/scorer";
 
 const DISPATCH_AGENT_ID = "dispatch_router_v1";
 
@@ -90,10 +93,27 @@ export async function autoDispatchDraftForJob(
     return { outcome: "no_candidates" };
   }
 
-  // c. The rule: the top candidate. createDispatch re-validates (its own
-  // VENDOR_NO_LONGER_CANDIDATE check) and snapshots facets server-side, then
-  // lands at DRAFT. NULL createdByUserId = system actor.
-  const top = candidates[0];
+  // AI-assisted dispatch — deterministic re-rank over the eligible set.
+  // Trade resolved the same way the matcher + createDispatch resolve it (read-only).
+  const job = await getJob(tenantId, jobId);
+  const primaryTradeId = job?.primaryTradeId ?? null;
+  const perfRows = primaryTradeId
+    ? await getVendorPerformanceScoresForVendors(
+        tenantId,
+        candidates.map((c) => c.vendorId),
+        primaryTradeId,
+      )
+    : [];
+  const perfByVendor = new Map(perfRows.map((r) => [r.vendorId, r]));
+  const ranked = rankCandidates(
+    candidates.map((c) => toScoredCandidate(c, perfByVendor.get(c.vendorId) ?? null)),
+  );
+  const closeCall = isCloseCall(ranked);
+  const runnerUp = ranked.length > 1 ? ranked[1] : null;
+  // The pick: ranked top (preference dispositive, then track record, then matcher order).
+  // createDispatch re-validates (its own VENDOR_NO_LONGER_CANDIDATE check) and snapshots
+  // facets server-side, then lands at DRAFT. NULL createdByUserId = system actor.
+  const top = ranked[0];
   let assignment;
   try {
     assignment = await createDispatch({
@@ -123,8 +143,17 @@ export async function autoDispatchDraftForJob(
     metadata: {
       jobId,
       vendorId: top.vendorId,
-      rule: "preferred-then-rank",
+      rule: "preferred-then-track-record",
       preferenceRank: top.preferenceRank,
+      trackRecordScore: top.trackRecordScore,
+      hasRecord: top.hasRecord,
+      closeCall,
+      ranking: ranked.map((c) => ({
+        vendorId: c.vendorId,
+        preferenceRank: c.preferenceRank,
+        trackRecordScore: c.trackRecordScore,
+        hasRecord: c.hasRecord,
+      })),
     },
   });
 
@@ -162,6 +191,10 @@ export async function autoDispatchDraftForJob(
     spend,
     vendorId: top.vendorId,
     preferenceRank: top.preferenceRank,
+    trackRecordScore: top.trackRecordScore,
+    hasRecord: top.hasRecord,
+    closeCall,
+    runnerUpVendorId: runnerUp?.vendorId ?? null,
   };
 
   if (!permitted) {
