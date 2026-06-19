@@ -122,10 +122,11 @@ pnpm run db:check:ai-dispatch                                                 # 
 ```
 
 ## Known Limitations
-- The real (non-mock) LLM path is exercised only structurally. The harness runs
-  with keys unset (mock) to stay deterministic and free; the path where the LLM
-  actually selects the runner-up requires a real API key and is a manual probe
-  (see Carry-Forward).
+- The real (non-mock) LLM path is PROVEN via the manual real-key probe
+  (`pnpm run probe:ai-dispatch-realkey`; see CF-AID.2) — a live swap to the
+  better semantic fit was confirmed end-to-end in sandbox. The CI harness still
+  runs mock (deterministic, free); the real path is intentionally probe-only,
+  not in CI.
 - Platform defaults exist in SANDBOX only. In prod, `resolveActivePrompt`
   throws `NoActivePromptError` for `dispatch_tiebreaker_v1` until the gated
   `SEED_ALLOW_PROD=1` seed is run; the default offline mock path is unaffected.

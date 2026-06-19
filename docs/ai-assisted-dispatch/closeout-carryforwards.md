@@ -13,12 +13,21 @@ NOTE: that run ALSO backfills `proposal_generator_v1` / `invoice_creator_v1`
 prompt defaults if prod is missing them (idempotent) — confirm the full set it
 touches before running. Do when cutting over to a real prod LLM key.
 
-## CF-AID.2 — Manual real-key tiebreak probe
-The harness proves the machinery (fires, records, degrades, respects the gate)
-on the MOCK path. The path where the live LLM actually selects the runner-up
-needs a real API key and is NOT harness-reachable. ACTION: a one-off manual
-probe with a real key against a sandbox close-call job, confirming a genuine
-semantic-fit swap + rationale, before trusting live AI picks in production.
+## CF-AID.2 — Manual real-key tiebreak probe — PROVEN (2025; sandbox, dev key)
+The live (non-mock) path is verified end-to-end via `scripts/probe-ai-dispatch-realkey.ts`
+(`pnpm run probe:ai-dispatch-realkey`) — a standalone, sandbox-guarded, self-tearing-down
+probe that makes ONE real billed Anthropic call. It is deliberately NOT in CI (billed +
+non-deterministic); re-run it manually whenever the tiebreaker prompt, model, or firing
+logic changes.
+RESULT (first run): close-call between a rooftop-RTU specialist (deterministic leader,
+completion 80/30) and a ductless split-system specialist (runner-up, 78/30); job problem
+described a leaking mini-split. The live model (anthropic/claude-sonnet-4-6, 879 in / 97 out
+tokens) correctly SWAPPED to the runner-up — tiebreakSource=llm_tiebreak, changedByLlm=true —
+with a rationale naming the equipment-specialization match. The autonomy gate still held
+(drafted_pending/not_enabled, autonomy off). Machinery + real semantic swap both confirmed.
+FINDING: the LLM's only per-vendor signal today is the vendor NAME (+ a binary primary-trade
+flag); name-as-specialization-proxy proved sufficient for a clean match. A richer
+specialization profile is nice-to-have, not required (relates to CF-AID.3's dormant inputs).
 
 ## CF-AID.3 — Dormant scorer inputs (switch on with data)
 Built into the scorer, contributing nothing until data lands — NOT defects:

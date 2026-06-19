@@ -1,11 +1,13 @@
 # AI-Assisted Dispatch — Known Limitations
 
-## L1. Real LLM path verified structurally only
-The harness runs on the mock path (keys unset) for determinism and zero cost. It
-proves the machinery: the tiebreaker fires, opens its run, records provenance,
-respects the firing gate, and degrades safely. It does NOT prove the live LLM
-actually selecting the runner-up — that needs a real key and is a manual probe
-(CF-AID.2).
+## L1. Real LLM path — proven via manual probe, not in CI
+The CI harness runs the mock path (keys unset) for determinism and zero cost,
+proving the machinery (fires, opens run, records provenance, respects the firing
+gate, degrades safely). The live LLM actually selecting the runner-up is PROVEN
+separately by `scripts/probe-ai-dispatch-realkey.ts` (CF-AID.2): a real
+anthropic/claude-sonnet-4-6 call swapped to the better-semantic-fit vendor with a
+correct rationale. It is intentionally probe-only (billed, non-deterministic) —
+re-run manually after any prompt/model/firing change, not on every CI pass.
 
 ## L2. Platform defaults sandbox-only
 In prod, `resolveActivePrompt` throws `NoActivePromptError` for
