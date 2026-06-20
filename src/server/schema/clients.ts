@@ -90,6 +90,12 @@ export const clientLocations = mysqlTable(
     // nullable; data-model only — NO Phase-19 logic consumes it (backfill + clock logic
     // banked CF-19.1).
     timezone: varchar("timezone", { length: 64 }),
+    // CF-19.1 — provenance of the timezone value above: client_provided, system_default
+    // (UTC/seed fallback), or looked_up (geocoded/resolved). Defaults to system_default;
+    // additive, NOT NULL. Paired with the timezone column for the business-hours SLA clock.
+    timezoneSource: mysqlEnum("timezone_source", ["client_provided", "system_default", "looked_up"])
+      .notNull()
+      .default("system_default"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

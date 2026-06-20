@@ -114,6 +114,12 @@ export const clientLocationHours = mysqlTable(
     closeTime: time("close_time"),
     isClosed: boolean("is_closed").notNull().default(false),
     notes: varchar("notes", { length: 255 }),
+    // CF-19.1 — provenance of this hours row: client_provided (operator entered the
+    // client's stated hours), system_default (the flat 9–5 seed), looked_up (resolved
+    // from an external source). Defaults to system_default; additive, NOT NULL.
+    hoursSource: mysqlEnum("hours_source", ["client_provided", "system_default", "looked_up"])
+      .notNull()
+      .default("system_default"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },

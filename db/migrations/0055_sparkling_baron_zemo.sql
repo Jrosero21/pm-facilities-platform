@@ -1,0 +1,2 @@
+ALTER TABLE `client_location_hours` ADD `hours_source` enum('client_provided','system_default','looked_up') DEFAULT 'system_default' NOT NULL;--> statement-breakpoint
+ALTER TABLE `client_locations` ADD `timezone_source` enum('client_provided','system_default','looked_up') DEFAULT 'system_default' NOT NULL;
