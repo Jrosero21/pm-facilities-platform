@@ -68,11 +68,22 @@ surface. **`db:check:vendor-performance` 14/14 green**, cohort ranking correct: 
 reliable_slow **68.8** > newcomer_thin **58.0** > flaky_fast **49.5** > flaky_unreliable **28.7** (the
 completion-dominant 70/30 weighting ranks "done-but-late" above "fast-but-flaky," as intended). Relocated
 here from the Phase-16 "(open)" table. **Phase-27 / AI-Assisted Dispatch is now data-UNBLOCKED** (the
-`vendor_performance_scores` data dependency is delivered) — though the dispatch agent itself stays unbuilt.
+`vendor_performance_scores` data dependency is delivered) — though the dispatch agent itself stays unbuilt — **UPDATE (v2.24.0):** the AI-assisted dispatch agent IS now built and shipped (deterministic scorer + re-rank + LLM tiebreaker `dispatch_tiebreaker_v1`; tag v2.24.0). See the AI-assisted dispatch banked-items section below.
 **Remaining gate: migration 0054 PROD-APPLY** (the two direct ALTERs, sandbox→prod; NOT CF-iii.1, which is
 unrelated R2 storage). The earlier "B-16.4 phase-slot note CORRECTED" entry above is superseded by this
 retirement. *(§9 lists B-16.4 as "retired by Phase 27" — loose wording; it actually shipped standalone
 post-`v2.22.0`, not inside `phase-27-proposal-agent`. Recorded, no doc-correction CF opened.)*
+
+**Dispatch status label "Declined" → "Vendor Declined" — SHIPPED (2026, sandbox + prod applied).**
+The dispatch_assignment_statuses display label for code `DECLINED` was renamed
+from "Declined" to "Vendor Declined" for who-declined clarity. CODE `DECLINED`
+unchanged, so all platform logic and check-harnesses (which key on the code) are
+unaffected. Applied as a one-row UPDATE to both sandbox and prod (`jonnyrosero_pm`),
+each verified exactly one row changed. The b16-4 fixtures were re-keyed from
+status-NAME to status-CODE lookups (rename-proof going forward); a gated,
+idempotent prod label script (`scripts/rename-declined-label-prod.ts`) is kept as
+the record. Commit f025c85. This was the "parked idea" from B-16.4 — now closed,
+distinct from PD-4 (the future per-tenant reference-data admin UI).
 
 ## New Phase-27 banked items (open)
 
@@ -993,3 +1004,20 @@ Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
 (fixed `scripts/check-set-assignment-status.ts` in Piece 1). Ensure the gate sequence includes `pnpm lint`.
 
 **STILL BANKED (unchanged):** CF-iii.1 (R2 config — Jonny), presigned-PUT, vendor-line edit-form Unit field.
+
+---
+
+## AI-assisted dispatch — banked items (v2.24.0)
+
+> Folded in from docs/ai-assisted-dispatch/closeout-carryforwards.md (the feature
+> bank rolls into this canonical one). The AI-assisted dispatch build —
+> deterministic scorer + re-rank in auto-dispatch + LLM tiebreaker
+> (dispatch_tiebreaker_v1, per-tenant firing mode) — shipped at tag v2.24.0,
+> verified offline + sandbox (33/0) + a live real-key probe.
+
+| id | item | status |
+| --- | --- | --- |
+| **CF-AID.1** | Land `dispatch_tiebreaker_v1` prompt/policy defaults in PROD via the gated `SEED_ALLOW_PROD=1 pnpm db:seed:agent-config` (also backfills proposal/invoice prompt defaults if absent). Sandbox-only today. | OPEN. Do at prod LLM-key cutover; precondition-blocked on a real hosted prod. |
+| **CF-AID.2** | Manual real-key tiebreak probe (`scripts/probe-ai-dispatch-realkey.ts`, `pnpm run probe:ai-dispatch-realkey`) — live LLM actually selecting the runner-up. | PROVEN (sandbox, dev key): live swap to better-semantic-fit vendor confirmed; gate held. Re-run after any prompt/model/firing change. NOT in CI (billed, non-deterministic). |
+| **CF-AID.3** | Dormant scorer inputs: proximity/distance (inert — no location coords; unblocked by CF-22.1), vendor rate/cost (`vendor_rates` empty), `on_time_rate`/`avg_rating` (present but unweighted). | OPEN. Built as dormant slots — weight in when data lands, no scorer rewrite. Not defects. |
+| **CF-AID.4** | Operator-facing ranking/tiebreak rationale UI — the ranking + tiebreak reason are recorded to audit/decision metadata but not surfaced in any screen. | OPEN. Candidate for a later dispatch-UI phase. |

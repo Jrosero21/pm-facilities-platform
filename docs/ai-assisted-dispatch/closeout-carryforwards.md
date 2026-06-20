@@ -4,6 +4,11 @@
 > latest phase folder; these items roll forward into it. Items here are specific
 > to AI-assisted dispatch.
 
+> **Folded in (v2.24.0):** these CF-AID items now live in the canonical bank
+> (`docs/phase-27-proposal-agent/closeout-carryforwards.md`, "AI-assisted
+> dispatch — banked items" section) — that is the LIVE copy. The entries below
+> are retained as the feature-local record; update status in canonical, not here.
+
 ## CF-AID.1 — Land platform defaults in PROD (gated)
 The `dispatch_tiebreaker_v1` prompt + policy defaults, and the
 `dispatch_router_v1` `tiebreakerMode` key, exist in SANDBOX only. The non-mock
