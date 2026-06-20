@@ -106,13 +106,14 @@ async function loadTradeIds(): Promise<string[]> {
 
 export async function loadStatusIds(): Promise<Record<string, string>> {
   const { db } = await import("@/server/db"); // dynamic — after the guard
-  // dispatch_assignment_statuses: Draft/Sent/Accepted/Scheduled/Confirmed/On Site/Work Complete/Declined/Cancelled
+  // dispatch_assignment_statuses keyed by CODE (stable; survives display-name renames):
+  // DRAFT/SENT/ACCEPTED/SCHEDULED/CONFIRMED/ON_SITE/WORK_COMPLETE/DECLINED/CANCELLED
   const rows = await db.select({
     id: dispatchAssignmentStatuses.id,
-    name: dispatchAssignmentStatuses.name,
+    code: dispatchAssignmentStatuses.code,
   }).from(dispatchAssignmentStatuses);
   const map: Record<string, string> = {};
-  for (const r of rows) map[r.name] = r.id;
+  for (const r of rows) map[r.code] = r.id;
   return map;
 }
 
@@ -212,10 +213,10 @@ export async function generatePlan(): Promise<SeedPlan> {
       await db.insert(jobVendorAssignments).values({
         id: assignmentId, tenantId, jobId: job.id, vendorId,
         currentStatusId:
-          outcome === "completed" ? statusIds["Work Complete"]
-          : outcome === "declined" ? statusIds["Declined"]
-          : outcome === "cancelled" ? statusIds["Cancelled"]
-          : statusIds["Sent"],
+          outcome === "completed" ? statusIds["WORK_COMPLETE"]
+          : outcome === "declined" ? statusIds["DECLINED"]
+          : outcome === "cancelled" ? statusIds["CANCELLED"]
+          : statusIds["SENT"],
         matchedTradeId: tradeId,
         matchedTradeWasPrimary: false,
         tightestGeoAtDispatch: "national",

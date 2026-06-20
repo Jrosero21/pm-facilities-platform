@@ -54,7 +54,7 @@ const starterStatuses: {
     description: "Vendor has accepted the dispatch.",
   },
   {
-    name: "Declined",
+    name: "Vendor Declined",
     code: "DECLINED",
     category: "cancelled",
     sortOrder: 40,

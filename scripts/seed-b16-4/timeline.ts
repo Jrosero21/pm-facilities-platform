@@ -79,19 +79,19 @@ function buildAssignmentRows(
   const sentAt = new Date(sched - rngInt(rng, 1, 10) * 86400_000);
 
   const S = statusIds;
-  history.push(historyRow(tenantId, a.assignmentId, null, S["Sent"], sentAt));
+  history.push(historyRow(tenantId, a.assignmentId, null, S["SENT"], sentAt));
 
   if (a.outcome === "declined") {
     const declinedAt = new Date(sentAt.getTime() + rngInt(rng, 10, 240) * MIN);
-    history.push(historyRow(tenantId, a.assignmentId, S["Sent"], S["Declined"], declinedAt));
+    history.push(historyRow(tenantId, a.assignmentId, S["SENT"], S["DECLINED"], declinedAt));
     return { history, etas, checkIns, checkOuts };
   }
 
   // accepted path (cancelled + completed both accept first)
   const acceptedAt = new Date(sentAt.getTime() + rngInt(rng, 15, 300) * MIN);
   const scheduledAt = new Date(acceptedAt.getTime() + rngInt(rng, 10, 120) * MIN);
-  history.push(historyRow(tenantId, a.assignmentId, S["Sent"], S["Accepted"], acceptedAt));
-  history.push(historyRow(tenantId, a.assignmentId, S["Accepted"], S["Scheduled"], scheduledAt));
+  history.push(historyRow(tenantId, a.assignmentId, S["SENT"], S["ACCEPTED"], acceptedAt));
+  history.push(historyRow(tenantId, a.assignmentId, S["ACCEPTED"], S["SCHEDULED"], scheduledAt));
 
   // ETA confirmation (the planned arrival window) — set near scheduledStartAt
   etas.push({
@@ -102,13 +102,13 @@ function buildAssignmentRows(
 
   if (a.outcome === "cancelled") {
     const cancelledAt = new Date(scheduledAt.getTime() + rngInt(rng, 60, 600) * MIN);
-    history.push(historyRow(tenantId, a.assignmentId, S["Scheduled"], S["Cancelled"], cancelledAt));
+    history.push(historyRow(tenantId, a.assignmentId, S["SCHEDULED"], S["CANCELLED"], cancelledAt));
     return { history, etas, checkIns, checkOuts };
   }
 
   // completed path: Confirmed -> On Site -> Work Complete, with presence
   const confirmedAt = new Date(scheduledAt.getTime() + rngInt(rng, 30, 240) * MIN);
-  history.push(historyRow(tenantId, a.assignmentId, S["Scheduled"], S["Confirmed"], confirmedAt));
+  history.push(historyRow(tenantId, a.assignmentId, S["SCHEDULED"], S["CONFIRMED"], confirmedAt));
 
   // arrival: on-time => at/before sched (early by up to earlyMinsMax);
   //          late    => after sched (by up to latenessMinsMax)
@@ -116,7 +116,7 @@ function buildAssignmentRows(
     ? -rngInt(rng, 0, arch.earlyMinsMax)
     : rngInt(rng, 1, arch.latenessMinsMax);
   const onSiteAt = new Date(sched + arrivalOffsetMin * MIN);
-  history.push(historyRow(tenantId, a.assignmentId, S["Confirmed"], S["On Site"], onSiteAt));
+  history.push(historyRow(tenantId, a.assignmentId, S["CONFIRMED"], S["ON_SITE"], onSiteAt));
 
   // check-in at arrival; check-out 1-6h later
   checkIns.push({
@@ -131,7 +131,7 @@ function buildAssignmentRows(
   });
 
   const completeAt = new Date(checkOutAt.getTime() + rngInt(rng, 5, 60) * MIN);
-  history.push(historyRow(tenantId, a.assignmentId, S["On Site"], S["Work Complete"], completeAt));
+  history.push(historyRow(tenantId, a.assignmentId, S["ON_SITE"], S["WORK_COMPLETE"], completeAt));
 
   return { history, etas, checkIns, checkOuts };
 }
