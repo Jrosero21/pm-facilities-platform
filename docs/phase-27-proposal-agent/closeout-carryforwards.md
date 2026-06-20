@@ -85,6 +85,9 @@ idempotent prod label script (`scripts/rename-declined-label-prod.ts`) is kept a
 the record. Commit f025c85. This was the "parked idea" from B-16.4 — now closed,
 distinct from PD-4 (the future per-tenant reference-data admin UI).
 
+**Dispatch-stuck detection (CF-19.1a, SENT-only) + dev-safety — SHIPPED (2026, sandbox-verified).**
+The wall-clock dispatch-SLA detection rung shipped: a priority×status "stuck > X hours" threshold matrix + `isDispatchStuck` classifier (`dispatch-sla-rules.ts`, 9/9 offline), wired into `listVendorNotAccepted` (priority leftJoin) and surfaced as a red "Stuck" badge with a per-tier threshold note, stuck rows bumped above merely-aged ones (two-band ordering). Browser-verified end-to-end across all 6 priority tiers (EMERGENCY 2h / URGENT 4h / HIGH 8h / ROUTINE 24h / SCHEDULED 48h / null→24h DEFAULT) on real rendered sandbox data. Commit 2ba3eaf. Reaction half + all-statuses expansion remain open (see EOF). Alongside this, a dev-safety fix: `pnpm dev` now defaults to SANDBOX via `.env.development.local` precedence (Next 16 @next/env load order), with an explicit `pnpm dev:prod` escape hatch (commit 822809d) — the dev server previously read the raw prod `DATABASE_URL`, so a dev browser click could write to prod; it now hits sandbox by default. Two sandbox verification seeds committed (`seed-sandbox-dev-login.ts`, `seed-sandbox-sent-spread.ts`, commit ccfa576).
+
 ## New Phase-27 banked items (open)
 
 | Id | Item | What's needed | Why deferred |
@@ -181,7 +184,7 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 ### Phase-19 banked items (open)
 | Id | Item |
 |---|---|
-| CF-19.1a | Wall-clock SLA/escalation: per-dispatch-status "stuck > X hours" thresholds (mirror the proven job-status `STALLED_THRESHOLDS_SECONDS` at the assignment grain) + escalation/reaction. DETECTION half partly exists (unthresholded aged-SENT in `exceptions.ts`, Option B wall-clock); the THRESHOLD + REACTION (auto-re-dispatch) half is greenfield and Phase-28-gated (CF-24.2: nothing auto-invokes dispatch yet). NOTE: the SLA clock is pure wall-clock elapsed-in-status — NOT business-hours-aware (clarified with Jonny). |
+| CF-19.1a | Wall-clock SLA/escalation, pure wall-clock elapsed-in-status (NOT business-hours). **DETECTION shipped (SENT-only, commit 2ba3eaf):** priority×status threshold matrix (`dispatch-sla-rules.ts`, mirrors `STALLED_THRESHOLDS_SECONDS` at the assignment grain) + `isDispatchStuck` classifier (9/9 offline) wired into `listVendorNotAccepted` (priority leftJoin) + a "Stuck" badge + bubble-up on the exceptions queue; browser-verified across all 6 priority tiers. STILL OPEN: the all-statuses expansion (CF-19.1a-statuses) and the reaction/auto-re-dispatch half (CF-19.1a-react, Phase-28-gated on CF-24.2) — see the CF-19.1a session banked-items section at EOF. |
 | CF-19.1b | Business-hours / timezone SCHEDULING-DISPLAY: show & set times in the right local zone ("12pm = the store's 12pm"; "follow up at 8am = operator's time"). Needs the `client_location_hours` data layer + `client_locations.timezone` (IANA) + a tz lib (@date-fns/tz). Migration 0055 (hours_source/timezone_source provenance columns) SHIPPED for this thread (sandbox+prod, commit 83c5d4e). Hours/tz data layer + seeder still greenfield. Distinct from CF-19.1a — the SLA clock does NOT depend on this. |
 | CF-19.2 | Twilio SMS adapter (a second `SendProvider`). |
 | CF-19.3 | No-same-day-on-site exception (blocked on CF-19.1b — it's a scheduling/business-hours concern, not the wall-clock SLA). |
@@ -1024,3 +1027,21 @@ Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
 | **CF-AID.2** | Manual real-key tiebreak probe (`scripts/probe-ai-dispatch-realkey.ts`, `pnpm run probe:ai-dispatch-realkey`) — live LLM actually selecting the runner-up. | PROVEN (sandbox, dev key): live swap to better-semantic-fit vendor confirmed; gate held. Re-run after any prompt/model/firing change. NOT in CI (billed, non-deterministic). |
 | **CF-AID.3** | Dormant scorer inputs: proximity/distance (inert — no location coords; unblocked by CF-22.1), vendor rate/cost (`vendor_rates` empty), `on_time_rate`/`avg_rating` (present but unweighted). | OPEN. Built as dormant slots — weight in when data lands, no scorer rewrite. Not defects. |
 | **CF-AID.4** | Operator-facing ranking/tiebreak rationale UI — the ranking + tiebreak reason are recorded to audit/decision metadata but not surfaced in any screen. | OPEN. Candidate for a later dispatch-UI phase. |
+
+---
+
+## CF-19.1a session — banked items (2026)
+
+> From the CF-19.1a detection build (SENT-only shipped, commit 2ba3eaf) + the
+> dev-safety/sandbox-verification work (822809d, ccfa576). Detection is done and
+> browser-verified; the items below are the open follow-ons + watchpoints.
+
+| id | item | status |
+| --- | --- | --- |
+| **CF-19.1a-statuses** | All-5-statuses expansion: extend stuck-detection to ACCEPTED/SCHEDULED/CONFIRMED/ON_SITE. Drop-in via the nested status→priority map (only SENT filled today) + the `MAX(job_vendor_assignment_status_history.created_at)` entered-status anchor (sent_at only anchors SENT). Each new status needs its own per-priority thresholds (Jonny-set). | OPEN. |
+| **CF-19.1a-react** | Reaction half: auto-re-dispatch on a stuck dispatch (the ranked fallback chain). | OPEN — Phase-28-gated on CF-24.2 (nothing in app code auto-invokes `autoDispatchDraftForJob` yet). |
+| **CF-19.1a-fmt** | Threshold-note legibility: `humanizeAge` renders the 24h DEFAULT as "1d", which reads oddly next to "2h/4h/8h" tier notes. Consider a consistent "Nh threshold" / "default" formatting pass across all tier notes. | OPEN — cosmetic, low priority. |
+
+**Watchpoints from this session:**
+- `.env.development.local` is local-only / gitignored — a fresh clone must recreate it (sandbox `DATABASE_URL`) to get sandbox-default `pnpm dev`; otherwise `next dev` falls back to `.env.local` (prod). Worth a README/onboarding line.
+- Multi-login awareness: `jnrosero@gmail.com` now exists in BOTH prod (tenant_admin / demo tenant) and sandbox (operator / phase9-seed-tenant) — same email, different identities/passwords. `pnpm dev` defaults to sandbox, `pnpm dev:prod` to prod. "Which env am I in" caution when acting in the dev UI.
