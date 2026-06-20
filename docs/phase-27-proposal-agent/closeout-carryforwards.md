@@ -181,9 +181,10 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 ### Phase-19 banked items (open)
 | Id | Item |
 |---|---|
-| CF-19.1 | Business-hours-aware SLA/escalation clock. |
+| CF-19.1a | Wall-clock SLA/escalation: per-dispatch-status "stuck > X hours" thresholds (mirror the proven job-status `STALLED_THRESHOLDS_SECONDS` at the assignment grain) + escalation/reaction. DETECTION half partly exists (unthresholded aged-SENT in `exceptions.ts`, Option B wall-clock); the THRESHOLD + REACTION (auto-re-dispatch) half is greenfield and Phase-28-gated (CF-24.2: nothing auto-invokes dispatch yet). NOTE: the SLA clock is pure wall-clock elapsed-in-status — NOT business-hours-aware (clarified with Jonny). |
+| CF-19.1b | Business-hours / timezone SCHEDULING-DISPLAY: show & set times in the right local zone ("12pm = the store's 12pm"; "follow up at 8am = operator's time"). Needs the `client_location_hours` data layer + `client_locations.timezone` (IANA) + a tz lib (@date-fns/tz). Migration 0055 (hours_source/timezone_source provenance columns) SHIPPED for this thread (sandbox+prod, commit 83c5d4e). Hours/tz data layer + seeder still greenfield. Distinct from CF-19.1a — the SLA clock does NOT depend on this. |
 | CF-19.2 | Twilio SMS adapter (a second `SendProvider`). |
-| CF-19.3 | No-same-day-on-site exception (blocked on CF-19.1). |
+| CF-19.3 | No-same-day-on-site exception (blocked on CF-19.1b — it's a scheduling/business-hours concern, not the wall-clock SLA). |
 | CF-19.4 | Roadmap §9 CF-12 doc-correction (non-existent "CF-12.x outbound send" + scrambled CF-12.1/12.4 labels). |
 | — (soft) | `change_orders.submitted_at` proxy; Resend `Idempotency-Key` vs `failed→sent` retry. |
 
@@ -904,10 +905,12 @@ by-name; commits `93c2c68` migration + `1eb0555` feature, local/unpushed at writ
 | **FU-6** | **Group-by-job de-dup in the exception queue** — one job can surface under multiple kinds (e.g. `operational` + `follow_up_overdue`). | By design today; tidy later. |
 | **FU-7** | **Vendor "not accepted" grace period** — don't flag in the first N minutes after send. | Current behavior flags immediately. |
 
-**CF-19.1 (business-hours clock) — STILL BANKED**, now also relevant to `follow_up_overdue` overdue timing
-and the future SLA `due_at`. Needs **both** the JS business-hours logic AND `client_location_hours` data
-(empty in prod). The rest of the open bank above (CF-27.16, CF-iii.1, presigned-PUT, vendor-line Unit field)
-**rolls forward unchanged**.
+**CF-19.1 — SPLIT into CF-19.1a (wall-clock SLA) + CF-19.1b (business-hours/timezone scheduling); both STILL
+BANKED.** (This paragraph's earlier "business-hours clock" framing conflated the two — corrected here.) The
+`follow_up_overdue` overdue timing and the future SLA `due_at` are **CF-19.1a — pure wall-clock, NOT
+business-hours-aware**. The JS business-hours logic AND `client_location_hours` data (empty in prod) belong to
+**CF-19.1b** (the scheduling/timezone-display feature; its 0055 provenance columns shipped). The rest of the
+open bank above (CF-27.16, CF-iii.1, presigned-PUT, vendor-line Unit field) **rolls forward unchanged**.
 
 ---
 
@@ -929,7 +932,7 @@ auto-follow (`ON_SITE→IN_PROGRESS`, `WORK_COMPLETE→PENDING_INVOICE`). Full d
 **CF-27.16 (client-billing as a work-unit/dispatch entity) — STILL BANKED, now UNBLOCKED** by per-dispatch
 status + the `PENDING_INVOICE` seam: a single vendor's `WORK_COMPLETE` lands the job at `PENDING_INVOICE`, the
 natural trigger/handoff for invoicing → `CLOSED_BILLED`. The rest of the open bank (CF-iii.1, presigned-PUT,
-vendor-line Unit field, FU-1..FU-7, CF-19.1) **rolls forward unchanged**.
+vendor-line Unit field, FU-1..FU-7, CF-19.1a/19.1b) **rolls forward unchanged**.
 
 ---
 
