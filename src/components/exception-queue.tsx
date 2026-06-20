@@ -26,6 +26,21 @@ function truncate(s: string, n = 120): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
 
+// True elapsed age for display. sortKey can carry a "stuck" bump (CF-19.1a), so it is NOT the
+// real age for a bumped (stuck) vendor_not_accepted row — use the kind's explicit age field.
+// Kinds without an explicit age field are never bumped, so their sortKey == true age.
+function trueAgeSeconds(item: Exception): number {
+  switch (item.kind) {
+    case "vendor_not_accepted":
+      return item.ageSeconds;
+    case "operational":
+      return item.ageInCurrentStatusSeconds;
+    case "nte_increase_requested":
+    case "follow_up_overdue":
+      return item.sortKey;
+  }
+}
+
 export function ExceptionQueue({ items }: { items: Exception[] }) {
   return (
     <div className="mt-6 space-y-2">
@@ -51,17 +66,21 @@ function rowKey(item: Exception): string {
 
 function ExceptionRow({ item }: { item: Exception }) {
   const meta = KIND_META[item.kind];
+  const stuck = item.kind === "vendor_not_accepted" && item.isStuck;
   return (
     <div className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${meta.badge}`}>{meta.label}</span>
+        {stuck ? (
+          <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Stuck</span>
+        ) : null}
         <Link
           href={`/jobs/${item.jobId}`}
           className="text-xs font-medium text-neutral-700 hover:underline"
         >
           #{item.jobNumber} · {item.clientName}
         </Link>
-        <span className="text-xs text-neutral-500">{humanizeAge(item.sortKey)}</span>
+        <span className="text-xs text-neutral-500">{humanizeAge(trueAgeSeconds(item))}</span>
       </div>
       <Detail item={item} />
     </div>
@@ -73,7 +92,10 @@ function Detail({ item }: { item: Exception }) {
     case "vendor_not_accepted":
       return (
         <p className="text-sm text-neutral-800">
-          {item.vendorName} has not accepted the dispatch ({humanizeAge(item.ageSeconds)} since sent).
+          {item.vendorName} has not accepted the dispatch ({humanizeAge(item.ageSeconds)} since sent)
+          {item.isStuck && item.thresholdSeconds != null
+            ? ` — past the ${humanizeAge(item.thresholdSeconds)} threshold.`
+            : "."}
         </p>
       );
     case "nte_increase_requested":

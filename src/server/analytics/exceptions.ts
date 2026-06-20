@@ -20,11 +20,17 @@ import {
   jobStatuses,
   jobVendorAssignments,
   jobs,
+  priorities,
   vendors,
 } from "@/server/schema";
 import { operationalQueue } from "@/server/analytics/operational-queue";
+import { isDispatchStuck, dispatchStuckThresholdSeconds } from "@/server/analytics/dispatch-sla-rules";
 import type { UrgencyTier } from "@/server/analytics/stalled-rules";
 import type { FollowUpCategory } from "@/lib/follow-up";
+
+// CF-19.1a — a stuck dispatch is lifted above any non-stuck row (across all kinds) by adding
+// a large constant to its sortKey. Within each band (stuck / non-stuck) true age still orders.
+const STUCK_SORT_BUMP_SECONDS = 365 * 24 * 3600;
 
 // ── Reader rows ───────────────────────────────────────────────────────────────────────
 
@@ -36,6 +42,9 @@ export type VendorNotAcceptedRow = {
   vendorName: string;
   sentAt: Date | null;
   ageSeconds: number;
+  priorityCode: string | null;
+  isStuck: boolean;
+  thresholdSeconds: number | null;
 };
 
 /**
@@ -54,6 +63,7 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
       vendorName: vendors.name,
       sentAt: jobVendorAssignments.sentAt,
       ageSeconds: sql<number>`TIMESTAMPDIFF(SECOND, COALESCE(${jobVendorAssignments.sentAt}, ${jobVendorAssignments.createdAt}), NOW())`,
+      priorityCode: priorities.code,
     })
     .from(jobVendorAssignments)
     .innerJoin(
@@ -63,13 +73,24 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
     .innerJoin(jobs, eq(jobs.id, jobVendorAssignments.jobId))
     .innerJoin(clients, eq(clients.id, jobs.clientId))
     .innerJoin(vendors, eq(vendors.id, jobVendorAssignments.vendorId))
+    .leftJoin(priorities, eq(jobs.priorityId, priorities.id))
     .where(
       and(
         eq(jobVendorAssignments.tenantId, tenantId),
         eq(dispatchAssignmentStatuses.code, "SENT"),
       ),
     );
-  return rows.map((r) => ({ ...r, ageSeconds: Number(r.ageSeconds) }));
+  return rows.map((r) => {
+    const ageSeconds = Number(r.ageSeconds);
+    const priorityCode = r.priorityCode ?? null;
+    return {
+      ...r,
+      ageSeconds,
+      priorityCode,
+      isStuck: isDispatchStuck({ statusCode: "SENT", priorityCode, dwellSeconds: ageSeconds }),
+      thresholdSeconds: dispatchStuckThresholdSeconds("SENT", priorityCode) ?? null,
+    };
+  });
 }
 
 export type NteIncreaseRow = {
@@ -177,6 +198,9 @@ export type Exception = ExceptionBase &
         vendorName: string;
         sentAt: Date | null;
         ageSeconds: number;
+        priorityCode: string | null;
+        isStuck: boolean;
+        thresholdSeconds: number | null;
       }
     | {
         kind: "nte_increase_requested";
@@ -226,7 +250,11 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       vendorName: r.vendorName,
       sentAt: r.sentAt,
       ageSeconds: r.ageSeconds,
-      sortKey: r.ageSeconds,
+      priorityCode: r.priorityCode,
+      isStuck: r.isStuck,
+      thresholdSeconds: r.thresholdSeconds,
+      // Stuck rows bubble to the top band; true age still orders within each band.
+      sortKey: r.ageSeconds + (r.isStuck ? STUCK_SORT_BUMP_SECONDS : 0),
     });
   }
 
