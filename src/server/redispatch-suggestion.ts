@@ -174,3 +174,61 @@ export async function prepareRedispatchSuggestion(input: {
 
   return { kind: "prepared", draftAssignmentId: assignment.id, vendorId: decision.vendorId };
 }
+
+/**
+ * Approve a re-dispatch suggestion: ghost the stuck assignment, then send the suggestion DRAFT.
+ * ORDERED-WITH-RECOVERY — the two writes are INDEPENDENT transactions (setAssignmentStatus and
+ * sendDispatch each own their own). Ghost-first is deliberate: if the send fails after the ghost
+ * commits, the stuck is GHOSTED with no replacement SENT → the next stuck-scan re-suggests (the
+ * documented self-heal seam). Send-first would risk two active dispatches if the ghost then failed.
+ * All guards are read-only and precede both writes, so a double-click fails cleanly (no half-apply).
+ *
+ * Throws: ASSIGNMENT_NOT_FOUND, NOT_A_REDISPATCH_SUGGESTION, DRAFT_NOT_PENDING, STUCK_NO_LONGER_SENT,
+ * STATUS_NOT_FOUND, plus any sendDispatch code (JOB_NOT_DISPATCHABLE, JOB_BECAME_TERMINAL, ...).
+ */
+export async function approveRedispatch(input: {
+  tenantId: string;
+  draftAssignmentId: string;
+  actorUserId: string;
+}): Promise<{ kind: "approved"; ghostedAssignmentId: string; sentAssignmentId: string }> {
+  const { tenantId, draftAssignmentId, actorUserId } = input;
+
+  const { getAssignment, setAssignmentStatus, sendDispatch } = await import("@/server/dispatch");
+  const { getDispatchAssignmentStatusByCode } = await import("@/server/dispatch-reference");
+
+  // --- GUARDS (read-only, all before any write; order matters for clean double-click) ---
+  const draft = await getAssignment(tenantId, draftAssignmentId);
+  if (!draft) throw new Error("ASSIGNMENT_NOT_FOUND");
+
+  // 2. must be a re-dispatch suggestion (not a plain manual draft).
+  if (draft.replacesAssignmentId == null) throw new Error("NOT_A_REDISPATCH_SUGGESTION");
+  const stuckAssignmentId = draft.replacesAssignmentId;
+
+  // 3. the suggestion must still be DRAFT (a 2nd approve finds it SENT → fails here, before any write).
+  const draftStatus = await getDispatchAssignmentStatusByCode("DRAFT");
+  const sentStatus = await getDispatchAssignmentStatusByCode("SENT");
+  if (!draftStatus || !sentStatus) throw new Error("STATUS_NOT_FOUND");
+  if (draft.currentStatusId !== draftStatus.id) throw new Error("DRAFT_NOT_PENDING");
+
+  // 4. THE MANDATORY GUARD — the stuck assignment must still be SENT (the machine won't enforce
+  //    a from-status check, so setAssignmentStatus would happily ghost a vendor who responded).
+  const stuck = await getAssignment(tenantId, stuckAssignmentId);
+  if (!stuck) throw new Error("ASSIGNMENT_NOT_FOUND");
+  if (stuck.currentStatusId !== sentStatus.id) throw new Error("STUCK_NO_LONGER_SENT");
+
+  // --- WRITES, ghost-first (ORDERED-WITH-RECOVERY seam between the two independent txns) ---
+  // a) ghost the stuck assignment (its own txn commits here).
+  await setAssignmentStatus({
+    tenantId,
+    assignmentId: stuckAssignmentId,
+    toCode: "GHOSTED",
+    actorUserId,
+    note: "Auto-ghosted on re-dispatch approval (vendor did not respond).",
+  });
+  // b) send the suggestion DRAFT (its own txn). If THIS throws after (a) committed, let it
+  //    propagate — the stuck is GHOSTED, no replacement SENT, and the next stuck-scan re-suggests.
+  //    Do NOT roll back the ghost (that's the deliberately-deferred true-atomic option).
+  await sendDispatch({ tenantId, assignmentId: draftAssignmentId, actorUserId });
+
+  return { kind: "approved", ghostedAssignmentId: stuckAssignmentId, sentAssignmentId: draftAssignmentId };
+}

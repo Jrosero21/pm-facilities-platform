@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
 import { sendDispatch, setAssignmentStatus } from "@/server/dispatch";
+import { approveRedispatch } from "@/server/redispatch-suggestion";
 import { sendAssignmentLink } from "@/server/magic-links/send-link";
 import { revokeToken } from "@/server/magic-links/token-core";
 
@@ -124,6 +125,54 @@ export async function setAssignmentStatusAction(
           return { error: "That status is not valid." };
         case "ASSIGNMENT_NOT_FOUND":
           return { error: "This dispatch no longer exists." };
+      }
+    }
+    throw err;
+  }
+}
+
+export type ApproveRedispatchState =
+  | { error: string }
+  | {
+      ok: true;
+      result: { kind: "approved"; ghostedAssignmentId: string; sentAssignmentId: string };
+    };
+
+// Phase 28: approve a re-dispatch suggestion DRAFT — ghost the stuck assignment + send the DRAFT
+// (ordered-with-recovery). Bound with (jobId, draftAssignmentId); mirrors sendDispatchAction's
+// requireTenant + revalidate shape. The approve guards map to operator-readable messages.
+export async function approveRedispatchAction(
+  jobId: string,
+  draftAssignmentId: string,
+): Promise<ApproveRedispatchState> {
+  const ctx = await requireTenant();
+
+  try {
+    const result = await approveRedispatch({
+      tenantId: ctx.activeTenant.tenantId,
+      draftAssignmentId,
+      actorUserId: ctx.user.id,
+    });
+    revalidatePath(`/jobs/${jobId}/dispatch/${draftAssignmentId}`);
+    revalidatePath(`/jobs/${jobId}`);
+    return { ok: true, result };
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "NOT_A_REDISPATCH_SUGGESTION":
+          return { error: "This draft is not a re-dispatch suggestion." };
+        case "DRAFT_NOT_PENDING":
+          return { error: "This suggestion was already approved (or is no longer a draft)." };
+        case "STUCK_NO_LONGER_SENT":
+          return { error: "The original dispatch is no longer awaiting a response — re-check before re-dispatching." };
+        case "ASSIGNMENT_NOT_FOUND":
+          return { error: "This dispatch no longer exists." };
+        case "JOB_NOT_DISPATCHABLE":
+        case "JOB_BECAME_TERMINAL":
+          return { error: "This job can no longer be dispatched (it was closed or cancelled)." };
+        case "JOB_NOT_FOUND":
+        case "STATUS_NOT_FOUND":
+          return { error: "Could not approve the re-dispatch — please reload and try again." };
       }
     }
     throw err;
