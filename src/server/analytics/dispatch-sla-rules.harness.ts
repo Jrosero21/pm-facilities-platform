@@ -27,6 +27,7 @@ test("unmapped priority code -> DEFAULT (24h)", () => {
 test("untracked status -> undefined (not tracked)", () => {
   assert.equal(dispatchStuckThresholdSeconds("ACCEPTED", "EMERGENCY"), undefined); // not filled yet
   assert.equal(dispatchStuckThresholdSeconds("WORK_COMPLETE", "EMERGENCY"), undefined);
+  assert.equal(dispatchStuckThresholdSeconds("GHOSTED", "EMERGENCY"), undefined); // terminal-failed, never tracked
 });
 
 // classifier — boundary + tiers
@@ -46,6 +47,7 @@ test("null-priority SENT uses 24h: 12h not stuck, 25h stuck", () => {
 test("untracked status never stuck regardless of dwell", () => {
   assert.equal(isDispatchStuck({ statusCode: "ACCEPTED", priorityCode: "EMERGENCY", dwellSeconds: 999 * H }), false);
   assert.equal(isDispatchStuck({ statusCode: "DECLINED", priorityCode: "EMERGENCY", dwellSeconds: 999 * H }), false);
+  assert.equal(isDispatchStuck({ statusCode: "GHOSTED", priorityCode: "EMERGENCY", dwellSeconds: 999 * H }), false); // terminal-failed
 });
 test("map shape: SENT is the only filled status today", () => {
   assert.deepEqual(Object.keys(DISPATCH_STUCK_THRESHOLDS_SECONDS), ["SENT"]);

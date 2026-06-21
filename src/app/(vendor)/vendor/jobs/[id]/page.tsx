@@ -84,7 +84,8 @@ export default async function VendorAssignmentDetailPage({
   const isTerminal =
     detail.statusCode === "WORK_COMPLETE" ||
     detail.statusCode === "DECLINED" ||
-    detail.statusCode === "CANCELLED";
+    detail.statusCode === "CANCELLED" ||
+    detail.statusCode === "GHOSTED";
 
   return (
     <section className="space-y-8">

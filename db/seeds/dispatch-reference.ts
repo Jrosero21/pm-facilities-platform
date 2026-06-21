@@ -4,9 +4,10 @@
 // once across the whole DB, no tenant dimension (D-4.1). createDispatch resolves
 // the initial status by code ('DRAFT') via getDispatchAssignmentStatusByCode.
 //
-// 9 statuses (roadmap §8 Phase 5). `category` groups them operationally; declined
-// and cancelled share the `cancelled` category (lock (a)) but stay distinct codes.
-// is_terminal marks end states (declined / work_complete / cancelled).
+// 10 statuses (roadmap §8 Phase 5 + GHOSTED, Phase 28). `category` groups them
+// operationally; declined / cancelled / ghosted share the `cancelled` category
+// (lock (a)) but stay distinct codes.
+// is_terminal marks end states (declined / work_complete / cancelled / ghosted).
 //
 // Idempotent: keyed on code alone (global). Safe to re-run; existing rows left
 // as-is. Codes uppercased. No audit rows (bootstrap reference data).
@@ -102,6 +103,15 @@ const starterStatuses: {
     sortOrder: 90,
     isTerminal: true,
     description: "Dispatch was cancelled by the operator before completion.",
+  },
+  {
+    name: "Vendor Ghosted",
+    code: "GHOSTED",
+    category: "cancelled",
+    sortOrder: 100,
+    isTerminal: true,
+    description:
+      "Vendor went silent on a sent dispatch past the SLA window — no response, no-show. Distinct code from Declined/Cancelled (ghost-rate is reportable), same operational category.",
   },
 ];
 

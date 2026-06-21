@@ -156,7 +156,7 @@ async function autonomyCommittedJobIds(tenantId: string, window: "day" | "all"):
         eq(jobVendorAssignments.tenantId, tenantId),
         isNull(jobVendorAssignments.createdByUserId), // autonomy (system actor)
         isNotNull(jobVendorAssignments.sentAt), // SENT — the commit moment
-        notInArray(dispatchAssignmentStatuses.code, ["DECLINED", "CANCELLED"]), // exclude WITHDRAWN only; WORK_COMPLETE counts
+        notInArray(dispatchAssignmentStatuses.code, ["DECLINED", "CANCELLED", "GHOSTED"]), // exclude terminal-failed (incl. GHOSTED); WORK_COMPLETE counts
         window === "day"
           ? sql`${jobVendorAssignments.sentAt} >= NOW() - INTERVAL 1 DAY`
           : undefined,
