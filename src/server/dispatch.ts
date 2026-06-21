@@ -143,6 +143,7 @@ export async function getAssignmentDetail(tenantId: string, id: string) {
       matchedGeoTypesAtDispatch: jobVendorAssignments.matchedGeoTypesAtDispatch,
       complianceStatusAtDispatch: jobVendorAssignments.complianceStatusAtDispatch,
       chosenBranchCoveredTrade: jobVendorAssignments.chosenBranchCoveredTrade,
+      replacesAssignmentId: jobVendorAssignments.replacesAssignmentId,
       sentAt: jobVendorAssignments.sentAt,
       createdAt: jobVendorAssignments.createdAt,
       updatedAt: jobVendorAssignments.updatedAt,

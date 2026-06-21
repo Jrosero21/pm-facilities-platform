@@ -11,7 +11,7 @@ import "server-only";
 // DETECTION ONLY — no auto-response (Phase 28), no autonomous send (Phase 23). Wall-clock dwell
 // (Option B); the business-hours clock is banked (CF-19.1).
 
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
   changeOrders,
@@ -25,6 +25,8 @@ import {
 } from "@/server/schema";
 import { operationalQueue } from "@/server/analytics/operational-queue";
 import { isDispatchStuck, dispatchStuckThresholdSeconds } from "@/server/analytics/dispatch-sla-rules";
+import { REDISPATCH_MAX_ATTEMPTS } from "@/server/redispatch-suggestion";
+import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
 import type { UrgencyTier } from "@/server/analytics/stalled-rules";
 import type { FollowUpCategory } from "@/lib/follow-up";
 
@@ -45,6 +47,13 @@ export type VendorNotAcceptedRow = {
   priorityCode: string | null;
   isStuck: boolean;
   thresholdSeconds: number | null;
+  // CF-19.1a re-dispatch surface (Phase 28). attemptCount = SENT assignments on the job (any vendor
+  // actually contacted). redispatchState is null for a NON-stuck row (no control shown); for a stuck
+  // row it is one of the three; suggestion is set only for "suggestion_ready". no_eligible_vendor
+  // exhaustion is NOT computed here (discovered on click) — only the cheap max-attempts cap.
+  attemptCount: number;
+  redispatchState: "can_suggest" | "suggestion_ready" | "exhausted_max_attempts" | null;
+  suggestion: { draftId: string; draftVendorName: string } | null;
 };
 
 /**
@@ -80,7 +89,7 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
         eq(dispatchAssignmentStatuses.code, "SENT"),
       ),
     );
-  return rows.map((r) => {
+  const enriched = rows.map((r) => {
     const ageSeconds = Number(r.ageSeconds);
     const priorityCode = r.priorityCode ?? null;
     return {
@@ -90,6 +99,70 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
       isStuck: isDispatchStuck({ statusCode: "SENT", priorityCode, dwellSeconds: ageSeconds }),
       thresholdSeconds: dispatchStuckThresholdSeconds("SENT", priorityCode) ?? null,
     };
+  });
+
+  // ── Second pass (NOT correlated subqueries) — attemptCount for every row + suggestion-draft
+  //    detection for the stuck ones. Two small IN-list queries, merged in JS. ──────────────────
+  const sentByJob = new Map<string, number>();
+  const draftByStuck = new Map<string, { draftId: string; draftVendorName: string }>();
+
+  if (enriched.length > 0) {
+    const jobIds = [...new Set(enriched.map((r) => r.jobId))];
+    const sentRows = await db
+      .select({ jobId: jobVendorAssignments.jobId, n: sql<number>`COUNT(*)` })
+      .from(jobVendorAssignments)
+      .where(
+        and(
+          eq(jobVendorAssignments.tenantId, tenantId),
+          inArray(jobVendorAssignments.jobId, jobIds),
+          isNotNull(jobVendorAssignments.sentAt),
+        ),
+      )
+      .groupBy(jobVendorAssignments.jobId);
+    for (const c of sentRows) sentByJob.set(c.jobId, Number(c.n));
+
+    const stuckIds = enriched.filter((r) => r.isStuck).map((r) => r.assignmentId);
+    if (stuckIds.length > 0) {
+      const draftStatus = await getDispatchAssignmentStatusByCode("DRAFT");
+      if (draftStatus) {
+        const drafts = await db
+          .select({
+            draftId: jobVendorAssignments.id,
+            replaces: jobVendorAssignments.replacesAssignmentId,
+            draftVendorName: vendors.name,
+          })
+          .from(jobVendorAssignments)
+          .innerJoin(vendors, eq(vendors.id, jobVendorAssignments.vendorId))
+          .where(
+            and(
+              eq(jobVendorAssignments.tenantId, tenantId),
+              inArray(jobVendorAssignments.replacesAssignmentId, stuckIds),
+              eq(jobVendorAssignments.currentStatusId, draftStatus.id),
+            ),
+          );
+        for (const d of drafts) {
+          if (d.replaces) draftByStuck.set(d.replaces, { draftId: d.draftId, draftVendorName: d.draftVendorName });
+        }
+      }
+    }
+  }
+
+  return enriched.map((r) => {
+    const attemptCount = sentByJob.get(r.jobId) ?? 0;
+    let redispatchState: VendorNotAcceptedRow["redispatchState"] = null;
+    let suggestion: VendorNotAcceptedRow["suggestion"] = null;
+    if (r.isStuck) {
+      const draft = draftByStuck.get(r.assignmentId);
+      if (draft) {
+        redispatchState = "suggestion_ready";
+        suggestion = draft;
+      } else if (attemptCount >= REDISPATCH_MAX_ATTEMPTS) {
+        redispatchState = "exhausted_max_attempts";
+      } else {
+        redispatchState = "can_suggest";
+      }
+    }
+    return { ...r, attemptCount, redispatchState, suggestion };
   });
 }
 
@@ -201,6 +274,9 @@ export type Exception = ExceptionBase &
         priorityCode: string | null;
         isStuck: boolean;
         thresholdSeconds: number | null;
+        attemptCount: number;
+        redispatchState: "can_suggest" | "suggestion_ready" | "exhausted_max_attempts" | null;
+        suggestion: { draftId: string; draftVendorName: string } | null;
       }
     | {
         kind: "nte_increase_requested";
@@ -253,6 +329,9 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       priorityCode: r.priorityCode,
       isStuck: r.isStuck,
       thresholdSeconds: r.thresholdSeconds,
+      attemptCount: r.attemptCount,
+      redispatchState: r.redispatchState,
+      suggestion: r.suggestion,
       // Stuck rows bubble to the top band; true age still orders within each band.
       sortKey: r.ageSeconds + (r.isStuck ? STUCK_SORT_BUMP_SECONDS : 0),
     });
