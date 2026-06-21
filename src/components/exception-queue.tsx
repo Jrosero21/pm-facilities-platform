@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Exception } from "@/server/analytics/exceptions";
 import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
+import { SuggestReplacementButton } from "@/components/suggest-replacement-button";
 
 // Phase 19e — the exception queue (the "manage by exception" feed). Display-only: a flat
 // sorted list over getExceptions, one row per Exception kind. No interactivity → a Server
@@ -83,6 +84,26 @@ function ExceptionRow({ item }: { item: Exception }) {
         <span className="text-xs text-neutral-500">{humanizeAge(trueAgeSeconds(item))}</span>
       </div>
       <Detail item={item} />
+      {item.kind === "vendor_not_accepted" && item.redispatchState != null && (
+        <div className="mt-2">
+          {item.redispatchState === "can_suggest" && (
+            <SuggestReplacementButton jobId={item.jobId} stuckAssignmentId={item.assignmentId} />
+          )}
+          {item.redispatchState === "suggestion_ready" && item.suggestion && (
+            <Link
+              href={`/jobs/${item.jobId}/dispatch/${item.suggestion.draftId}`}
+              className="inline-block rounded bg-blue-50 px-2 py-1 text-sm font-medium text-neutral-900 hover:underline"
+            >
+              Replacement ready: {item.suggestion.draftVendorName} — review &amp; approve
+            </Link>
+          )}
+          {item.redispatchState === "exhausted_max_attempts" && (
+            <p className="rounded border border-red-200 bg-red-50 px-2 py-1 text-sm font-medium text-red-800">
+              Out of attempts — needs manual attention.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { getAssignmentDetail } from "@/server/dispatch";
 import { listActiveDispatchStatuses } from "@/server/dispatch-reference";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { SendDispatchButton } from "@/components/send-dispatch-button";
+import { ApproveRedispatchButton } from "@/components/approve-redispatch-button";
 import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
@@ -139,11 +140,17 @@ export default async function AssignmentDetailPage({
 
       {a.statusCode === "DRAFT" && (
         <div className="mt-6">
-          <SendDispatchButton assignmentId={assignmentId} />
-          <p className="mt-2 text-xs text-neutral-500">
-            Sending notifies the vendor and moves the job to Dispatched (if it was
-            New or Scheduled).
-          </p>
+          {a.replacesAssignmentId ? (
+            <ApproveRedispatchButton jobId={id} draftAssignmentId={assignmentId} />
+          ) : (
+            <>
+              <SendDispatchButton assignmentId={assignmentId} />
+              <p className="mt-2 text-xs text-neutral-500">
+                Sending notifies the vendor and moves the job to Dispatched (if it was
+                New or Scheduled).
+              </p>
+            </>
+          )}
         </div>
       )}
 
