@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Exception } from "@/server/analytics/exceptions";
 import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
 import { SuggestReplacementButton } from "@/components/suggest-replacement-button";
+import { AutoRedispatchOneButton } from "@/components/auto-redispatch-one-button";
 
 // Phase 19e — the exception queue (the "manage by exception" feed). Display-only: a flat
 // sorted list over getExceptions, one row per Exception kind. No interactivity → a Server
@@ -87,7 +88,12 @@ function ExceptionRow({ item }: { item: Exception }) {
       {item.kind === "vendor_not_accepted" && item.redispatchState != null && (
         <div className="mt-2">
           {item.redispatchState === "can_suggest" && (
-            <SuggestReplacementButton jobId={item.jobId} stuckAssignmentId={item.assignmentId} />
+            <div className="flex flex-wrap items-start gap-3">
+              {/* Manual: prepare a DRAFT for the operator to approve. */}
+              <SuggestReplacementButton jobId={item.jobId} stuckAssignmentId={item.assignmentId} />
+              {/* Autonomous: act now under the tenant's policy + conditions (auto-send if permitted). */}
+              <AutoRedispatchOneButton stuckAssignmentId={item.assignmentId} />
+            </div>
           )}
           {item.redispatchState === "suggestion_ready" && item.suggestion && (
             <Link
