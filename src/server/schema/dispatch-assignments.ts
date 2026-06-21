@@ -101,6 +101,9 @@ export const jobVendorAssignments = mysqlTable(
     // Set by sendDispatch when the dispatch transitions DRAFT → SENT.
     sentAt: datetime("sent_at"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
+    // Phase 28: a re-dispatch DRAFT points at the stuck assignment it replaces (self-FK).
+    // Null for a normal/first dispatch; set only on a re-dispatch suggestion DRAFT.
+    replacesAssignmentId: varchar("replaces_assignment_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
   },
@@ -145,9 +148,15 @@ export const jobVendorAssignments = mysqlTable(
       foreignColumns: [users.id],
       name: "jva_creator_fk",
     }).onDelete("set null"),
+    foreignKey({
+      columns: [t.replacesAssignmentId],
+      foreignColumns: [t.id],
+      name: "jva_replaces_fk",
+    }).onDelete("set null"),
     index("jva_tenant_job_idx").on(t.tenantId, t.jobId),
     index("jva_tenant_vendor_idx").on(t.tenantId, t.vendorId),
     index("jva_tenant_status_idx").on(t.tenantId, t.currentStatusId),
+    index("jva_replaces_idx").on(t.replacesAssignmentId),
   ],
 );
 

@@ -1,0 +1,3 @@
+ALTER TABLE `job_vendor_assignments` ADD `replaces_assignment_id` varchar(36);--> statement-breakpoint
+ALTER TABLE `job_vendor_assignments` ADD CONSTRAINT `jva_replaces_fk` FOREIGN KEY (`replaces_assignment_id`) REFERENCES `job_vendor_assignments`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX `jva_replaces_idx` ON `job_vendor_assignments` (`replaces_assignment_id`);
