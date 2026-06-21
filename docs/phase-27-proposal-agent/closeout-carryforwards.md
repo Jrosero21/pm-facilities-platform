@@ -88,6 +88,9 @@ distinct from PD-4 (the future per-tenant reference-data admin UI).
 **Dispatch-stuck detection (CF-19.1a, SENT-only) + dev-safety — SHIPPED (2026, sandbox-verified).**
 The wall-clock dispatch-SLA detection rung shipped: a priority×status "stuck > X hours" threshold matrix + `isDispatchStuck` classifier (`dispatch-sla-rules.ts`, 9/9 offline), wired into `listVendorNotAccepted` (priority leftJoin) and surfaced as a red "Stuck" badge with a per-tier threshold note, stuck rows bumped above merely-aged ones (two-band ordering). Browser-verified end-to-end across all 6 priority tiers (EMERGENCY 2h / URGENT 4h / HIGH 8h / ROUTINE 24h / SCHEDULED 48h / null→24h DEFAULT) on real rendered sandbox data. Commit 2ba3eaf. **Reaction half RUNG 1 — the OPERATOR-GATED suggest-and-confirm re-dispatch — SHIPPED (2026-06-21, commits `7dfab4b`→`23fa832`; see the CF-19.1a-react annotation at EOF):** a stuck dispatch surfaces "Suggest replacement" (operator-click prepares a re-rank DRAFT) → "Approve re-dispatch" (ghosts the unresponsive vendor + sends the replacement). **STILL OPEN: the AUTONOMOUS reaction** (auto-fire without an operator click) is gated on CF-24.2, and the **all-statuses expansion** (CF-19.1a-statuses) — both remain open. Alongside this, a dev-safety fix: `pnpm dev` now defaults to SANDBOX via `.env.development.local` precedence (Next 16 @next/env load order), with an explicit `pnpm dev:prod` escape hatch (commit 822809d) — the dev server previously read the raw prod `DATABASE_URL`, so a dev browser click could write to prod; it now hits sandbox by default. Two sandbox verification seeds committed (`seed-sandbox-dev-login.ts`, `seed-sandbox-sent-spread.ts`, commit ccfa576).
 
+**Policy-conditions vocabulary (Phase 28) — SHIPPED (2026-06-22, sandbox-verified, commits `b5f6606`→`2f12c5f`).**
+The autonomy gate gained a per-policy conditions vocabulary: a tenant can express amount thresholds (effective NTE ≤ $X), trade filters (allow/block by code), priority filters (e.g. never EMERGENCY), and client include/exclude — all **NARROWING-ONLY** (they can only make autonomy more restrictive, never widen past the kill-switch, the spend/token ceilings, or the fail-safe gate). **C1** (`b5f6606`) the pure Zod-validated evaluator (13/13 offline): absent conditions = no narrowing (backward-compat no-op for every existing policy), invalid = fail-safe gated, unknown NTE = gated. **C2** (`00d84f4`) wired it as one more `&&` in auto-dispatch's live `permitted` chain, build-only-when-set, recording `policy_condition:<reason>` in the audit (probe 6/6 on the real gate). **C3** (`2f12c5f`) a validated setter on the blessed `activateAgentPolicy` path, demonstrating the tenant-"world view" vs per-client **whole-cloth OVERRIDE** (the resolver's most-specific-wins picks the client policy entire, not merged — the replace-not-layer model). **STILL OPEN:** the authoring UI (no in-app policy editor — the `set-agent-conditions-policy.ts` script is the stopgap; this is the same Settings-UI gap **CF-23.1** names, not a separate surface — see **CF-28.1** at EOF), and — critically — conditions only **ACT** once **CF-24.2** wires the autonomous trigger (today they govern a path nothing auto-fires; §2.3 permission ≠ readiness). Confidence floors excluded (no Phase-24 calibration).
+
 ## New Phase-27 banked items (open)
 
 | Id | Item | What's needed | Why deferred |
@@ -1058,3 +1061,15 @@ Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
 **Watchpoints from this session:**
 - `.env.development.local` is local-only / gitignored — a fresh clone must recreate it (sandbox `DATABASE_URL`) to get sandbox-default `pnpm dev`; otherwise `next dev` falls back to `.env.local` (prod). Worth a README/onboarding line.
 - Multi-login awareness: `jnrosero@gmail.com` now exists in BOTH prod (tenant_admin / demo tenant) and sandbox (operator / phase9-seed-tenant) — same email, different identities/passwords. `pnpm dev` defaults to sandbox, `pnpm dev:prod` to prod. "Which env am I in" caution when acting in the dev UI.
+
+---
+
+## Policy-conditions — banked items (2026)
+
+> From the Phase 28 policy-conditions rung (C1+C2+C3, commits `b5f6606`→`2f12c5f`). The
+> evaluator + the live-gate wire + the validated setter shipped; the authoring surface is
+> the remaining piece. Conditions only ACT once CF-24.2 wires the autonomous trigger.
+
+| id | item | status |
+| --- | --- | --- |
+| **CF-28.1** | Policy-conditions authoring UI — an in-app per-tenant/per-client editor to compose the conditions vocabulary (amount/trade/priority/client). Today policies are set only via the `set-agent-conditions-policy.ts` script. Shares **CF-23.1**'s Settings-UI surface — build together, not as a separate screen. Surfaces the product decisions on which condition types to expose first + the include/exclude UX. | OPEN. |
