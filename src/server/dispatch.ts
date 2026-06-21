@@ -193,6 +193,9 @@ export type CreateDispatchInput = {
   scheduledStartAt?: Date | null;
   scheduledEndAt?: Date | null;
   dispatchScope?: string | null;
+  // Phase 28: set on a re-dispatch suggestion DRAFT — the stuck assignment this one replaces
+  // (self-FK). Null/omitted for a normal/first dispatch.
+  replacesAssignmentId?: string | null;
   // string for a human operator; null for a system actor (Phase 22 auto-dispatch).
   // All three write targets (assignment / status-history / audit) are nullable.
   createdByUserId: string | null;
@@ -273,6 +276,7 @@ export async function createDispatch(
       matchedGeoTypesAtDispatch: candidate.geoMatchTypes,
       complianceStatusAtDispatch: candidate.complianceStatus,
       chosenBranchCoveredTrade,
+      replacesAssignmentId: input.replacesAssignmentId ?? null,
       createdByUserId: input.createdByUserId,
     });
 

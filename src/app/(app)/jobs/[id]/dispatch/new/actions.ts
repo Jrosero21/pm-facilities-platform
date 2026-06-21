@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { createDispatch } from "@/server/dispatch";
+import { prepareRedispatchSuggestion, type RedispatchSuggestionResult } from "@/server/redispatch-suggestion";
 
 export type CreateDispatchState = { error: string } | null;
 
@@ -78,4 +79,51 @@ export async function createDispatchAction(
 
   revalidatePath(`/jobs/${jobId}`);
   redirect(`/jobs/${jobId}/dispatch/${newId}`);
+}
+
+export type PrepareRedispatchState =
+  | { error: string }
+  | { ok: true; result: RedispatchSuggestionResult };
+
+/**
+ * Phase 28: prepare a re-dispatch suggestion DRAFT for a stuck assignment (operator-gated;
+ * nothing is sent here — the operator approves later via the Send control). Idempotent.
+ */
+export async function prepareRedispatchSuggestionAction(
+  jobId: string,
+  stuckAssignmentId: string,
+): Promise<PrepareRedispatchState> {
+  const ctx = await requireTenant();
+
+  let result: RedispatchSuggestionResult;
+  try {
+    result = await prepareRedispatchSuggestion({
+      tenantId: ctx.activeTenant.tenantId,
+      jobId,
+      stuckAssignmentId,
+      createdByUserId: ctx.user.id,
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "STUCK_ASSIGNMENT_NOT_ON_JOB":
+          return { error: "That assignment is not on this job." };
+        case "VENDOR_NO_LONGER_CANDIDATE":
+          return {
+            error:
+              "The suggested vendor is no longer a match for this job — the candidate list refreshed. Re-run the suggestion.",
+          };
+        case "JOB_NOT_FOUND":
+          return { error: "Job not found in this tenant." };
+        case "JOB_NOT_DISPATCHABLE":
+          return { error: "Assign a trade to this job before dispatching." };
+        case "STATUS_NOT_FOUND":
+          return { error: "No DRAFT dispatch status is configured — run the dispatch-reference seed." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath(`/jobs/${jobId}`);
+  return { ok: true, result };
 }

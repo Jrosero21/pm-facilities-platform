@@ -9,7 +9,7 @@
 export const REDISPATCH_MAX_ATTEMPTS = 3;
 
 export type RedispatchCopyForward = {
-  agreedNteAmount: number | null;
+  agreedNteAmount: string | null; // raw decimal string — pure pass-through to createDispatch (no float round-trip)
   dispatchScope: string | null;
   scheduledStartAt: Date | null;
 };
@@ -90,9 +90,10 @@ export async function decideRedispatch(input: {
   );
 
   // 3. copyForward from the stuck assignment (dispatchScope is not in listAssignmentsForJob,
-  //    so read it off the row). agreedNteAmount is a decimal (string) -> number per the type.
+  //    so read it off the row). agreedNteAmount stays the raw decimal string — pure pass-through
+  //    to createDispatch (which takes string | null), no float round-trip.
   const copyForward: RedispatchCopyForward = {
-    agreedNteAmount: stuck.agreedNteAmount != null ? Number(stuck.agreedNteAmount) : null,
+    agreedNteAmount: stuck.agreedNteAmount ?? null,
     dispatchScope: stuck.dispatchScope ?? null,
     scheduledStartAt: stuck.scheduledStartAt ?? null,
   };
@@ -103,4 +104,73 @@ export async function decideRedispatch(input: {
     rankedVendorIds: ranked.map((c) => c.vendorId),
     copyForward,
   });
+}
+
+export type RedispatchSuggestionResult =
+  | { kind: "prepared"; draftAssignmentId: string; vendorId: string }
+  | { kind: "exhausted"; reason: "max_attempts" | "no_eligible_vendor" }
+  | { kind: "already_suggested"; existingDraftId: string };
+
+/**
+ * The WRITE side: consume the decision and land a re-dispatch suggestion DRAFT to the next
+ * eligible vendor, stamping replaces_assignment_id = the stuck assignment. Idempotent — if a
+ * suggestion DRAFT already replaces this stuck assignment, returns "already_suggested" without
+ * creating a second. createDispatch re-validates eligibility (VENDOR_NO_LONGER_CANDIDATE may
+ * throw if the vendor went ineligible between decide and create — let it propagate to the caller).
+ */
+export async function prepareRedispatchSuggestion(input: {
+  tenantId: string;
+  jobId: string;
+  stuckAssignmentId: string;
+  createdByUserId: string;
+}): Promise<RedispatchSuggestionResult> {
+  const { tenantId, jobId, stuckAssignmentId, createdByUserId } = input;
+
+  const { db } = await import("@/server/db");
+  const { jobVendorAssignments, dispatchAssignmentStatuses } = await import("@/server/schema");
+  const { eq, and } = await import("drizzle-orm");
+  const { createDispatch } = await import("@/server/dispatch");
+
+  // 1. Idempotency guard — a DRAFT already replacing this stuck assignment? (replaces_assignment_id
+  //    is NOT in listAssignmentsForJob's projection, so a direct targeted select.)
+  const existing = await db
+    .select({ id: jobVendorAssignments.id })
+    .from(jobVendorAssignments)
+    .innerJoin(
+      dispatchAssignmentStatuses,
+      eq(jobVendorAssignments.currentStatusId, dispatchAssignmentStatuses.id),
+    )
+    .where(
+      and(
+        eq(jobVendorAssignments.tenantId, tenantId),
+        eq(jobVendorAssignments.jobId, jobId),
+        eq(jobVendorAssignments.replacesAssignmentId, stuckAssignmentId),
+        eq(dispatchAssignmentStatuses.code, "DRAFT"),
+      ),
+    )
+    .limit(1);
+  if (existing[0]) {
+    return { kind: "already_suggested", existingDraftId: existing[0].id };
+  }
+
+  // 2. Decide (re-rank fresh, skip tried, cap-aware).
+  const decision = await decideRedispatch({ tenantId, jobId, stuckAssignmentId });
+  if (decision.kind === "exhausted") {
+    return { kind: "exhausted", reason: decision.reason };
+  }
+
+  // 3. Land the suggestion DRAFT to the next eligible vendor, carrying scope/NTE/schedule forward
+  //    and stamping the replaces-link. createDispatch re-checks eligibility (may throw).
+  const assignment = await createDispatch({
+    tenantId,
+    jobId,
+    vendorId: decision.vendorId,
+    createdByUserId,
+    replacesAssignmentId: stuckAssignmentId,
+    agreedNteAmount: decision.copyForward.agreedNteAmount,
+    dispatchScope: decision.copyForward.dispatchScope,
+    scheduledStartAt: decision.copyForward.scheduledStartAt,
+  });
+
+  return { kind: "prepared", draftAssignmentId: assignment.id, vendorId: decision.vendorId };
 }

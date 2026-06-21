@@ -11,7 +11,7 @@ function test(n: string, fn: () => void) { fn(); pass++; console.log(`  ok ${n}`
 console.log("redispatch-suggestion core harness");
 
 const CF: RedispatchCopyForward = {
-  agreedNteAmount: 500,
+  agreedNteAmount: "500.00", // raw decimal string (pass-through)
   dispatchScope: "Fix the walk-in cooler",
   scheduledStartAt: new Date("2026-06-20T12:00:00Z"),
 };
