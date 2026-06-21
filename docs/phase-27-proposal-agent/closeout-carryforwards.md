@@ -86,7 +86,7 @@ the record. Commit f025c85. This was the "parked idea" from B-16.4 — now close
 distinct from PD-4 (the future per-tenant reference-data admin UI).
 
 **Dispatch-stuck detection (CF-19.1a, SENT-only) + dev-safety — SHIPPED (2026, sandbox-verified).**
-The wall-clock dispatch-SLA detection rung shipped: a priority×status "stuck > X hours" threshold matrix + `isDispatchStuck` classifier (`dispatch-sla-rules.ts`, 9/9 offline), wired into `listVendorNotAccepted` (priority leftJoin) and surfaced as a red "Stuck" badge with a per-tier threshold note, stuck rows bumped above merely-aged ones (two-band ordering). Browser-verified end-to-end across all 6 priority tiers (EMERGENCY 2h / URGENT 4h / HIGH 8h / ROUTINE 24h / SCHEDULED 48h / null→24h DEFAULT) on real rendered sandbox data. Commit 2ba3eaf. Reaction half + all-statuses expansion remain open (see EOF). Alongside this, a dev-safety fix: `pnpm dev` now defaults to SANDBOX via `.env.development.local` precedence (Next 16 @next/env load order), with an explicit `pnpm dev:prod` escape hatch (commit 822809d) — the dev server previously read the raw prod `DATABASE_URL`, so a dev browser click could write to prod; it now hits sandbox by default. Two sandbox verification seeds committed (`seed-sandbox-dev-login.ts`, `seed-sandbox-sent-spread.ts`, commit ccfa576).
+The wall-clock dispatch-SLA detection rung shipped: a priority×status "stuck > X hours" threshold matrix + `isDispatchStuck` classifier (`dispatch-sla-rules.ts`, 9/9 offline), wired into `listVendorNotAccepted` (priority leftJoin) and surfaced as a red "Stuck" badge with a per-tier threshold note, stuck rows bumped above merely-aged ones (two-band ordering). Browser-verified end-to-end across all 6 priority tiers (EMERGENCY 2h / URGENT 4h / HIGH 8h / ROUTINE 24h / SCHEDULED 48h / null→24h DEFAULT) on real rendered sandbox data. Commit 2ba3eaf. **Reaction half RUNG 1 — the OPERATOR-GATED suggest-and-confirm re-dispatch — SHIPPED (2026-06-21, commits `7dfab4b`→`23fa832`; see the CF-19.1a-react annotation at EOF):** a stuck dispatch surfaces "Suggest replacement" (operator-click prepares a re-rank DRAFT) → "Approve re-dispatch" (ghosts the unresponsive vendor + sends the replacement). **STILL OPEN: the AUTONOMOUS reaction** (auto-fire without an operator click) is gated on CF-24.2, and the **all-statuses expansion** (CF-19.1a-statuses) — both remain open. Alongside this, a dev-safety fix: `pnpm dev` now defaults to SANDBOX via `.env.development.local` precedence (Next 16 @next/env load order), with an explicit `pnpm dev:prod` escape hatch (commit 822809d) — the dev server previously read the raw prod `DATABASE_URL`, so a dev browser click could write to prod; it now hits sandbox by default. Two sandbox verification seeds committed (`seed-sandbox-dev-login.ts`, `seed-sandbox-sent-spread.ts`, commit ccfa576).
 
 ## New Phase-27 banked items (open)
 
@@ -1040,7 +1040,20 @@ Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
 | --- | --- | --- |
 | **CF-19.1a-statuses** | All-5-statuses expansion: extend stuck-detection to ACCEPTED/SCHEDULED/CONFIRMED/ON_SITE. Drop-in via the nested status→priority map (only SENT filled today) + the `MAX(job_vendor_assignment_status_history.created_at)` entered-status anchor (sent_at only anchors SENT). Each new status needs its own per-priority thresholds (Jonny-set). | OPEN. |
 | **CF-19.1a-react** | Reaction half: auto-re-dispatch on a stuck dispatch (the ranked fallback chain). | OPEN — Phase-28-gated on CF-24.2 (nothing in app code auto-invokes `autoDispatchDraftForJob` yet). |
+| **CF-19.1a-react-preprepare** | Pre-prepare-on-stuck convenience — prepare the suggestion DRAFT automatically when detection flags a stuck dispatch (rung 1 is prepare-on-demand: nothing is created until the operator clicks Suggest). A later convenience upgrade; flips on-demand → ready-on-arrival. Still operator-gated to SEND. | OPEN. |
+| **CF-19.1a-react-atomictx** | True-atomic `approveRedispatch` — rung 1 uses ordered-with-recovery (ghost-first then send, two independent txns; a post-ghost send failure self-heals via the next stuck-scan). The stronger guarantee = refactor `setAssignmentStatus`/`sendDispatch` to share one `db.transaction` so ghost+send commit atomically. Deferred hardening, not blocking. | OPEN. |
 | **CF-19.1a-fmt** | Threshold-note legibility: `humanizeAge` renders the 24h DEFAULT as "1d", which reads oddly next to "2h/4h/8h" tier notes. Consider a consistent "Nh threshold" / "default" formatting pass across all tier notes. | OPEN — cosmetic, low priority. |
+
+> → **RUNG 1 SHIPPED** (2026-06-21, operator-gated suggest-and-confirm): a stuck dispatch
+>   surfaces "Suggest replacement" → operator click prepares a re-rank DRAFT (skip tried,
+>   cap at 3) → operator "Approve re-dispatch" ghosts the unresponsive vendor (new GHOSTED
+>   status) + sends the replacement. Commits `7dfab4b`→`23fa832` (GHOSTED status, migration
+>   0056 `replaces_assignment_id` self-FK, decision engine, prepare/approve with the
+>   mandatory stuck-still-SENT + plain-send guards, exception-row state, UI). Live-walked on
+>   sandbox. **STILL OPEN: the AUTONOMOUS trigger** (auto-fire without operator click) remains
+>   gated on **CF-24.2** — rung 1 is human-in-the-loop only. The on-demand→ready-on-arrival
+>   convenience is **CF-19.1a-react-preprepare**; the true-atomic ghost+send is
+>   **CF-19.1a-react-atomictx** (both OPEN, above).
 
 **Watchpoints from this session:**
 - `.env.development.local` is local-only / gitignored — a fresh clone must recreate it (sandbox `DATABASE_URL`) to get sandbox-default `pnpm dev`; otherwise `next dev` falls back to `.env.local` (prod). Worth a README/onboarding line.
