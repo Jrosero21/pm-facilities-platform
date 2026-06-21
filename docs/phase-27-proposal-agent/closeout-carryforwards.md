@@ -1073,3 +1073,17 @@ Live-verified: Job #4 line stores `trade_id=HVAC`, bills $95 (HVAC rate).
 | id | item | status |
 | --- | --- | --- |
 | **CF-28.1** | Policy-conditions authoring UI — an in-app per-tenant/per-client editor to compose the conditions vocabulary (amount/trade/priority/client). Today policies are set only via the `set-agent-conditions-policy.ts` script. Shares **CF-23.1**'s Settings-UI surface — build together, not as a separate screen. Surfaces the product decisions on which condition types to expose first + the include/exclude UX. | OPEN. |
+
+---
+
+## Autonomy trigger (Phase 28 T1/T2) — banked items (2026)
+
+> The autonomy trigger that fires re-dispatch without an operator click. The engine (T1) +
+> the operator surfaces (T2a per-job, T2b sweep) shipped; one spend-attribution follow-up is open.
+
+**Autonomous re-dispatch trigger — SHIPPED (2026-06-22, sandbox + live-walk verified).**
+T1 (`autoRedispatchForStuckAssignment`) — the gate-governed autonomous core: a stuck SENT dispatch → the rung-1 prepare→approve flow run WITHOUT an operator click, behind the SAME gate auto-dispatch uses (kill-switch + autonomyEnabled + token + spend + conditions), system actor (`getSystemUserId()`), idempotent (stuck-still-SENT pre-check + rung-1 `already_suggested`), audited as triggerSource `auto_redispatch` (`auto_executed` / `policy_blocked`). Probe 16/16. **T2a** — the per-job "Auto-retry now" button on the stuck exception row (alongside the manual "Suggest replacement"), fires T1 for one job; probe 9/9 + live-walked (operator clicked, watched Vendor A → GHOSTED, Vendor B → SENT). **T2b** — the tenant-level "Auto-retry all eligible" sweep button: sequential (`for`-await, NOT parallel — the spend-aggregate guard) fire of T1 across all `can_suggest` stuck jobs, aggregate summary, idempotent re-sweep; probe 9/9. Commits: T1 `b59101f`, T2a `89fc02a` (action+button+wiring) + `0bd3409` (walk-seed `WALK_AUTONOMY` mode), T2b (this batch, commit pending). **STILL OPEN:** a SCHEDULED/automatic trigger (cron / HTTP-pinged) is host-dependent and deferred — the manual button is the no-host cut; **auto-dispatch-NEW** autonomy (vs re-dispatch only) is a separate, bigger scope, not built; and **CF-28.2** below.
+
+| id | item | status |
+|----|------|--------|
+| **CF-28.2** | Aggregate (per-day/per-tenant) committed-$ ceiling does NOT count autonomous re-dispatch sends. `autonomyCommittedJobIds` (`guardrails.ts:157`) sums only `isNull(created_by_user_id)` ("autonomy = system actor"), but T1's autonomous send attributes the replacement assignment to `getSystemUserId()` (non-null, because `setAssignmentStatus.actorUserId` is non-nullable — `auto-redispatch.ts:63`) → re-dispatch sends are excluded from the aggregate sum. The PER-JOB cap (`maxCommittedPerJob`) DOES guard each re-dispatch (proven, T2b probe scenario C); the sequential sweep loop is correct (no race). This is an attribution inconsistency (auto-dispatch-new = null = counted vs re-dispatch = system-user = uncounted), not an acute hole. **OPEN DECISION first:** is a re-dispatch net-new spend at all? (it re-sends the SAME job at the SAME NTE to a different vendor — arguably not net-new). If it should count: either widen `setAssignmentStatus` to accept a null actor (so re-dispatch uses the null/counted actor) OR teach `autonomyCommittedJobIds` to include system-user autonomous sends. Non-urgent. | OPEN |
