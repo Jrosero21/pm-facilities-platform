@@ -9,6 +9,10 @@ import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { openRun, closeRun, logDecision } from "@/server/agents/runner";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
 import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config/guardrails";
+import { parseConditions, evaluatePolicyConditions, type PolicyActionContext } from "@/server/agents/config/conditions";
+import { getEffectiveNte } from "@/server/billing/change-orders";
+import { getPriority } from "@/server/job-reference";
+import { getTrade } from "@/server/trades";
 import { getJob } from "@/server/jobs";
 import { getVendorPerformanceScoresForVendors } from "@/server/analytics/vendor-performance";
 import { toScoredCandidate, rankCandidates, isCloseCall } from "@/server/scorer";
@@ -243,16 +247,35 @@ export async function autoDispatchDraftForJob(
     inputSummary: `Auto-dispatch candidate vendor ${top.vendorId}`,
   });
 
-  // Compose the three gates: hoisted resolved (kill-switch step-0 + policy halves) + hoisted
-  // token + spend (§2.4 spend-breaker).
+  // Compose the gates: hoisted resolved (kill-switch step-0 + policy halves) + hoisted token +
+  // spend (§2.4 spend-breaker) + the optional policy-conditions narrowing (Phase 28).
   const spend = await withinSpendCeilings(tenantId, jobId);
-  const permitted = resolved.autonomyEnabled && token.ok && spend.ok;
+
+  // Policy-conditions: a NARROWING below autonomyEnabled (never widens). Absent block → no-op
+  // (pass). "invalid" block → fail-safe gated WITHOUT building the context (the reads are skipped).
+  // Codes matched on stable priorities.code / trades.code; NTE is the EFFECTIVE NTE (base + COs).
+  const conditions = parseConditions(resolved.raw);
+  let conditionsResult: { pass: boolean; failedOn: string | null } = { pass: true, failedOn: null };
+  if (conditions === "invalid") {
+    conditionsResult = { pass: false, failedOn: "invalid_conditions" };
+  } else if (conditions !== null) {
+    const effectiveNteStr = await getEffectiveNte(tenantId, jobId);
+    const effectiveNteNum = effectiveNteStr === null ? null : Number(effectiveNteStr);
+    const effectiveNte = effectiveNteNum !== null && Number.isFinite(effectiveNteNum) ? effectiveNteNum : null;
+    const priorityCode = job?.priorityId ? (await getPriority(tenantId, job.priorityId))?.code ?? null : null;
+    const tradeCode = job?.primaryTradeId ? (await getTrade(job.primaryTradeId))?.code ?? null : null;
+    const actionContext: PolicyActionContext = { effectiveNte, tradeCode, priorityCode, clientId };
+    conditionsResult = evaluatePolicyConditions(conditions, actionContext);
+  }
+
+  const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass;
 
   const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
   const decisionMeta = {
     source: resolved.source,
     tokenOk: token.ok,
     spend,
+    conditions: conditionsResult,
     vendorId: top.vendorId,
     preferenceRank: top.preferenceRank,
     trackRecordScore: top.trackRecordScore,
@@ -273,7 +296,9 @@ export async function autoDispatchDraftForJob(
             ? "unmeasurable_nte"
             : !spend.ok
               ? "spend_ceiling"
-              : "unknown";
+              : !conditionsResult.pass
+                ? `policy_condition:${conditionsResult.failedOn}`
+                : "unknown";
 
     // FIRST-EVER policy_blocked write. This is the EXPECTED gated path (§2.7), not an error:
     // the run SUCCEEDED in reaching a decision; the draft stays for operator review.
