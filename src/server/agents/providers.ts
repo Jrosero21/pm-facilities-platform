@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { LanguageModel } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
+import { anthropic, createAnthropic } from "@ai-sdk/anthropic";
+import { openai, createOpenAI } from "@ai-sdk/openai";
 
 // ── Phase 24 track B — PROVIDER REGISTRY (providers are DATA, not structure) ───────────
 // The single map of live LLM providers for the direct-SDK path. Adding a third provider
@@ -24,8 +24,12 @@ export type ProviderName = "anthropic" | "openai";
 export type ProviderEntry = {
   /** Env var holding the platform key for this provider. */
   envKey: string;
-  /** Build the AI-SDK model object from a BARE model id (e.g. "claude-sonnet-4-6"). */
-  buildModel: (bareId: string) => LanguageModel;
+  /**
+   * Build the AI-SDK model object from a BARE model id (e.g. "claude-sonnet-4-6"). With an
+   * apiKey (a tenant's own key, CF-23.1) the per-key factory is used; WITHOUT one the env
+   * singleton is used — the EXACT pre-K3 path (platform key, byte-identical to today).
+   */
+  buildModel: (bareId: string, apiKey?: string) => LanguageModel;
   /** Provider-qualified prefix written to agent_runs.model (e.g. "anthropic/"). */
   recordedPrefix: string;
   /** Provider-qualified default model id. */
@@ -35,13 +39,14 @@ export type ProviderEntry = {
 export const PROVIDER_REGISTRY: Record<ProviderName, ProviderEntry> = {
   anthropic: {
     envKey: "ANTHROPIC_API_KEY",
-    buildModel: (bareId) => anthropic(bareId),
+    // apiKey present → tenant's own key via the factory; absent → the env singleton (today's path).
+    buildModel: (bareId, apiKey) => (apiKey ? createAnthropic({ apiKey })(bareId) : anthropic(bareId)),
     recordedPrefix: "anthropic/",
     defaultModel: "anthropic/claude-sonnet-4-6",
   },
   openai: {
     envKey: "OPENAI_API_KEY",
-    buildModel: (bareId) => openai(bareId),
+    buildModel: (bareId, apiKey) => (apiKey ? createOpenAI({ apiKey })(bareId) : openai(bareId)),
     recordedPrefix: "openai/",
     defaultModel: "openai/gpt-5.4",
   },
@@ -72,6 +77,6 @@ export function parseQualifiedModel(
 }
 
 /** Build the AI-SDK model object for a provider + bare id (the direct-SDK path). */
-export function buildProviderModel(provider: ProviderName, bareId: string): LanguageModel {
-  return PROVIDER_REGISTRY[provider].buildModel(bareId);
+export function buildProviderModel(provider: ProviderName, bareId: string, apiKey?: string): LanguageModel {
+  return PROVIDER_REGISTRY[provider].buildModel(bareId, apiKey);
 }

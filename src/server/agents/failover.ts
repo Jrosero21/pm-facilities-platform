@@ -1,7 +1,7 @@
 import "server-only";
 
 import { APICallError, type LanguageModel } from "ai";
-import { parseQualifiedModel, providerAvailable, buildProviderModel } from "./providers";
+import { parseQualifiedModel, providerAvailable, buildProviderModel, type ProviderName } from "./providers";
 import type { AgentRouting } from "./llm-routing";
 
 // ── Phase 24 track B (B2) — PROVIDER PREFERENCE + FAILOVER ────────────────────────────
@@ -49,8 +49,16 @@ export type ModelCandidate = {
  * (allowlist+order, filtered to available providers), else the single env-driven base candidate.
  * mock is handled by the caller (it returns before failover).
  */
-export function buildCandidates(routing: AgentRouting, failoverOrder: unknown): ModelCandidate[] {
+export function buildCandidates(
+  routing: AgentRouting,
+  failoverOrder: unknown,
+  // CF-23.1 (K3): a tenant's own key per provider, DIRECT-PATH ONLY. Applied per candidate by its
+  // provider; absent/empty → apiKey undefined → the env singleton (byte-identical to pre-K3).
+  providerKeys?: Partial<Record<ProviderName, string>>,
+): ModelCandidate[] {
   if (routing.mode === "gateway") {
+    // Gateway candidate: no buildProviderModel call → providerKeys never applies (the gateway bills
+    // its own key). Tenant keys are direct-path-only.
     return [{ model: routing.modelId, recordedModel: routing.recordedModel }];
   }
   if (routing.mode === "mock") {
@@ -58,7 +66,7 @@ export function buildCandidates(routing: AgentRouting, failoverOrder: unknown): 
   }
   // direct — base = today's env-driven anthropic result (byte-identical to pre-B2).
   const base: ModelCandidate = {
-    model: buildProviderModel(routing.provider, routing.modelId),
+    model: buildProviderModel(routing.provider, routing.modelId, providerKeys?.[routing.provider]),
     recordedModel: routing.recordedModel,
   };
   if (!Array.isArray(failoverOrder)) return [base]; // no/!array preference → today's behavior
@@ -70,7 +78,7 @@ export function buildCandidates(routing: AgentRouting, failoverOrder: unknown): 
     if (!parsed) continue;
     if (!providerAvailable(parsed.provider)) continue; // no key for this provider → skip (no error)
     candidates.push({
-      model: buildProviderModel(parsed.provider, parsed.bareId),
+      model: buildProviderModel(parsed.provider, parsed.bareId, providerKeys?.[parsed.provider]),
       recordedModel: entry,
     });
   }
