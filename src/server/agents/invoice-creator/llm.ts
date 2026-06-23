@@ -96,6 +96,8 @@ export async function generateInvoice(input: {
   // B2: provider preference from the resolved policy JSON (resolved.raw.failoverOrder), threaded
   // by runInvoiceCreator. Absent/bad → today's single env-driven provider (fail-safe).
   failoverOrder?: unknown;
+  // CF-23.1 (K3b): tenant's own LLM key per provider, threaded by runInvoiceCreator. Absent → platform.
+  providerKeys?: Partial<Record<"anthropic" | "openai", string>>;
   // Phase 25: operator-correction few-shot pairs (GOLD-first). Empty/absent → single-shot prompt.
   fewShot?: CorrectionPair[];
 }): Promise<InvoiceOutcome> {
@@ -111,7 +113,7 @@ export async function generateInvoice(input: {
 
   // Ordered candidate chain from preference (allowlist+order, available providers only); else
   // the single env-driven base. Fail over to the next ONLY on a provider/transport error.
-  const candidates = buildCandidates(input.routing, input.failoverOrder);
+  const candidates = buildCandidates(input.routing, input.failoverOrder, input.providerKeys);
   return runWithFailover(candidates, async (candidate) => {
     const result =
       fewShotTurns.length > 0

@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { resolveLlmKey } from "@/server/security/llm-keys";
 import { rewriterCorrectionPairs, selectFewShotPairs } from "@/server/analytics/correction-pairs";
 import {
   getJobNoteTool,
@@ -76,6 +77,11 @@ export async function runRewriter(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // CF-23.1 (K3b): the tenant's own LLM key (direct path). Null → platform key (unchanged). A
+    // decrypt failure falls back to platform + flags tenantKeyError (loud, never throws).
+    const { key: tenantKey, source: keySource, tenantKeyError } = await resolveLlmKey(input.tenantId, "anthropic");
+    const providerKeys = tenantKey ? { anthropic: tenantKey } : undefined;
+
     // Phase 25 feedback loop: mine this tenant's operator corrections (GOLD-first, cap 20, rejects
     // excluded) and pass them as few-shot. Tenant-scoped, consistent with the reader. Skipped on the
     // mock path (deterministic stub never calls the LLM). Near-empty today (sparse reviews) → the
@@ -89,7 +95,7 @@ export async function runRewriter(input: {
     // LLM transform (or deterministic mock under REWRITER_MOCK). Provider preference + failover
     // applied inside (direct-SDK path); the rewriter has no auto-execute path (§2.9 / R-6.15) and
     // ALWAYS queues for review.
-    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames, failoverOrder, fewShot });
+    const { object, usage, model } = await generateRewrite({ routing, systemPrompt, temperature, note, job, vendorNames, failoverOrder, providerKeys, fewShot });
     await logDecision(ctx, {
       decisionType: "rewrite_proposal",
       proposedAction: "Draft a client-facing update from the source note",
@@ -97,7 +103,7 @@ export async function runRewriter(input: {
       confidence: object.confidence,
       policyCheck: policy.requiresReview ? "requires_review" : "review_not_required",
       disposition: "queued_for_review",
-      metadata: { strippedItems: object.strippedItems, rephrasings: object.rephrasings ?? [] },
+      metadata: { strippedItems: object.strippedItems, rephrasings: object.rephrasings ?? [], keySource, ...(tenantKeyError ? { tenantKeyError } : {}) },
     });
 
     // write-narrow — the draft at pending_review (auto-logged).

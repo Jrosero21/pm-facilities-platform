@@ -94,6 +94,8 @@ export async function generateScope(input: {
   // B2: provider preference from the resolved policy JSON (resolved.raw.failoverOrder), threaded
   // by runScope. Absent/bad → today's single env-driven provider (fail-safe).
   failoverOrder?: unknown;
+  // CF-23.1 (K3b): tenant's own LLM key per provider, threaded by runScopeGenerator. Absent → platform.
+  providerKeys?: Partial<Record<"anthropic" | "openai", string>>;
   // Phase 25: operator-correction few-shot pairs (GOLD-first, selected by runScopeGenerator).
   // Empty/absent → today's single-shot prompt (the invariant-preserving fallback).
   fewShot?: CorrectionPair[];
@@ -106,7 +108,7 @@ export async function generateScope(input: {
 
   // Ordered candidate chain from preference (allowlist+order, available providers only); else
   // the single env-driven base. Fail over to the next ONLY on a provider/transport error.
-  const candidates = buildCandidates(input.routing, input.failoverOrder);
+  const candidates = buildCandidates(input.routing, input.failoverOrder, input.providerKeys);
   return runWithFailover(candidates, async (candidate) => {
     // System prompt, schema, temperature, and the failover wrap are unchanged. With corrections we
     // prepend the few-shot turns before the real user prompt; with none we make the IDENTICAL

@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { resolveLlmKey } from "@/server/security/llm-keys";
 import { selectFewShotPairs, proposalCorrectionPairs } from "@/server/analytics/correction-pairs";
 import { getJobDetailTool, getJobStatusCodeTool, createProposalDraftTool } from "./tools";
 import { generateProposal, resolveProposalRouting } from "./llm";
@@ -84,6 +85,11 @@ export async function runProposalGenerator(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // CF-23.1 (K3b): the tenant's own LLM key (direct path). Null → platform key (unchanged). A
+    // decrypt failure falls back to platform + flags tenantKeyError (loud, never throws).
+    const { key: tenantKey, source: keySource, tenantKeyError } = await resolveLlmKey(input.tenantId, "anthropic");
+    const providerKeys = tenantKey ? { anthropic: tenantKey } : undefined;
+
     // Phase 25 feedback loop: mine this tenant's operator corrections (phrasing-distance classified,
     // GOLD-first, cap 20, rejects excluded) and pass them as few-shot. Tenant-scoped, number-free by
     // construction (phrasing-only pairs). Skipped on the mock path. Near-empty today (sparse reviews)
@@ -99,6 +105,7 @@ export async function runProposalGenerator(input: {
       job,
       temperature,
       failoverOrder,
+      providerKeys,
       fewShot,
     });
 
@@ -119,7 +126,7 @@ export async function runProposalGenerator(input: {
       confidence: object.confidence,
       policyCheck: policy.requiresReview ? "requires_review" : "review_not_required",
       disposition: "queued_for_review",
-      metadata: { lineCount: proposedLines.length },
+      metadata: { lineCount: proposedLines.length, keySource, ...(tenantKeyError ? { tenantKeyError } : {}) },
     });
 
     // write-narrow — the draft at pending_review (auto-logged). proposed_proposal is immutable.

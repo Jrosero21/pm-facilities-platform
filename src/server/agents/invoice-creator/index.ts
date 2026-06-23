@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { resolveLlmKey } from "@/server/security/llm-keys";
 import { resolveClientMarkupDefault } from "@/server/billing/client-invoices";
 import {
   loadJobBillingContext,
@@ -98,6 +99,11 @@ export async function runInvoiceCreator(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // CF-23.1 (K3b): the tenant's own LLM key (direct path). Null → platform key (unchanged). A
+    // decrypt failure falls back to platform + flags tenantKeyError (loud, never throws).
+    const { key: tenantKey, source: keySource, tenantKeyError } = await resolveLlmKey(input.tenantId, "anthropic");
+    const providerKeys = tenantKey ? { anthropic: tenantKey } : undefined;
+
     // Phase 25 feedback loop: mine this tenant's operator corrections (GOLD-first, cap 20, rejects
     // excluded) and pass them as few-shot. Tenant-scoped, consistent with the reader. Skipped on the
     // mock path. Near-empty today (sparse reviews) → the single-shot fallback inside generateInvoice.
@@ -114,6 +120,7 @@ export async function runInvoiceCreator(input: {
       job,
       temperature,
       failoverOrder,
+      providerKeys,
       fewShot,
     });
 
@@ -266,7 +273,7 @@ export async function runInvoiceCreator(input: {
       confidence: object.confidence,
       policyCheck: policy.requiresReview ? "requires_review" : "review_not_required",
       disposition: "queued_for_review",
-      metadata: { lineCount: proposedLines.length, lumpFlag: isLump },
+      metadata: { lineCount: proposedLines.length, lumpFlag: isLump, keySource, ...(tenantKeyError ? { tenantKeyError } : {}) },
     });
 
     // write-narrow — the draft at pending_review (auto-logged). proposed_invoice is immutable.

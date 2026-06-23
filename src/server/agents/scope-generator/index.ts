@@ -3,6 +3,7 @@ import "server-only";
 import { openRun, closeRun, logDecision, registerTool } from "@/server/agents/runner";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
+import { resolveLlmKey } from "@/server/security/llm-keys";
 import { scopeCorrectionPairs, selectFewShotPairs } from "@/server/analytics/correction-pairs";
 import { getJobDetailTool, createScopeDraftTool } from "./tools";
 import { generateScope, resolveScopeRouting } from "./llm";
@@ -62,6 +63,11 @@ export async function runScopeGenerator(input: {
     const policy = await resolveAgentPolicy(input.tenantId, AGENT_ID, job.clientId);
     const failoverOrder = (policy.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
 
+    // CF-23.1 (K3b): the tenant's own LLM key (direct path). Null → platform key (unchanged). A
+    // decrypt failure falls back to platform + flags tenantKeyError (loud, never throws).
+    const { key: tenantKey, source: keySource, tenantKeyError } = await resolveLlmKey(input.tenantId, "anthropic");
+    const providerKeys = tenantKey ? { anthropic: tenantKey } : undefined;
+
     // Phase 25 feedback loop: mine this tenant's operator corrections (GOLD-first, cap 20, rejects
     // excluded) and pass them as few-shot. Tenant-scoped, consistent with the reader. Skipped on the
     // mock path. Near-empty today (sparse reviews) → the single-shot fallback inside generateScope;
@@ -72,7 +78,7 @@ export async function runScopeGenerator(input: {
         : selectFewShotPairs(await scopeCorrectionPairs(input.tenantId));
 
     // LLM transform (or deterministic mock). Provider preference + failover applied inside.
-    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature, failoverOrder, fewShot });
+    const { object, usage, model } = await generateScope({ routing, systemPrompt, job, temperature, failoverOrder, providerKeys, fewShot });
     await logDecision(ctx, {
       decisionType: "scope_proposal",
       proposedAction: "Draft a scope of work from the problem description",
@@ -80,7 +86,7 @@ export async function runScopeGenerator(input: {
       confidence: object.confidence,
       policyCheck: policy.requiresReview ? "requires_review" : "review_not_required",
       disposition: "queued_for_review",
-      metadata: { stepCount: object.steps.length, assumptions: object.assumptions },
+      metadata: { stepCount: object.steps.length, assumptions: object.assumptions, keySource, ...(tenantKeyError ? { tenantKeyError } : {}) },
     });
 
     // write-narrow — the draft at pending_review (auto-logged). proposed_steps is immutable.
