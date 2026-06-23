@@ -71,12 +71,14 @@ export async function generateDispatchTiebreak(input: {
   systemPrompt: string;
   temperature: number;
   failoverOrder?: unknown;
+  // CF-23.1 (K3b): tenant's own LLM key per provider, threaded by the auto-dispatch orchestrator. Absent → platform.
+  providerKeys?: Partial<Record<"anthropic" | "openai", string>>;
   problemDescription: string;
   pair: TiebreakCandidate[];
 }): Promise<TiebreakOutcome> {
   if (input.routing.mode === "mock") return mockTiebreak(input.pair);
   const userPrompt = buildTiebreakUserPrompt({ problemDescription: input.problemDescription, pair: input.pair });
-  const candidates = buildCandidates(input.routing, input.failoverOrder);
+  const candidates = buildCandidates(input.routing, input.failoverOrder, input.providerKeys);
   return runWithFailover(candidates, async (candidate) => {
     const result = await generateObject({
       model: candidate.model,

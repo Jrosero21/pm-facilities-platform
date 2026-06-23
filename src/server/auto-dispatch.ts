@@ -17,6 +17,7 @@ import { getJob } from "@/server/jobs";
 import { getVendorPerformanceScoresForVendors } from "@/server/analytics/vendor-performance";
 import { toScoredCandidate, rankCandidates, isCloseCall } from "@/server/scorer";
 import { resolveDispatchTiebreakerRouting, generateDispatchTiebreak } from "@/server/agents/dispatch-tiebreaker/llm";
+import { resolveLlmKey } from "@/server/security/llm-keys";
 import { resolveActivePrompt } from "@/server/agents/config/prompts";
 import { parseTiebreakerMode, shouldFireTiebreaker, applyTiebreak } from "@/server/agents/dispatch-tiebreaker/decide";
 
@@ -148,8 +149,12 @@ export async function autoDispatchDraftForJob(
         if (prompt.temperature != null) temperature = Number(prompt.temperature);
       }
       const failoverOrder = (resolved.raw as { failoverOrder?: unknown } | null)?.failoverOrder;
+      // CF-23.1 (K3b): the tenant's own LLM key (direct path), keyed by the LOCAL tenantId. Null →
+      // platform key (unchanged). A decrypt failure falls back to platform + flags tenantKeyError.
+      const { key: tenantKey, source: keySource, tenantKeyError } = await resolveLlmKey(tenantId, "anthropic");
+      const providerKeys = tenantKey ? { anthropic: tenantKey } : undefined;
       const { object, usage, model } = await generateDispatchTiebreak({
-        routing, systemPrompt, temperature, failoverOrder,
+        routing, systemPrompt, temperature, failoverOrder, providerKeys,
         problemDescription: job?.problemDescription ?? "",
         pair: [
           { vendorId: a.vendorId, vendorName: a.vendorName, tradeContext: a.primaryTradeMatch ? "primary-trade specialist" : "covers this trade" },
@@ -173,7 +178,7 @@ export async function autoDispatchDraftForJob(
         confidence: decision.llmConfidence ?? null,
         policyCheck: "review_not_required",
         disposition: "auto_executed",
-        metadata: { chosen: ranked[0].vendorId, changedByLlm: decision.changedByLlm, source: decision.source },
+        metadata: { chosen: ranked[0].vendorId, changedByLlm: decision.changedByLlm, source: decision.source, keySource, ...(tenantKeyError ? { tenantKeyError } : {}) },
       });
       await closeRun(tctx, { status: "succeeded", outputSummary: `Tiebreak: ${decision.source} (chose ${ranked[0].vendorId})`, model, promptVersion, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens });
     } catch (err) {
