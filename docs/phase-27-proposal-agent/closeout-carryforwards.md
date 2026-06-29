@@ -150,7 +150,7 @@ false flat retirement; the standing §6/§9 over-attribution watchpoint carries 
 ### Phase-23 banked items (open)
 | Id | Item | Status |
 |---|---|---|
-| **CF-23.1** | Tenant-supplied LLM API keys + self-service AI restrictions in Settings — per-tenant **encrypted key storage** + multi-provider wiring + a Settings UI. "Other agent restrictions" = the Phase-28 condition vocabulary. | OPEN. Multi-provider-wiring dependency satisfied by Phase 24; **still needs CF-12.4** (credential encryption-at-rest) + the Settings UI. (The encryption item is **CF-12.4**, not CF-12.1 — live bank wins.) |
+| **CF-23.1** | Tenant-supplied LLM API keys + self-service AI restrictions in Settings — per-tenant **encrypted key storage** + multi-provider wiring + a Settings UI. "Other agent restrictions" = the Phase-28 condition vocabulary. | **BACKEND SHIPPED (on origin/main; see the CF-23.1 EOF section).** K1–K3b (`0b3cad5`→`a6e02ed`): `tenant_llm_keys` table + `resolveLlmKey`/`setTenantLlmKey` + apiKey build-seam wired through all 5 LLM agents; CF-12.4 dependency now satisfied; Phase-24 multi-provider already satisfied. **STILL OPEN (deliberately deferred):** the **Settings UI** (shares CF-28.1's surface) + **K3c** real-key billing proof (needs a real tenant + prod host). Row stays OPEN until the feature is whole. |
 | **CF-23.2** | Dollar-meter aggregation optimization — per-tenant lifetime axis is O(N) (Big.js reduce, no SQL aggregate). | OPEN. Fine at near-zero autonomy volume; optimize when real volume lands. |
 
 **Phase-23 soft notes (open):** `autonomyEnabled`-naming clarity (policy+kill-switch only; full answer
@@ -232,7 +232,7 @@ issuance window outlives revocation (~5 min); 7-day token expiry fixed.
 | CF-12.1 | Full-workflow auto-push (job change → mapped external platform). |
 | CF-12.2 | Live external adapter (real fetch/push HTTP). |
 | CF-12.3 | Operator mapping UIs (`external_*_mappings` management). |
-| **CF-12.4** | **Credential encryption-at-rest. (CF-23.1 tenant-API-key storage depends on this.)** |
+| **CF-12.4** | **Credential encryption-at-rest. (CF-23.1 tenant-API-key storage depends on this.)** — SHIPPED (`f978fde`: AES-256-GCM secret-crypto util, fail-closed on missing/wrong-size key; harness 13/13). The CF-23.1 dependency is now satisfied. |
 | CF-12.5 | External-ingest IF-4 orphan window. |
 | FB-10p.1 | Seed fixture rename (`seed-sandbox-phase9*` now seeds phases 9–15). |
 | FB-10a.1 | Vendor/client invite & onboarding flow. *(CF-21.2 relates.)* |
@@ -1087,3 +1087,31 @@ T1 (`autoRedispatchForStuckAssignment`) — the gate-governed autonomous core: a
 | id | item | status |
 |----|------|--------|
 | **CF-28.2** | Aggregate (per-day/per-tenant) committed-$ ceiling does NOT count autonomous re-dispatch sends. `autonomyCommittedJobIds` (`guardrails.ts:157`) sums only `isNull(created_by_user_id)` ("autonomy = system actor"), but T1's autonomous send attributes the replacement assignment to `getSystemUserId()` (non-null, because `setAssignmentStatus.actorUserId` is non-nullable — `auto-redispatch.ts:63`) → re-dispatch sends are excluded from the aggregate sum. The PER-JOB cap (`maxCommittedPerJob`) DOES guard each re-dispatch (proven, T2b probe scenario C); the sequential sweep loop is correct (no race). This is an attribution inconsistency (auto-dispatch-new = null = counted vs re-dispatch = system-user = uncounted), not an acute hole. **OPEN DECISION first:** is a re-dispatch net-new spend at all? (it re-sends the SAME job at the SAME NTE to a different vendor — arguably not net-new). If it should count: either widen `setAssignmentStatus` to accept a null actor (so re-dispatch uses the null/counted actor) OR teach `autonomyCommittedJobIds` to include system-user autonomous sends. Non-urgent. | OPEN |
+
+---
+
+## CF-23.1 — Tenant-supplied LLM keys (backend SHIPPED; UI + real-key proof deferred)
+
+Each tenant can use their own AI provider key (billed to them), falling back to the platform
+key when none is set. Backend chain complete and on origin/main:
+
+- K1  `0b3cad5` — `tenant_llm_keys` table (migration 0057), live both DBs.
+- K2  `51b9f2e` — `resolveLlmKey(tenantId, provider)` + `setTenantLlmKey` (single-active, revoke-then-insert); decrypt-failure falls back to platform + loud signal, never silent, never leaks the key.
+- K3a `48d1235` — apiKey-capable build seam (`buildProviderModel` / `buildCandidates` accept an optional per-provider key); apiKey undefined → env singleton, byte-identical.
+- K3b-1 `e5a2f40` — 4 uniform agent orchestrators (`scope_generator`, `update_rewriter`, `invoice_creator`, `proposal_generator`) thread the resolved key; probe 5/5.
+- K3b-2 `a6e02ed` — inline `dispatch_tiebreaker` threaded (local `tenantId`; `keySource` beside the existing dispatch `source`, no collision); probe 7/7.
+
+Backward-compat invariant holds at all 5 sites: no tenant key → env singleton = exactly prior behavior.
+Proven cold (tsc=0, probes 5/5 + 7/7, residue 0). Depends-on **CF-12.4** (now SHIPPED).
+
+**STILL OPEN (deliberately deferred — pending a real tenant + a real production host):**
+- **K3c — real-key billing proof.** Manual, not a sandbox assertion: needs a real `SECRET_ENCRYPTION_KEY` set in the deploy env + a real tenant Anthropic key. The sandbox proves the wiring; only a real call proves the charge lands on the tenant. Proving it against a throwaway dev DB buys nothing — resumes when there is a real tenant + production environment.
+- **Settings UI** — the paste-in-your-key surface; shares **CF-28.1**'s authoring surface. Buildable any time; deferred with K3c so the feature ships whole rather than backend-only.
+
+**Carried-forward open items from the K3 build:**
+- `buildCandidates` eagerly builds the base candidate then discards it when `failoverOrder` yields candidates — pre-existing micro-inefficiency, banked during K3a, non-blocking.
+- K3b-1 coverage boundary: 3 of 4 uniform agents proven by edit-identity (byte-identical diff + tsc-clean) rather than re-seeded live; full mechanism proven end-to-end on the representative `scope_generator`. Conscious, documented scope choice — a future agent diverging from the uniform shape earns its own live proof.
+- **DEPLOY DEPENDENCY:** `SECRET_ENCRYPTION_KEY` must be generated fresh and set in each environment (dev + prod) before any tenant key works end-to-end. Fail-closed: unset/wrong-size throws, never defaults. Correctly left unset in `.env.local` until a real deployment exists.
+
+`v2.27.0` tag is intentionally HELD until CF-23.1 is whole (backend + K3c + Settings UI) — the backend
+alone is not a release boundary because no tenant can use it end-to-end yet.
