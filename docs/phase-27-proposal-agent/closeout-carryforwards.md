@@ -1266,11 +1266,9 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–2.5 COMPLETE (branch postgres-migration; b0 e039e81, b1 44f8b9d, b2 90a0d2d, b2.5 ce1ffc7).
-main on MariaDB, untouched. SCHEMA LAYER FULLY GREEN. Batches 3–6 pending. tsc 5906→21 (residual = 21
-TS7053 pg driver-shape tuple-casts, ALL batch 4). Plan's feared ~1713 batch-4 consumer errors were cascade
-failures from broken schema inference — they evaporated once schema became valid pg types; batch 4 is ~21
-sites, far smaller than sized.
+STATE: batches 0–3 COMPLETE (branch postgres-migration; …b2.5 ce1ffc7, b3 d1c04d8). main on MariaDB,
+untouched. SCHEMA PHYSICALLY BUILT ON POSTGRES (pm + pm_sandbox: 124 tables, 68 enums, 377 FKs, clean
+1-migration ledger, identical). Batches 4–6 pending. tsc = 21 (all TS7053 driver-shape tuple-casts → b4).
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1319,3 +1317,11 @@ without erroring. Two instances now: onUpdateNow→$onUpdate (behavior: raw-SQL 
 date()→string (inference flip, mostly silent). RULE for any remaining type swaps: check the INFERRED type,
 not just the rename — a swap that compiles can still have changed what the column infers to. Only errors
 where a hand-written type asserts the old shape; silent elsewhere.
+
+BATCH 3 DONE (d1c04d8) — MILESTONE: schema physically builds on Postgres. Archived all 58 old MySQL
+migrations + 59 meta files to db/migrations/_mysql_archive/ (tracked renames; main untouched). Generated ONE
+clean baseline db/migrations/0000_lush_rockslide.sql (2507 lines: 68 CREATE TYPE AS ENUM, 124 CREATE TABLE,
+377 ADD CONSTRAINT; double-quoted PG DDL, 0 MySQL idioms). Applied via drizzle-kit migrate (clean on fresh
+PG ledger — the historical unreliability was MySQL-ledger-specific) to pm AND pm_sandbox, both exit 0, both
+124 tables / 68 enums / 377 FKs / 1-migration ledger, identical. Batch-2's enum-name uniqueness guard
+validated here — 68 CREATE TYPE applied with zero collision. tsc unchanged at 21 (DB-only batch).
