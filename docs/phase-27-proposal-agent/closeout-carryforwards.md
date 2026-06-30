@@ -1266,8 +1266,11 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batch 0 COMPLETE (branch postgres-migration, commit e039e81). main on MariaDB, untouched.
-Batches 1–6 pending. Local Postgres.app (PG 18.4) running; pm + pm_sandbox created.
+STATE: batches 0–2.5 COMPLETE (branch postgres-migration; b0 e039e81, b1 44f8b9d, b2 90a0d2d, b2.5 ce1ffc7).
+main on MariaDB, untouched. SCHEMA LAYER FULLY GREEN. Batches 3–6 pending. tsc 5906→21 (residual = 21
+TS7053 pg driver-shape tuple-casts, ALL batch 4). Plan's feared ~1713 batch-4 consumer errors were cascade
+failures from broken schema inference — they evaporated once schema became valid pg types; batch 4 is ~21
+sites, far smaller than sized.
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1282,3 +1285,37 @@ NEW FINDING → folds into BATCH 4 scope: ~15 scripts/*.ts derive the sandbox DB
 so per-script sandbox derivation breaks until reworked. Add to batch 4's harness/driver rework
 (alongside the 46 tuple-casts / 109 FK_CHECKS / 25 DATABASE() guards). Until batch 4, those scripts
 won't correctly target pm_sandbox — do not run them against the new URL before batch 4.
+
+BATCH 1 DONE (44f8b9d, on branch): 46 schema files converted. mysqlTable→pgTable ×124,
+decimal→numeric ×58, datetime→timestamp ×51, int→integer ×35, longtext→text ×2, onUpdateNow→$onUpdate
+×94, re-sourced mysql-core→pg-core. 2 autoincrement "sites" were comments (schema uses varchar(36)
+uuidv7 PKs — no serial needed). Removed MySQL-only { unsigned:true } from 2 integer columns
+(job_number, next_number — signed int32 covers them). bigint/time/date clean re-source. tsc 5906→1802,
+all residual schema errors are deferred enums (zero non-enum schema errors — conversion clean).
+
+CAVEAT → BATCH 4/5 (behavioral, invisible, important): onUpdateNow (DB-level ON UPDATE
+CURRENT_TIMESTAMP, fired on ANY update) became $onUpdate (fires only on Drizzle ORM updates, NOT raw
+sql`` UPDATEs). 94 sites, all updated_at columns. Any raw-SQL update path that relied on updated_at
+auto-bumping will now silently leave it stale unless it sets updated_at = now() explicitly. MUST audit
+raw-SQL update paths in batch 4/5 — no error fires; the timestamp just stops updating.
+
+BATCH 2 DONE (90a0d2d): 130 mysqlEnum call sites → 68 distinct pgEnums in a central
+src/server/schema/enums.ts. Column names hopelessly overloaded (status alone = 14 different value-sets) so
+pgEnum names could NOT derive from columns — each of 68 got a distinct descriptive name + a SCRIPT-LEVEL
+assertion that all 68 pg-type-name strings are globally unique (tsc can't catch a duplicate type-name; it
+would only fail at batch-3 migration — guaranteed here instead). Shared value-sets collapsed to one enum
+(active/inactive/archived: 37 uses/18 files → 1). Self-caught regression: dead-const removal dropped
+lineItemCategoryEnum (5 cross-file importers) — restored as .enumValues re-derived from the pgEnum.
+Schema FULLY GREEN; zero mysql-core references remain anywhere in src/.
+
+BATCH 2.5 DONE (ce1ffc7): date-mode correction. pg-core date() infers string; mysql-core date() inferred
+Date. Batch 1's date re-source silently flipped 10 date columns Date→string (only 2 surfaced as errors via
+ClientRateRow's Date assertion; 8 flipped silently). Added { mode:"date" } to all 10 (client-details ×2,
+vendor-details ×8) — restores Date, matches pre-migration behavior, done BEFORE batch 3 freezes the baseline.
+Timestamp confirmed NOT flipped (pg-core timestamp() defaults Date — positively verified). tsc 23→21.
+
+LESSON (recorded for the remaining batches): a "mechanical" type re-source can silently change INFERENCE
+without erroring. Two instances now: onUpdateNow→$onUpdate (behavior: raw-SQL no longer auto-bumps) and
+date()→string (inference flip, mostly silent). RULE for any remaining type swaps: check the INFERRED type,
+not just the rename — a swap that compiles can still have changed what the column infers to. Only errors
+where a hand-written type asserts the old shape; silent elsewhere.
