@@ -1121,3 +1121,60 @@ Proven cold (tsc=0, probes 5/5 + 7/7, residue 0). Depends-on **CF-12.4** (now SH
 
 `v2.27.0` tag is intentionally HELD until CF-23.1 is whole (backend + K3c + Settings UI) — the backend
 alone is not a release boundary because no tenant can use it end-to-end yet.
+
+---
+
+## Strategic session findings — agent roster + workflow-AI gaps (banked, unbuilt)
+
+Context: strategy settled this session — beachhead is AGGREGATORS first (then vendors, then
+clients); product posture is SUGGESTIVE-first with per-tenant/per-agent autonomy dial (matches
+the §2.1 opt-in fail-safe-gated invariant). The suggestive floor is largely built; the autonomy
+ceiling is the host-gated v2 roadmap. Reframe banked: suggestive is not just the safe v1 — it is
+the data-collection engine that generates the correction pairs (Phase 25) that earn autonomy the
+right to ship. Suggestive-first is a technical prerequisite for good autonomy, not only a
+commercial choice.
+
+CANDIDATE NEW AGENTS (current roster = scope_generator, update_rewriter, invoice_creator,
+proposal_generator, dispatch_tiebreaker). Ordered by suggestive-first fit (high-volume/low-stakes
+first — trust-building + fastest feedback data):
+- Intake parser agent — messy inbound (email/forwarded/terse portal) → structured draft job
+  (client/location/trade/priority/description). Front-door agent; kills manual entry on every job;
+  low-stakes (draft reviewed before becoming a real job). Pairs with banked email ingestion
+  (CF-13.x). TOP candidate.
+- Vendor follow-up agent — vendor gone quiet → drafts chase (ETA/schedule confirm). Low-stakes,
+  high-volume; attacks "job fell through cracks, nobody chased vendor." Pairs with re-dispatch
+  (chase before re-dispatch). TOP candidate.
+- Exception triage agent — stalled/at-risk jobs → ranked by what matters (priority client past SLA
+  vs routine late) + recommended action. "System watches your back" = mistake-elimination pitch
+  made tangible. Highest-VALUE missing agent; medium build.
+- Job summary / handoff agent — long job history → tight summary for handoff/client update/status.
+  Builds on Phase 16 read-draft bones. Low-stakes.
+- Quote/estimate review agent — incoming vendor quote → flags anomalies vs rate sheet before
+  acceptance. Billing-adjacent, medium-stakes. Fits the deterministic-rate discipline.
+- Closeout/compliance agent — job marked complete → verifies closeout actually complete
+  (photos/docs/sign-off) before bill/close. Catches "billed a job that wasn't finished." Low-stakes.
+- Duplicate/related-job detector — new job → "same issue as #1182 here 3 weeks ago." Catches
+  recurring problems treated as new (mistake + vendor-quality signal). Lower priority, cheap.
+- NTE negotiator agent — vendor NTE-increase request → drafts approve/counter/push-back within
+  tenant rules. Highest-stakes/adversarial; per roadmap "gate longest, possibly forever." Bank as
+  known future agent; LAST to autonomy.
+
+WORKFLOW-AI GAPS / MISSED ITEMS (from the session's "what have we missed" review):
+- Trust-ramp observability (roadmap Phase 24) is more central than its phase number implies: it is
+  BOTH the bridge that converts suggestive users into autonomy users ("this agent was right 94% of
+  the time you approved it — allow it to act under $500?") AND the proof artifact for the sales
+  conversation. Re-rank as near-core to the sellable product, not a later nicety.
+- Possible over-gating risk: every agent is draft-first. Correct for dispatch/billing, but for
+  trivial/reversible/high-volume suggestions (note rewrite, routine scope) universal gating may make
+  the suggestive product feel like MORE clicking, undercutting the "makes me faster" pitch. Consider
+  a tier: trivial+reversible auto-applies with easy undo vs consequential gates. Open design question.
+- NO DEFINED QUALITY BAR per agent for facing a real tenant. The entire pitch is mistake-elimination;
+  an agent that suggests a subtle mistake to a warm buyer is an existential risk to the pitch and to
+  hard-won trust. Observability PLUMBING is planned (Phase 24) but no STANDARD exists — "good enough
+  to suggest" is undefined and unmeasured. FLAGGED AS THE #1 GAP to close before either known
+  operator sees the product.
+
+NEXT-STEP (non-build): the load-bearing decision is now standing up a production host to put the
+SUGGESTIVE product in front of one of the two reachable aggregator operators — a much smaller,
+better-justified bet than session-start (it's "host a finished suggestive product for a warm buyer,"
+not "finish autonomy on a belief"). Define the per-agent quality bar BEFORE that exposure.
