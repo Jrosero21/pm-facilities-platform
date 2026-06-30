@@ -1,5 +1,13 @@
 // Guard against MySQL's 64-character identifier limit in generated migrations.
 //
+// MIGRATION NOTE (Postgres, Batch 0): unwired from `db:generate`, kept on disk.
+// The identifier-length concern carries over and is TIGHTER in Postgres
+// (NAMEDATALEN-1 = 63 chars). But this script only matches MySQL backtick-quoted
+// identifiers (`...`); Postgres/Drizzle migrations use double-quoted ("...")
+// identifiers, so as-is it would match nothing and pass vacuously (false
+// assurance). Port before re-adding to db:generate: backtick -> double-quote
+// matching, MAX 64 -> 63, and mysqlTable hints -> pgTable. Tracked for Batch 1/2.
+//
 // Why: MySQL/MariaDB silently rejects ANY identifier over 64 chars — table,
 // column, index, or constraint names alike. Drizzle auto-generates long
 // constraint/index names (e.g.
