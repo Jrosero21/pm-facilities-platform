@@ -1266,4 +1266,19 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: plan banked, batch 0 not yet started. main on MariaDB, untouched.
+STATE: batch 0 COMPLETE (branch postgres-migration, commit e039e81). main on MariaDB, untouched.
+Batches 1–6 pending. Local Postgres.app (PG 18.4) running; pm + pm_sandbox created.
+
+BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
+locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
+(dbCredentials.url shape unchanged, valid for pg); package.json mysql2→pg + @types/pg, db:generate
+simplified; fix-mysql-engine.mjs DELETED; check-migration-identifiers.mjs KEPT but UNWIRED (needs
+port: double-quote matching + 63-char cap before re-adding — do in batch 1/2). Old MariaDB
+DATABASE_URL commented in .env.local for rollback. tsc: 5906 errors, ALL schema-dialect, ZERO from
+wiring files (gate held).
+
+NEW FINDING → folds into BATCH 4 scope: ~15 scripts/*.ts derive the sandbox DB by regex-matching
+`/jonnyrosero_pm` in the old MariaDB URL. That regex will NOT match the new postgres `.../pm` URL,
+so per-script sandbox derivation breaks until reworked. Add to batch 4's harness/driver rework
+(alongside the 46 tuple-casts / 109 FK_CHECKS / 25 DATABASE() guards). Until batch 4, those scripts
+won't correctly target pm_sandbox — do not run them against the new URL before batch 4.
