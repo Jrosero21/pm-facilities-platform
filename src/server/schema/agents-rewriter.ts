@@ -6,7 +6,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { agentDraftStatus, agentReviewDecision, agentsRewriterSourceType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -35,16 +35,10 @@ export const updateRewriteDrafts = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     jobId: varchar("job_id", { length: 36 }).notNull(),
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
-    sourceType: mysqlEnum("source_type", ["job_note", "vendor_update"]).notNull().default("job_note"),
+    sourceType: agentsRewriterSourceType("source_type").notNull().default("job_note"),
     sourceId: varchar("source_id", { length: 36 }).notNull(),
     draftContent: text("draft_content").notNull(),
-    status: mysqlEnum("status", [
-      "pending_review",
-      "approved",
-      "rejected",
-      "discarded",
-      "published",
-    ])
+    status: agentDraftStatus("status")
       .notNull()
       .default("pending_review"),
     publishedCommunicationId: varchar("published_communication_id", { length: 36 }),
@@ -75,7 +69,7 @@ export const updateRewriteReviews = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     draftId: varchar("draft_id", { length: 36 }).notNull(),
     reviewerUserId: varchar("reviewer_user_id", { length: 36 }),
-    decision: mysqlEnum("decision", ["approve", "reject"]).notNull(),
+    decision: agentReviewDecision("decision").notNull(),
     editedContent: text("edited_content"),
     reviewNotes: text("review_notes"),
     reviewedAt: timestamp("reviewed_at").notNull(),

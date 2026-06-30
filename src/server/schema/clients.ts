@@ -7,7 +7,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { billingModel, entityStatus, valueSource } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -23,14 +23,14 @@ export const clients = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
     clientCode: varchar("client_code", { length: 64 }),
-    status: mysqlEnum("status", ["active", "inactive", "archived"])
+    status: entityStatus("status")
       .notNull()
       .default("active"),
     // Phase (i) rate-sheet (0049) — how this client is billed. Default 'cost_plus' is
     // behavior-preserving (the markup_percent path already works end-to-end); a client is
     // flipped to 'rate_sheet' once its client_rates sheet is entered. Per-job override is
     // deferred to phase (ii) (no jobs.billing_model yet).
-    billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"])
+    billingModel: billingModel("billing_model")
       .notNull()
       .default("cost_plus"),
     // Phase (iii) Part 2 (0052) — when ON, Part 3's ADVISORY reminder fires at cost-plus client-invoice
@@ -75,7 +75,7 @@ export const clientLocations = pgTable(
       .references(() => clients.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
     locationCode: varchar("location_code", { length: 64 }),
-    status: mysqlEnum("status", ["active", "inactive", "archived"])
+    status: entityStatus("status")
       .notNull()
       .default("active"),
     addressLine1: varchar("address_line1", { length: 255 }).notNull(),
@@ -93,7 +93,7 @@ export const clientLocations = pgTable(
     // CF-19.1 — provenance of the timezone value above: client_provided, system_default
     // (UTC/seed fallback), or looked_up (geocoded/resolved). Defaults to system_default;
     // additive, NOT NULL. Paired with the timezone column for the business-hours SLA clock.
-    timezoneSource: mysqlEnum("timezone_source", ["client_provided", "system_default", "looked_up"])
+    timezoneSource: valueSource("timezone_source")
       .notNull()
       .default("system_default"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(

@@ -6,7 +6,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { nteStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -36,7 +36,7 @@ import { priorities } from "./job-reference";
 //
 // client_location_id NULL = client-wide; a location-specific row takes precedence.
 // Emergency multiplier lives on client_billing_rules.emergency_nte_multiplier (8b-D1).
-const nteStatusEnum = ["active", "archived"] as const;
+
 
 export const clientNteRules = pgTable(
   "client_nte_rules",
@@ -52,7 +52,7 @@ export const clientNteRules = pgTable(
     clientLocationId: varchar("client_location_id", { length: 36 }),
     nteAmount: numeric("nte_amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-    status: mysqlEnum("status", nteStatusEnum).notNull().default("active"),
+    status: nteStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),

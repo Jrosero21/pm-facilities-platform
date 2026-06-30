@@ -8,7 +8,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { approvalDecision, proposalKind, proposalStatus, rateType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -28,21 +28,11 @@ import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 // (8c, R-7.2); the default 0s are insert safety nets. `viewed`/portal-accept are
 // forward-declared (Phase 11). valid_until expiry is computed-on-read (no cron, OQ-8).
 
-const proposalStatusEnum = [
-  "draft",
-  "sent",
-  "viewed",
-  "accepted",
-  "declined",
-  "expired",
-  "superseded",
-  "withdrawn",
-  "internal_billed", // Phase 27: terminal state of an APPROVED internal proposal (client path untouched)
-] as const;
+
 
 // Phase 27 — proposal KIND axis. 'client' = the existing client-facing commercial doc
 // (the default preserves all pre-27 rows). 'internal' = the operator-only AI-drafted proposal.
-const proposalKindEnum = ["client", "internal"] as const;
+
 
 export const proposals = pgTable(
   "proposals",
@@ -56,9 +46,9 @@ export const proposals = pgTable(
     parentProposalId: varchar("parent_proposal_id", { length: 36 }),
     supersedesProposalId: varchar("supersedes_proposal_id", { length: 36 }),
     revisionNumber: integer("revision_number").notNull().default(1),
-    status: mysqlEnum("status", proposalStatusEnum).notNull().default("draft"),
+    status: proposalStatus("status").notNull().default("draft"),
     // Phase 27 — NOT NULL default 'client' so all 121 existing rows remain client-facing.
-    kind: mysqlEnum("kind", proposalKindEnum).notNull().default("client"),
+    kind: proposalKind("kind").notNull().default("client"),
     title: varchar("title", { length: 255 }),
     scopeSnapshot: text("scope_snapshot"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
@@ -97,14 +87,7 @@ export const proposalLineItems = pgTable(
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
     tradeId: varchar("trade_id", { length: 36 }),
-    rateType: mysqlEnum("rate_type", [
-      "hourly",
-      "flat",
-      "trip_charge",
-      "per_unit",
-      "emergency",
-      "after_hours",
-    ]),
+    rateType: rateType("rate_type"),
     proposalId: varchar("proposal_id", { length: 36 }).notNull(),
   },
   (t) => [
@@ -118,7 +101,7 @@ export const proposalLineItems = pgTable(
 // Revision-specific approval record (#10). approver_name = the client contact who accepted
 // offline (OQ-8); approver_user_id = the operator who recorded it. signature_ref is a
 // placeholder (no upload wiring). Append-only (no updated_at).
-const approvalDecisionEnum = ["accepted", "declined"] as const;
+
 
 export const proposalApprovals = pgTable(
   "proposal_approvals",
@@ -128,7 +111,7 @@ export const proposalApprovals = pgTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     proposalId: varchar("proposal_id", { length: 36 }).notNull(),
-    decision: mysqlEnum("decision", approvalDecisionEnum).notNull(),
+    decision: approvalDecision("decision").notNull(),
     approverUserId: varchar("approver_user_id", { length: 36 }),
     approverName: varchar("approver_name", { length: 255 }),
     decidedAt: timestamp("decided_at").notNull(),

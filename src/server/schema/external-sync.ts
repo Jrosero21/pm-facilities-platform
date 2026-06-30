@@ -8,7 +8,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { ioDirection, linkStatus, outcome, runStatus } from "./enums";
 import { sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
@@ -41,10 +41,10 @@ import { externalSystems } from "./external-systems";
 // table names would otherwise blow past MySQL's 64-char auto-name limit. FK-backing
 // indexes are explicit (6d/6g).
 
-const linkStatusEnum = ["active", "unlinked"] as const;
-const runStatusEnum = ["running", "succeeded", "failed", "partial"] as const;
-const outcomeEnum = ["ok", "skipped", "error"] as const;
-const payloadDirectionEnum = ["inbound", "outbound"] as const;
+
+
+
+
 
 export const externalWorkOrderLinks = pgTable(
   "external_work_order_links",
@@ -58,7 +58,7 @@ export const externalWorkOrderLinks = pgTable(
     externalWoId: varchar("external_wo_id", { length: 255 }).notNull(),
     // SET NULL: preserve the link record if the job is purged (audit, cf D-12c.1).
     jobId: varchar("job_id", { length: 36 }),
-    linkStatus: mysqlEnum("link_status", linkStatusEnum)
+    linkStatus: linkStatus("link_status")
       .notNull()
       .default("active"),
     lastSyncedAt: timestamp("last_synced_at"),
@@ -101,7 +101,7 @@ export const externalSyncRuns = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
     runType: varchar("run_type", { length: 64 }).notNull(),
-    status: mysqlEnum("status", runStatusEnum).notNull().default("running"),
+    status: runStatus("status").notNull().default("running"),
     startedAt: timestamp("started_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
@@ -141,7 +141,7 @@ export const externalSyncEvents = pgTable(
     externalWoId: varchar("external_wo_id", { length: 255 }),
     jobId: varchar("job_id", { length: 36 }),
     eventType: varchar("event_type", { length: 64 }).notNull(),
-    outcome: mysqlEnum("outcome", outcomeEnum).notNull(),
+    outcome: outcome("outcome").notNull(),
     message: text("message"),
     metadata: json("metadata"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -174,7 +174,7 @@ export const externalPayloadLogs = pgTable(
     externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
     // SET NULL: preserve the payload audit if its run is purged.
     syncRunId: varchar("sync_run_id", { length: 36 }),
-    direction: mysqlEnum("direction", payloadDirectionEnum).notNull(),
+    direction: ioDirection("direction").notNull(),
     // Polymorphic link — plain column, NO hard FK.
     externalWoId: varchar("external_wo_id", { length: 255 }),
     // Raw provider body. NEVER a credential (F1/F10.4). JSON-at-read gotcha applies.

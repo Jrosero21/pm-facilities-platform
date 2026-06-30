@@ -7,7 +7,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -15,7 +15,7 @@ import { clients, clientLocations } from "./clients";
 import { trades } from "./trades";
 import { vendors } from "./vendors";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Phase 22 (0045) — deterministic-routing data model. Two net-new tables that
 // LAYER ON TOP of the Phase-5 eligibility floor (findCandidateVendorsForJobByFacets);
@@ -49,7 +49,7 @@ export const locationPreferredVendors = pgTable(
     // lower = stronger preference (1 = primary). Non-unique: ties broken downstream.
     priority: integer("priority").notNull(),
     notes: varchar("notes", { length: 500 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -104,7 +104,7 @@ export const locationBlockedVendors = pgTable(
       .notNull()
       .references(() => vendors.id, { onDelete: "restrict" }),
     reason: varchar("reason", { length: 500 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

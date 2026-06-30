@@ -8,7 +8,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { frequency, generationStatus, result } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -44,7 +44,7 @@ import { jobs } from "./jobs";
 //   pm_schedule_locations: pm_schedule_id → CASCADE (membership dies with the schedule);
 //     client_location_id → CASCADE (membership dies with the location).
 
-const frequencyEnum = ["day", "week", "month"] as const;
+
 
 // ── pm_programs ──
 export const pmPrograms = pgTable(
@@ -115,7 +115,7 @@ export const pmSchedules = pgTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     pmProgramId: varchar("pm_program_id", { length: 36 }).notNull(),
-    frequency: mysqlEnum("frequency", frequencyEnum).notNull(),
+    frequency: frequency("frequency").notNull(),
     intervalCount: integer("interval_count").notNull().default(1), // every N (quarterly = month + 3)
     nextDueAt: timestamp("next_due_at").notNull(),
     lastGeneratedAt: timestamp("last_generated_at"),
@@ -193,7 +193,7 @@ export const pmScheduleLocations = pgTable(
 //     occurrence — the email_work_order_drafts.created_job_id SET-NULL precedent exactly).
 //   pm_assets: client_location_id → CASCADE (an asset has no meaning without its location).
 
-const generationStatusEnum = ["generated", "skipped", "pending_review"] as const;
+
 
 // ── pm_generation_runs (the F2 batch-event record) — declared before pm_visits (FK target) ──
 export const pmGenerationRuns = pgTable(
@@ -245,7 +245,7 @@ export const pmVisits = pgTable(
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
     pmGenerationRunId: varchar("pm_generation_run_id", { length: 36 }), // which batch produced it
     dueAt: timestamp("due_at").notNull(),
-    generationStatus: mysqlEnum("generation_status", generationStatusEnum).notNull(),
+    generationStatus: generationStatus("generation_status").notNull(),
     skipReason: varchar("skip_reason", { length: 512 }), // F2 skip-and-flag detail; null unless skipped
     jobId: varchar("job_id", { length: 36 }), // F5 spawn link; null until spawned
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -323,7 +323,7 @@ export const pmAssets = pgTable(
 // pm_visit_id → CASCADE (results die with their visit); pm_visit_checklist_id → CASCADE (a result
 // has no meaning without the template item it answers).
 
-const resultEnum = ["done", "skipped", "na"] as const;
+
 
 // ── pm_visit_checklists (TEMPLATE — program-level definition) ──
 export const pmVisitChecklists = pgTable(
@@ -365,7 +365,7 @@ export const pmVisitResults = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     pmVisitId: varchar("pm_visit_id", { length: 36 }).notNull(),
     pmVisitChecklistId: varchar("pm_visit_checklist_id", { length: 36 }).notNull(), // which template item
-    result: mysqlEnum("result", resultEnum), // null = not yet recorded
+    result: result("result"), // null = not yet recorded
     notes: text("notes"),
     completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -8,7 +8,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { agentRunStatus, agentToolStatus, agentsSubstrateConfidence, agentsSubstrateDisposition, agentsSubstrateToolKind } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -36,7 +36,7 @@ export const agentRuns = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     agentId: varchar("agent_id", { length: 64 }).notNull(),
-    status: mysqlEnum("status", ["running", "succeeded", "failed"]).notNull().default("running"),
+    status: agentRunStatus("status").notNull().default("running"),
     triggerSource: varchar("trigger_source", { length: 32 }).notNull().default("operator_manual"),
     triggeredByUserId: varchar("triggered_by_user_id", { length: 36 }),
     jobId: varchar("job_id", { length: 36 }),
@@ -73,10 +73,10 @@ export const agentToolCalls = pgTable(
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
     sequence: integer("sequence").notNull(),
     toolName: varchar("tool_name", { length: 128 }).notNull(),
-    toolKind: mysqlEnum("tool_kind", ["read", "write"]).notNull(),
+    toolKind: agentsSubstrateToolKind("tool_kind").notNull(),
     toolInput: json("tool_input"),
     toolOutput: json("tool_output"),
-    status: mysqlEnum("status", ["ok", "error"]).notNull().default("ok"),
+    status: agentToolStatus("status").notNull().default("ok"),
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -102,13 +102,9 @@ export const agentDecisions = pgTable(
     decisionType: varchar("decision_type", { length: 64 }).notNull(),
     proposedAction: varchar("proposed_action", { length: 500 }),
     reasoning: text("reasoning"),
-    confidence: mysqlEnum("confidence", ["high", "medium", "low"]),
+    confidence: agentsSubstrateConfidence("confidence"),
     policyCheck: varchar("policy_check", { length: 128 }),
-    disposition: mysqlEnum("disposition", [
-      "queued_for_review",
-      "auto_executed",
-      "policy_blocked",
-    ]).notNull(),
+    disposition: agentsSubstrateDisposition("disposition").notNull(),
     metadata: json("metadata"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

@@ -9,7 +9,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { billingModel, jobsFollowUpCategory, jobsSourceType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -63,16 +63,7 @@ export const jobs = pgTable(
     currentStatusId: varchar("current_status_id", { length: 36 })
       .notNull()
       .references(() => jobStatuses.id, { onDelete: "restrict" }),
-    sourceType: mysqlEnum("source_type", [
-      "manual",
-      "internal_client_portal",
-      "external_client_portal",
-      "email_ingestion",
-      "forwarded_email",
-      "api",
-      "preventative_maintenance",
-      "snow_event",
-    ])
+    sourceType: jobsSourceType("source_type")
       .notNull()
       .default("manual"),
     sourceExternalId: varchar("source_external_id", { length: 255 }),
@@ -92,7 +83,7 @@ export const jobs = pgTable(
     // resolution rule is job.billing_model ?? client.billing_model). Same enum as
     // clients.billing_model. The operator's "one method per job" — a job pins its method
     // only when it must deviate from the client default.
-    billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"]),
+    billingModel: billingModel("billing_model"),
     scheduledStartAt: timestamp("scheduled_start_at"),
     scheduledEndAt: timestamp("scheduled_end_at"),
     dueAt: timestamp("due_at"),
@@ -102,12 +93,7 @@ export const jobs = pgTable(
     // migration). The exception reader surfaces a follow_up_overdue kind once follow_up_at has
     // passed. Distinct from due_at (the SLA seam) — this is a categorized operator reminder.
     followUpAt: timestamp("follow_up_at"),
-    followUpCategory: mysqlEnum("follow_up_category", [
-      "vendor_followup",
-      "confirm_onsite",
-      "proposal_followup",
-      "general",
-    ]),
+    followUpCategory: jobsFollowUpCategory("follow_up_category"),
     completedAt: timestamp("completed_at"),
     closedAt: timestamp("closed_at"),
     isArchived: boolean("is_archived").notNull().default(false),

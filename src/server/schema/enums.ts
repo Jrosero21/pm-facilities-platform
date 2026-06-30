@@ -1,0 +1,75 @@
+import { pgEnum } from "drizzle-orm/pg-core";
+
+// Postgres named enum types (batch 2, MariaDB->Postgres migration). MySQL enums
+// were inline per-column; Postgres enums are named types declared once and
+// referenced by columns. One pgEnum per distinct value-set — identical value-sets
+// across tables share a single type (e.g. entityStatus = active/inactive/archived).
+
+export const agentDraftStatus = pgEnum("agent_draft_status", ["pending_review", "approved", "rejected", "discarded", "published"]);
+export const agentReviewDecision = pgEnum("agent_review_decision", ["approve", "reject"]);
+export const agentRunStatus = pgEnum("agent_run_status", ["running", "succeeded", "failed"]);
+export const agentToolStatus = pgEnum("agent_tool_status", ["ok", "error"]);
+export const agentsRewriterSourceType = pgEnum("agents_rewriter_source_type", ["job_note", "vendor_update"]);
+export const agentsSubstrateConfidence = pgEnum("agents_substrate_confidence", ["high", "medium", "low"]);
+export const agentsSubstrateDisposition = pgEnum("agents_substrate_disposition", ["queued_for_review", "auto_executed", "policy_blocked"]);
+export const agentsSubstrateToolKind = pgEnum("agents_substrate_tool_kind", ["read", "write"]);
+export const approvalDecision = pgEnum("approval_decision", ["accepted", "declined"]);
+export const billingModel = pgEnum("billing_model", ["rate_sheet", "cost_plus", "flat"]);
+export const changeOrderStatus = pgEnum("change_order_status", ["draft", "submitted", "approved", "declined", "withdrawn"]);
+export const channel = pgEnum("channel", ["internal_note", "vendor_portal", "client_portal", "email", "sms", "external_portal", "phone_call"]);
+export const clientDetailsDayOfWeek = pgEnum("client_details_day_of_week", ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]);
+export const clientInvoiceStatus = pgEnum("client_invoice_status", ["draft", "sent", "void"]);
+export const commVisibility = pgEnum("comm_visibility", ["internal_only", "vendor_visible", "client_visible", "client_and_vendor_visible", "requires_review"]);
+export const communicationsDirection = pgEnum("communications_direction", ["outbound", "inbound", "internal"]);
+export const complianceStatus = pgEnum("compliance_status", ["ok", "no_data", "expired", "non_compliant"]);
+export const configStatus = pgEnum("config_status", ["draft", "active", "archived"]);
+export const credentialStatus = pgEnum("credential_status", ["active", "inactive", "revoked"]);
+export const deliveryStatus = pgEnum("delivery_status", ["draft", "queued", "sent", "delivered", "failed", "bounced", "received"]);
+export const dispatchCommsDirection = pgEnum("dispatch_comms_direction", ["outbound", "inbound"]);
+export const dispatchReferenceCategory = pgEnum("dispatch_reference_category", ["draft", "pending", "active", "completed", "cancelled"]);
+export const dispatchStatus = pgEnum("dispatch_status", ["staged", "spawned", "skipped", "cancelled"]);
+export const draftStatus = pgEnum("draft_status", ["pending_review", "approved", "rejected", "superseded"]);
+export const emailSourceType = pgEnum("email_source_type", ["email_ingestion", "forwarded_email"]);
+export const entityStatus = pgEnum("entity_status", ["active", "inactive", "archived"]);
+export const eventStatus = pgEnum("event_status", ["declared", "dispatching", "complete", "cancelled"]);
+export const frequency = pgEnum("frequency", ["day", "week", "month"]);
+export const generationStatus = pgEnum("generation_status", ["generated", "skipped", "pending_review"]);
+export const geoMatchType = pgEnum("geo_match_type", ["postal_code", "city", "state", "national"]);
+export const ioDirection = pgEnum("io_direction", ["inbound", "outbound"]);
+export const jobDetailsAttachmentType = pgEnum("job_details_attachment_type", ["photo", "document", "signature", "invoice", "quote", "other"]);
+export const jobReferenceCategory = pgEnum("job_reference_category", ["open", "in_progress", "on_hold", "completed", "cancelled"]);
+export const jobsFollowUpCategory = pgEnum("jobs_follow_up_category", ["vendor_followup", "confirm_onsite", "proposal_followup", "general"]);
+export const jobsSourceType = pgEnum("jobs_source_type", ["manual", "internal_client_portal", "external_client_portal", "email_ingestion", "forwarded_email", "api", "preventative_maintenance", "snow_event"]);
+export const lineItemCategory = pgEnum("line_item_category", ["labor", "materials", "equipment", "trip", "permit", "fee", "tax", "other"]);
+export const linkStatus = pgEnum("link_status", ["active", "unlinked"]);
+export const llmKeyProvider = pgEnum("llm_key_provider", ["anthropic", "openai"]);
+export const llmKeyStatus = pgEnum("llm_key_status", ["active", "revoked"]);
+export const mappingDirection = pgEnum("mapping_direction", ["inbound", "outbound", "both"]);
+export const membershipStatus = pgEnum("membership_status", ["active", "invited", "suspended"]);
+export const nteStatus = pgEnum("nte_status", ["active", "archived"]);
+export const outcome = pgEnum("outcome", ["ok", "skipped", "error"]);
+export const parseOutcome = pgEnum("parse_outcome", ["parsed", "partial", "failed"]);
+export const parserKind = pgEnum("parser_kind", ["deterministic", "ai_assist"]);
+export const paymentStatus = pgEnum("payment_status", ["unpaid", "partially_paid", "paid"]);
+export const portalUpdatesQueueStatus = pgEnum("portal_updates_queue_status", ["queued", "processing", "sent", "failed", "cancelled"]);
+export const portalUpdatesTargetPortal = pgEnum("portal_updates_target_portal", ["client_portal", "vendor_portal", "external_portal"]);
+export const processingStatus = pgEnum("processing_status", ["received", "parsed", "drafted", "failed", "duplicate_flagged"]);
+export const proposalKind = pgEnum("proposal_kind", ["client", "internal"]);
+export const proposalStatus = pgEnum("proposal_status", ["draft", "sent", "viewed", "accepted", "declined", "expired", "superseded", "withdrawn", "internal_billed"]);
+export const rateType = pgEnum("rate_type", ["hourly", "flat", "trip_charge", "per_unit", "emergency", "after_hours"]);
+export const recipientType = pgEnum("recipient_type", ["vendor_contact", "client_contact", "external", "internal", "none"]);
+export const result = pgEnum("result", ["done", "skipped", "na"]);
+export const rolesScope = pgEnum("roles_scope", ["global", "tenant"]);
+export const runStatus = pgEnum("run_status", ["running", "succeeded", "failed", "partial"]);
+export const sourceType = pgEnum("source_type", ["dispatch_message", "outbound_message", "inbound_message", "job_note", "client_update", "vendor_update"]);
+export const stepSource = pgEnum("step_source", ["ai_generated", "template", "manual", "edited"]);
+export const tenantStatus = pgEnum("tenant_status", ["active", "suspended", "archived"]);
+export const tenantsType = pgEnum("tenants_type", ["aggregator", "vendor", "client"]);
+export const valueSource = pgEnum("value_source", ["client_provided", "system_default", "looked_up"]);
+export const vendorCoverageAreaType = pgEnum("vendor_coverage_area_type", ["radius", "postal_code", "city", "county", "state", "national"]);
+export const vendorDetailsComplianceStatus = pgEnum("vendor_details_compliance_status", ["pending", "compliant", "non_compliant", "expired"]);
+export const vendorDetailsDocumentType = pgEnum("vendor_details_document_type", ["insurance", "w9", "license", "certification", "agreement", "other"]);
+export const vendorDetailsRequirementType = pgEnum("vendor_details_requirement_type", ["general_liability", "workers_comp", "auto_liability", "umbrella", "background_check", "license", "certification", "other"]);
+export const vendorInvoiceSourceType = pgEnum("vendor_invoice_source_type", ["manual", "vendor_portal", "email_ingestion", "external_portal_sync", "api"]);
+export const vendorInvoiceStatus = pgEnum("vendor_invoice_status", ["received", "under_review", "approved", "disputed", "paid"]);
+export const vendorsVendorType = pgEnum("vendors_vendor_type", ["local", "regional", "national"]);

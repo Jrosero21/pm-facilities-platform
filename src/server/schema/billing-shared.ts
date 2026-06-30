@@ -5,8 +5,13 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { lineItemCategory } from "./enums";
 import { v7 as uuidv7 } from "uuid";
+
+// Re-export the line-item category values for consumers (proposal/invoice agents use it
+// for Zod validation and the ProposalLineCategory union). Derived from the pgEnum so the
+// values stay single-sourced in ./enums (batch 2: was a standalone `as const` array).
+export const lineItemCategoryEnum = lineItemCategory.enumValues;
 
 // ── Phase 8 batch 8b — SHARED LINE-ITEM COLUMN SHAPE (8b-D4) ─────────────────────────
 // The four line-item tables (proposal/change_order/vendor_invoice/client_invoice) share an
@@ -22,16 +27,7 @@ import { v7 as uuidv7 } from "uuid";
 // callback with explicit short FK names (the invoice line-item parent FKs would otherwise
 // exceed MySQL's 64-char limit; R-6.22).
 
-export const lineItemCategoryEnum = [
-  "labor",
-  "materials",
-  "equipment",
-  "trip",
-  "permit",
-  "fee",
-  "tax",
-  "other",
-] as const;
+
 
 // Base shape — spread into ALL four line-item tables. Money is numeric(12,2) (OQ-1);
 // quantity numeric(10,2) (fractional hours/units); tax placeholders (OQ-7). extended_amount
@@ -42,7 +38,7 @@ export const baseLineItemColumns = () => ({
     .$defaultFn(() => uuidv7()),
   tenantId: varchar("tenant_id", { length: 36 }).notNull(),
   lineNumber: integer("line_number").notNull(),
-  category: mysqlEnum("category", lineItemCategoryEnum).notNull(),
+  category: lineItemCategory("category").notNull(),
   description: text("description").notNull(),
   quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull().default("1"),
   unit: varchar("unit", { length: 32 }),

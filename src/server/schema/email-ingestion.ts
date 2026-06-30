@@ -9,7 +9,7 @@ import {
   pgTable,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { draftStatus, emailSourceType, entityStatus, parseOutcome, parserKind, processingStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -39,11 +39,11 @@ import { jobs } from "./jobs";
 // boundary when the deterministic seam consumes it (CF-13.3; the drafts.ts:110 / billing
 // events.ts:153 precedent). No reader exists this phase (the seam is a Phase-13 stub).
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 // D-6: provenance discriminator. email_ingestion = arrived at a monitored intake
 // address; forwarded_email = a human forwarded it in. Stamped onto the resulting job's
 // source_type (both values already exist on jobs.source_type — 13a live-confirmed).
-const sourceTypeEnum = ["email_ingestion", "forwarded_email"] as const;
+
 
 // ── email_parser_rules (manifest §4.6) — authored FIRST (accounts FK-references it) ──
 export const emailParserRules = pgTable(
@@ -66,7 +66,7 @@ export const emailParserRules = pgTable(
     extractionConfig: json("extraction_config"),
     // Reserved, mirrors the external_*_mappings direction convention.
     direction: varchar("direction", { length: 32 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -92,11 +92,11 @@ export const emailIngestionAccounts = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     intakeAddress: varchar("intake_address", { length: 255 }).notNull(),
     // D-6 provenance discriminator (stamped onto the resulting job's source_type).
-    sourceType: mysqlEnum("source_type", sourceTypeEnum).notNull(),
+    sourceType: emailSourceType("source_type").notNull(),
     // The default parser-rule this account expects. Nullable; SET NULL if the rule is
     // deleted (the account survives — its format binding is advisory, not existential).
     expectedParserRuleId: varchar("expected_parser_rule_id", { length: 36 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     // SET NULL: preserve the account if its creator is deleted (the D-12c.1 pattern).
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -139,13 +139,7 @@ export const emailIngestionAccounts = pgTable(
 // MariaDB longtext+json_valid and round-trip as RAW STRINGS on read — parse at the read
 // boundary when a reader consumes them (CF-13.3; the billing/events.ts:153 precedent).
 
-const processingStatusEnum = [
-  "received",
-  "parsed",
-  "drafted",
-  "failed",
-  "duplicate_flagged", // OQ-13.4: a suspected-duplicate message held for operator adjudication.
-] as const;
+
 
 // ── inbound_emails (manifest §4.2) — FK → email_ingestion_accounts (Group 1) ──
 export const inboundEmails = pgTable(
@@ -167,7 +161,7 @@ export const inboundEmails = pgTable(
     // json → longtext+json_valid; parse-at-read.
     rawHeaders: json("raw_headers"),
     receivedAt: timestamp("received_at"),
-    processingStatus: mysqlEnum("processing_status", processingStatusEnum)
+    processingStatus: processingStatus("processing_status")
       .notNull()
       .default("received"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -230,8 +224,8 @@ export const emailAttachments = pgTable(
 );
 
 // ── email_parse_results (manifest §4.3) — FK → inbound_emails + email_parser_rules ──
-const parserKindEnum = ["deterministic", "ai_assist"] as const;
-const parseOutcomeEnum = ["parsed", "partial", "failed"] as const;
+
+
 
 export const emailParseResults = pgTable(
   "email_parse_results",
@@ -241,7 +235,7 @@ export const emailParseResults = pgTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     inboundEmailId: varchar("inbound_email_id", { length: 36 }).notNull(),
-    parserKind: mysqlEnum("parser_kind", parserKindEnum).notNull(),
+    parserKind: parserKind("parser_kind").notNull(),
     matchedFormat: varchar("matched_format", { length: 128 }),
     // SET NULL: preserve the parse record if its rule is deleted.
     matchedRuleId: varchar("matched_rule_id", { length: 36 }),
@@ -253,7 +247,7 @@ export const emailParseResults = pgTable(
     // Feeds the Phase-12 D-1 resolver (external_client_mappings). NOT a client FK — D-7
     // keeps client→id resolution in the one frozen resolver, never duplicated here.
     extractedClientCode: varchar("extracted_client_code", { length: 64 }),
-    parseOutcome: mysqlEnum("parse_outcome", parseOutcomeEnum).notNull(),
+    parseOutcome: parseOutcome("parse_outcome").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -299,12 +293,7 @@ export const emailParseResults = pgTable(
 // D-6: source_type is carried from the ingestion account onto the resulting job at approval.
 // 9 FKs ALL pre-named (ewod_*) — this table is the one most at risk of >64-char auto-names.
 
-const draftStatusEnum = [
-  "pending_review",
-  "approved",
-  "rejected",
-  "superseded",
-] as const;
+
 
 export const emailWorkOrderDrafts = pgTable(
   "email_work_order_drafts",
@@ -317,11 +306,11 @@ export const emailWorkOrderDrafts = pgTable(
     inboundEmailId: varchar("inbound_email_id", { length: 36 }).notNull(),
     // SET NULL: the parse result is informational; the draft survives its loss.
     parseResultId: varchar("parse_result_id", { length: 36 }),
-    draftStatus: mysqlEnum("draft_status", draftStatusEnum)
+    draftStatus: draftStatus("draft_status")
       .notNull()
       .default("pending_review"),
     // D-6: carried onto the job's source_type at approval.
-    sourceType: mysqlEnum("source_type", sourceTypeEnum).notNull(),
+    sourceType: emailSourceType("source_type").notNull(),
     problemDescription: text("problem_description"),
     // ── resolved_* : ALL NULLABLE (partial resolution is the normal path) ──
     resolvedClientId: varchar("resolved_client_id", { length: 36 }),

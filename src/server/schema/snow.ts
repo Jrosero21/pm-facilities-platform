@@ -10,7 +10,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { dispatchStatus, eventStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -201,8 +201,8 @@ export const snowServiceTriggers = pgTable(
 // 15c Stage 0) — the spawn-record-to-job link behaves identically across PM and Snow. The
 // dispatch outcome row (incl. its skip_reason) survives a job deletion as historical record.
 
-const eventStatusEnum = ["declared", "dispatching", "complete", "cancelled"] as const;
-const dispatchStatusEnum = ["staged", "spawned", "skipped", "cancelled"] as const;
+
+
 
 // ── Phase 15 batch 15c (migration 0041) — SNOW OPERATIONS · CAPTURE + WEATHER PLACEHOLDER ──
 // snow_weather_observations — a PLACEHOLDER the manual event references (live weather feed
@@ -260,7 +260,7 @@ export const snowEvents = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     snowProgramId: varchar("snow_program_id", { length: 36 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(), // storm label, e.g. "Jan 12 Nor'easter"
-    eventStatus: mysqlEnum("event_status", eventStatusEnum)
+    eventStatus: eventStatus("event_status")
       .notNull()
       .default("declared"),
     declaredAt: timestamp("declared_at").notNull().defaultNow(),
@@ -348,7 +348,7 @@ export const snowDispatches = pgTable(
     // Nullable: null until the per-site createJob succeeds (F15-C). SET NULL on job delete —
     // matches pm_visits.job_id (Stage 0); the outcome row + skip_reason survive as history.
     jobId: varchar("job_id", { length: 36 }),
-    dispatchStatus: mysqlEnum("dispatch_status", dispatchStatusEnum)
+    dispatchStatus: dispatchStatus("dispatch_status")
       .notNull()
       .default("staged"), // F15-A: stage-by-default
     skipReason: text("skip_reason"), // set when status='skipped' (createJob err.message — skip-and-flag)

@@ -7,7 +7,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { commVisibility, entityStatus, jobDetailsAttachmentType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -15,20 +15,14 @@ import { jobs } from "./jobs";
 import { magicLinkTokens } from "./magic-links";
 import { vendorInvoices } from "./vendor-invoices";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Visibility for anything an operator adds to a job that might eventually be
 // shared externally. Phase 4 UI only ever sets internal_only; Phase 6 expands the
 // picker + visibility-control workflows. Landing the column now avoids a backfill
 // on populated tables (D-4.4-vis). The same column forward-points to Phase 5's
 // dispatch_messages and Phase 6's communication tables.
-const visibilityEnum = [
-  "internal_only",
-  "vendor_visible",
-  "client_visible",
-  "client_and_vendor_visible",
-  "requires_review",
-] as const;
+
 
 // Contacts attached to a job. Mirrors vendor_contacts / client_contacts; reuses
 // the generalized ContactForm / ContactList (SOP-3.E).
@@ -50,7 +44,7 @@ export const jobContacts = pgTable(
     phone: varchar("phone", { length: 32 }),
     isPrimary: boolean("is_primary").notNull().default(false),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -76,7 +70,7 @@ export const jobNotes = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
-    visibility: mysqlEnum("visibility", visibilityEnum)
+    visibility: commVisibility("visibility")
       .notNull()
       .default("internal_only"),
     // Provenance discriminator (Phase 10 Fork 4). varchar (NOT enum) by lock:
@@ -84,7 +78,7 @@ export const jobNotes = pgTable(
     // ('client', 'system') grow without a migration. DEFAULT 'operator' is correct
     // for all pre-Phase-10 rows (no vendor portal existed — DoR-10b.2).
     origin: varchar("origin", { length: 16 }).notNull().default("operator"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -119,14 +113,7 @@ export const jobAttachments = pgTable(
       .notNull()
       .references(() => jobs.id, { onDelete: "cascade" }),
     title: varchar("title", { length: 255 }).notNull(),
-    attachmentType: mysqlEnum("attachment_type", [
-      "photo",
-      "document",
-      "signature",
-      "invoice",
-      "quote",
-      "other",
-    ])
+    attachmentType: jobDetailsAttachmentType("attachment_type")
       .notNull()
       .default("other"),
     fileUrl: varchar("file_url", { length: 1024 }),
@@ -139,7 +126,7 @@ export const jobAttachments = pgTable(
     storageKey: varchar("storage_key", { length: 1024 }),
     checksum: varchar("checksum", { length: 255 }),
     storageProvider: varchar("storage_provider", { length: 32 }),
-    visibility: mysqlEnum("visibility", visibilityEnum)
+    visibility: commVisibility("visibility")
       .notNull()
       .default("internal_only"),
     uploadedByUserId: varchar("uploaded_by_user_id", { length: 36 }).references(
@@ -165,7 +152,7 @@ export const jobAttachments = pgTable(
       () => vendorInvoices.id,
       { onDelete: "set null" },
     ),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

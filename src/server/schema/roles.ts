@@ -6,7 +6,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { rolesScope } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -17,7 +17,7 @@ export const roles = pgTable("roles", {
     .$defaultFn(() => uuidv7()),
   key: varchar("key", { length: 64 }).notNull().unique(),
   label: varchar("label", { length: 128 }).notNull(),
-  scope: mysqlEnum("scope", ["global", "tenant"]).notNull(),
+  scope: rolesScope("scope").notNull(),
   description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),

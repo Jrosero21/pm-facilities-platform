@@ -9,7 +9,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus, rateType, vendorDetailsComplianceStatus, vendorDetailsDocumentType, vendorDetailsRequirementType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -24,7 +24,7 @@ import { vendors, vendorLocations } from "./vendors";
 //   vendor_compliance         -> Phase 5 dispatch eligibility
 //   vendor_performance_scores -> Phase 9 analytics (computed from Phase 4 jobs)
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Vendor pricing. trade_id (null = general rate) -> trades RESTRICT;
 // vendor_location_id (null = vendor-wide) -> vendor_locations cascade. `unit` is
@@ -49,21 +49,14 @@ export const vendorRates = pgTable(
       () => vendorLocations.id,
       { onDelete: "cascade" },
     ),
-    rateType: mysqlEnum("rate_type", [
-      "hourly",
-      "flat",
-      "trip_charge",
-      "per_unit",
-      "emergency",
-      "after_hours",
-    ]).notNull(),
+    rateType: rateType("rate_type").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
     effectiveDate: date("effective_date"),
     expiryDate: date("expiry_date"),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -94,14 +87,7 @@ export const vendorDocuments = pgTable(
       () => vendorLocations.id,
       { onDelete: "cascade" },
     ),
-    documentType: mysqlEnum("document_type", [
-      "insurance",
-      "w9",
-      "license",
-      "certification",
-      "agreement",
-      "other",
-    ]).notNull(),
+    documentType: vendorDetailsDocumentType("document_type").notNull(),
     title: varchar("title", { length: 255 }).notNull(),
     fileUrl: varchar("file_url", { length: 1024 }),
     fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
@@ -109,7 +95,7 @@ export const vendorDocuments = pgTable(
     issuedDate: date("issued_date"),
     expiryDate: date("expiry_date"),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -136,31 +122,17 @@ export const vendorCompliance = pgTable(
     vendorId: varchar("vendor_id", { length: 36 })
       .notNull()
       .references(() => vendors.id, { onDelete: "cascade" }),
-    requirementType: mysqlEnum("requirement_type", [
-      "general_liability",
-      "workers_comp",
-      "auto_liability",
-      "umbrella",
-      "background_check",
-      "license",
-      "certification",
-      "other",
-    ]).notNull(),
+    requirementType: vendorDetailsRequirementType("requirement_type").notNull(),
     coverageAmount: numeric("coverage_amount", { precision: 14, scale: 2 }),
     carrier: varchar("carrier", { length: 255 }),
     policyNumber: varchar("policy_number", { length: 128 }),
     effectiveDate: date("effective_date"),
     expiryDate: date("expiry_date"),
-    complianceStatus: mysqlEnum("compliance_status", [
-      "pending",
-      "compliant",
-      "non_compliant",
-      "expired",
-    ])
+    complianceStatus: vendorDetailsComplianceStatus("compliance_status")
       .notNull()
       .default("pending"),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -203,7 +175,7 @@ export const vendorPerformanceScores = pgTable(
     score: numeric("score", { precision: 6, scale: 2 }),
     computedAt: timestamp("computed_at"),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

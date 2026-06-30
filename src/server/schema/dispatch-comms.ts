@@ -6,25 +6,19 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { commVisibility, dispatchCommsDirection, entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobVendorAssignments } from "./dispatch-assignments";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Visibility axis required by D-4.10 — "anything shareable externally carries a
 // visibility column from day one", which names dispatch_messages explicitly as a
 // forward pointer. Phase 5 only ever sets internal_only; Phase 6 expands the picker
 // and the visibility-control workflows. Mirrors job_notes.visibility exactly.
-const visibilityEnum = [
-  "internal_only",
-  "vendor_visible",
-  "client_visible",
-  "client_and_vendor_visible",
-  "requires_review",
-] as const;
+
 
 // dispatch_messages — log of dispatch communications. Phase 5 captures message
 // CONTENT + METADATA only (direction, type, subject, body, visibility); it does
@@ -53,17 +47,17 @@ export const dispatchMessages = pgTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     assignmentId: varchar("assignment_id", { length: 36 }).notNull(),
-    direction: mysqlEnum("direction", ["outbound", "inbound"])
+    direction: dispatchCommsDirection("direction")
       .notNull()
       .default("outbound"),
     messageType: varchar("message_type", { length: 64 }).notNull(),
     subject: varchar("subject", { length: 255 }),
     body: text("body").notNull(),
-    visibility: mysqlEnum("visibility", visibilityEnum)
+    visibility: commVisibility("visibility")
       .notNull()
       .default("internal_only"),
     sentByUserId: varchar("sent_by_user_id", { length: 36 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

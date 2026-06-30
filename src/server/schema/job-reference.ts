@@ -7,12 +7,12 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus, jobReferenceCategory } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Job-workflow reference tables (D-4.1). The global-vs-tenant split follows a
 // principle: GLOBAL = data the platform's own code reasons about semantically
@@ -43,7 +43,7 @@ export const priorities = pgTable(
     // for external_priority_mappings (Phase 12) and seeds.
     code: varchar("code", { length: 32 }).notNull(),
     rank: integer("rank").notNull(),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -75,16 +75,10 @@ export const jobStatuses = pgTable(
     // subtext / status banner). Nullable; reference-table pattern (D-4.1).
     description: varchar("description", { length: 255 }),
     code: varchar("code", { length: 32 }).notNull(),
-    category: mysqlEnum("category", [
-      "open",
-      "in_progress",
-      "on_hold",
-      "completed",
-      "cancelled",
-    ]).notNull(),
+    category: jobReferenceCategory("category").notNull(),
     sortOrder: integer("sort_order").notNull(),
     isTerminal: boolean("is_terminal").notNull().default(false),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

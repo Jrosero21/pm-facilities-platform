@@ -7,7 +7,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { approvalDecision, changeOrderStatus, rateType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -27,13 +27,7 @@ import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 // status has NO `superseded` (8b-D5): COs stack as forward deltas, not revisions — the
 // vocabulary deliberately differs from proposals (`submitted` vs `sent`; no supersession).
 // Recorded in 02-decisions at closeout. Totals owned by recalculateChangeOrderTotals (8c).
-const changeOrderStatusEnum = [
-  "draft",
-  "submitted",
-  "approved",
-  "declined",
-  "withdrawn",
-] as const;
+
 
 export const changeOrders = pgTable(
   "change_orders",
@@ -44,7 +38,7 @@ export const changeOrders = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     jobId: varchar("job_id", { length: 36 }).notNull(),
     proposalId: varchar("proposal_id", { length: 36 }),
-    status: mysqlEnum("status", changeOrderStatusEnum).notNull().default("draft"),
+    status: changeOrderStatus("status").notNull().default("draft"),
     scopeDeltaSnapshot: text("scope_delta_snapshot"),
     reason: text("reason"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
@@ -76,14 +70,7 @@ export const changeOrderLineItems = pgTable(
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
     tradeId: varchar("trade_id", { length: 36 }),
-    rateType: mysqlEnum("rate_type", [
-      "hourly",
-      "flat",
-      "trip_charge",
-      "per_unit",
-      "emergency",
-      "after_hours",
-    ]),
+    rateType: rateType("rate_type"),
     changeOrderId: varchar("change_order_id", { length: 36 }).notNull(),
   },
   (t) => [
@@ -95,7 +82,7 @@ export const changeOrderLineItems = pgTable(
 );
 
 // Parallel to proposal_approvals (OQ-13) — identical shape, separate table. Append-only.
-const coApprovalDecisionEnum = ["accepted", "declined"] as const;
+
 
 export const changeOrderApprovals = pgTable(
   "change_order_approvals",
@@ -105,7 +92,7 @@ export const changeOrderApprovals = pgTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     changeOrderId: varchar("change_order_id", { length: 36 }).notNull(),
-    decision: mysqlEnum("decision", coApprovalDecisionEnum).notNull(),
+    decision: approvalDecision("decision").notNull(),
     approverUserId: varchar("approver_user_id", { length: 36 }),
     approverName: varchar("approver_name", { length: 255 }),
     decidedAt: timestamp("decided_at").notNull(),

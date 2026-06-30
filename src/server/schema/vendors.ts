@@ -8,12 +8,12 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus, vendorsVendorType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Vendor (subcontractor) organization. Mirrors the clients table shape.
 // vendor_type spans the local → national range called for in Phase 3; multi-
@@ -31,10 +31,10 @@ export const vendors = pgTable(
     // Legal entity name when it differs from the operating/DBA name.
     legalName: varchar("legal_name", { length: 255 }),
     vendorCode: varchar("vendor_code", { length: 64 }),
-    vendorType: mysqlEnum("vendor_type", ["local", "regional", "national"])
+    vendorType: vendorsVendorType("vendor_type")
       .notNull()
       .default("local"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     mainPhone: varchar("main_phone", { length: 32 }),
     mainEmail: varchar("main_email", { length: 255 }),
     website: varchar("website", { length: 255 }),
@@ -82,7 +82,7 @@ export const vendorContacts = pgTable(
     phone: varchar("phone", { length: 32 }),
     isPrimary: boolean("is_primary").notNull().default(false),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -114,7 +114,7 @@ export const vendorLocations = pgTable(
       .references(() => vendors.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
     locationCode: varchar("location_code", { length: 64 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     addressLine1: varchar("address_line1", { length: 255 }).notNull(),
     addressLine2: varchar("address_line2", { length: 255 }),
     city: varchar("city", { length: 128 }).notNull(),

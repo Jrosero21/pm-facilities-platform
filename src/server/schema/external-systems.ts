@@ -7,7 +7,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { credentialStatus, entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -29,7 +29,7 @@ import { tenants } from "./tenants";
 // FK-backing indexes are declared EXPLICITLY (the 6d/6g lesson) — every FK column
 // gets its own index; we do not rely on InnoDB auto-backing.
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 export const externalSystems = pgTable(
   "external_systems",
@@ -43,7 +43,7 @@ export const externalSystems = pgTable(
     // F3: app-enforced varchar, NOT an enum — new providers grow without a migration.
     provider: varchar("provider", { length: 64 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     // Non-secret per-system settings (endpoints, toggles). Secrets live in
     // external_credentials, never here.
     config: json("config"),
@@ -82,7 +82,7 @@ export const externalAccounts = pgTable(
     externalAccountRef: varchar("external_account_ref", {
       length: 255,
     }).notNull(),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     config: json("config"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
@@ -98,7 +98,7 @@ export const externalAccounts = pgTable(
 );
 
 // F1: full secrets-capable shape; NO live secret written this phase.
-const credentialStatusEnum = ["active", "inactive", "revoked"] as const;
+
 
 export const externalCredentials = pgTable(
   "external_credentials",
@@ -119,7 +119,7 @@ export const externalCredentials = pgTable(
     // Which key / KMS alias encrypted the payload.
     keyRef: varchar("key_ref", { length: 255 }),
     expiresAt: timestamp("expires_at"),
-    status: mysqlEnum("status", credentialStatusEnum)
+    status: credentialStatus("status")
       .notNull()
       .default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

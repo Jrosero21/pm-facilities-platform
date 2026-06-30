@@ -9,13 +9,13 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { channel, commVisibility, communicationsDirection, deliveryStatus, entityStatus, recipientType, sourceType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // The 5-value visibility vocabulary — app-wide across job_notes (6b),
 // dispatch_messages (Phase 5), and communication_logs (here). The values MUST match
@@ -23,64 +23,29 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // renders any of them. (R-6.x: reused, never re-declared — centralizing the literal
 // into one shared constant is a worthwhile DRY follow-up flagged at 6d; the values are
 // identical across all three sites today so there is no drift / the badge works.)
-const visibilityEnum = [
-  "internal_only",
-  "vendor_visible",
-  "client_visible",
-  "client_and_vendor_visible",
-  "requires_review",
-] as const;
+
 
 // Communication channels (roadmap §8 Phase 6). Source-agnostic.
-const channelEnum = [
-  "internal_note",
-  "vendor_portal",
-  "client_portal",
-  "email",
-  "sms",
-  "external_portal",
-  "phone_call",
-] as const;
+
 
 // Delivery lifecycle. Phase 6 active: draft / sent / delivered / received (+ queued
 // from 6f's portal_update_queue). Structural for Phase 13 auto-send: failed / bounced.
 // `read` is the read_at timestamp, NOT a status — delivery_status and read are
 // independent concerns (R-6.x: a delivered comm can be unread).
-const deliveryStatusEnum = [
-  "draft",
-  "queued",
-  "sent",
-  "delivered",
-  "failed",
-  "bounced",
-  "received",
-] as const;
+
 
 // The communication's content source (polymorphic discriminator → source_id, R-6.x).
 // Full Phase 6 vocabulary locked now to avoid enum ALTERs in 6e/6f: dispatch_message
 // (Phase 5 channel), outbound_message + inbound_message (6e channels), job_note (the
 // 6e share action), client_update + vendor_update (the 6f update logs, which surface
 // as communications per the 6a unifying-log model).
-const sourceTypeEnum = [
-  "dispatch_message",
-  "outbound_message",
-  "inbound_message",
-  "job_note",
-  "client_update",
-  "vendor_update",
-] as const;
+
 
 // Polymorphic recipient (R-6.x): vendor_contact / client_contact reference a contact
 // row via recipient_id (no FK — spans two contact tables); external = recipient_id
 // null + recipient_email/phone; internal = no real recipient (a logged internal comm);
 // none = structural, no Phase 6 use case (future log-style entries).
-const recipientTypeEnum = [
-  "vendor_contact",
-  "client_contact",
-  "external",
-  "internal",
-  "none",
-] as const;
+
 
 // communication_logs — the UNIFYING LOG SPINE (6a Option B). SUPERSEDES Phase 5 R-5.15:
 // the delivery layer lives HERE, not on dispatch_messages. One row per communication —
@@ -96,20 +61,20 @@ export const communicationLogs = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     jobId: varchar("job_id", { length: 36 }).notNull(),
-    channel: mysqlEnum("channel", channelEnum).notNull(),
-    direction: mysqlEnum("direction", ["outbound", "inbound", "internal"]).notNull(),
-    sourceType: mysqlEnum("source_type", sourceTypeEnum).notNull(),
+    channel: channel("channel").notNull(),
+    direction: communicationsDirection("direction").notNull(),
+    sourceType: sourceType("source_type").notNull(),
     sourceId: varchar("source_id", { length: 36 }).notNull(),
-    visibility: mysqlEnum("visibility", visibilityEnum).notNull().default("internal_only"),
+    visibility: commVisibility("visibility").notNull().default("internal_only"),
     summary: varchar("summary", { length: 500 }).notNull(),
     sentByUserId: varchar("sent_by_user_id", { length: 36 }),
-    recipientType: mysqlEnum("recipient_type", recipientTypeEnum).notNull().default("none"),
+    recipientType: recipientType("recipient_type").notNull().default("none"),
     recipientId: varchar("recipient_id", { length: 36 }),
     recipientEmail: varchar("recipient_email", { length: 255 }),
     recipientPhone: varchar("recipient_phone", { length: 32 }),
     cc: text("cc"),
     bcc: text("bcc"),
-    deliveryStatus: mysqlEnum("delivery_status", deliveryStatusEnum)
+    deliveryStatus: deliveryStatus("delivery_status")
       .notNull()
       .default("draft"),
     sentAt: timestamp("sent_at"),
@@ -121,7 +86,7 @@ export const communicationLogs = pgTable(
     providerMessageId: varchar("provider_message_id", { length: 255 }),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -150,7 +115,7 @@ export const emailTemplates = pgTable(
     subjectTemplate: varchar("subject_template", { length: 500 }),
     bodyTemplate: text("body_template").notNull(),
     applicableChannels: json("applicable_channels").notNull(),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
@@ -175,7 +140,7 @@ export const outboundMessages = pgTable(
     body: text("body").notNull(),
     templateId: varchar("template_id", { length: 36 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

@@ -6,7 +6,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { llmKeyProvider, llmKeyStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -21,18 +21,18 @@ import { tenants } from "./tenants";
 // a new active one) — the setter enforces single-active (revoke-then-insert), mirroring how
 // agent_policies handles single-active without a DB unique.
 
-const llmKeyProviderEnum = ["anthropic", "openai"] as const;
-const llmKeyStatusEnum = ["active", "revoked"] as const;
+
+
 
 export const tenantLlmKeys = pgTable(
   "tenant_llm_keys",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
-    provider: mysqlEnum("provider", llmKeyProviderEnum).notNull(),
+    provider: llmKeyProvider("provider").notNull(),
     encryptedKey: text("encrypted_key").notNull(),
     keyRef: varchar("key_ref", { length: 255 }).notNull(),
-    status: mysqlEnum("status", llmKeyStatusEnum).notNull().default("active"),
+    status: llmKeyStatus("status").notNull().default("active"),
     label: varchar("label", { length: 255 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

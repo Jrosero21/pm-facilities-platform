@@ -5,7 +5,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { membershipStatus, tenantStatus, tenantsType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 
@@ -15,10 +15,10 @@ export const tenants = pgTable("tenants", {
     .$defaultFn(() => uuidv7()),
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 100 }).notNull().unique(),
-  type: mysqlEnum("type", ["aggregator", "vendor", "client"])
+  type: tenantsType("type")
     .notNull()
     .default("aggregator"),
-  status: mysqlEnum("status", ["active", "suspended", "archived"])
+  status: tenantStatus("status")
     .notNull()
     .default("active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -37,7 +37,7 @@ export const tenantUsers = pgTable(
     userId: varchar("user_id", { length: 36 })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    status: mysqlEnum("status", ["active", "invited", "suspended"])
+    status: membershipStatus("status")
       .notNull()
       .default("active"),
     joinedAt: timestamp("joined_at").notNull().defaultNow(),

@@ -1,6 +1,6 @@
 // PURE shared module — NO "server-only", NO "use client", NO DB/env/IO. The follow-up category
 // vocabulary + friendly labels, shared by the server (jobs.ts writer, actions validation) and the
-// client (the edit form select, the detail label). MUST match the mysqlEnum on jobs.follow_up_category
+// client (the edit form select, the detail label). MUST match the pgEnum on jobs.follow_up_category
 // (schema + migration 0053). Single source of truth so the four sites can't drift.
 
 export const FOLLOW_UP_CATEGORIES = [

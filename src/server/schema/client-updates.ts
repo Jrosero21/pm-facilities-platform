@@ -6,7 +6,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -32,7 +32,7 @@ export const clientUpdateLogs = pgTable(
     content: text("content").notNull(),
     sourceDraftId: varchar("source_draft_id", { length: 36 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
-    status: mysqlEnum("status", ["active", "inactive", "archived"]).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

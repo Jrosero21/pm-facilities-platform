@@ -9,7 +9,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { complianceStatus, geoMatchType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -19,7 +19,7 @@ import { vendors, vendorLocations, vendorContacts } from "./vendors";
 import { dispatchAssignmentStatuses } from "./dispatch-reference";
 
 // Equality-match geo vocabulary, identical to vendor-matching.ts's GeoMatchType.
-const geoMatchTypeEnum = ["postal_code", "city", "state", "national"] as const;
+
 
 // Compliance posture at dispatch — a small CLOSED vocabulary, so an enum (like
 // tightest_geo_at_dispatch), NOT varchar. The D-4.2 forward-flex argument is for
@@ -27,12 +27,7 @@ const geoMatchTypeEnum = ["postal_code", "city", "state", "national"] as const;
 // is ~5 values. The matcher emits 'ok' / 'no_data' today (D-5.2); 'expired' /
 // 'non_compliant' exist for when compliance data lands. Adding pending/under_review
 // later is a one-line enum ALTER (D-4.4). DB-level typo rejection wins here.
-const complianceStatusEnum = [
-  "ok",
-  "no_data",
-  "expired",
-  "non_compliant",
-] as const;
+
 
 // job_vendor_assignments — one row per (job, vendor) dispatch. A job supports
 // MANY assignments (Phase 5 lock (c): NO (job,vendor) uniqueness — re-dispatch,
@@ -85,15 +80,9 @@ export const jobVendorAssignments = pgTable(
     // thereafter (defensive against future trade-change workflows).
     matchedTradeId: varchar("matched_trade_id", { length: 36 }).notNull(),
     matchedTradeWasPrimary: boolean("matched_trade_was_primary").notNull(),
-    tightestGeoAtDispatch: mysqlEnum(
-      "tightest_geo_at_dispatch",
-      geoMatchTypeEnum,
-    ).notNull(),
+    tightestGeoAtDispatch: geoMatchType("tightest_geo_at_dispatch").notNull(),
     matchedGeoTypesAtDispatch: json("matched_geo_types_at_dispatch").notNull(),
-    complianceStatusAtDispatch: mysqlEnum(
-      "compliance_status_at_dispatch",
-      complianceStatusEnum,
-    ).notNull(),
+    complianceStatusAtDispatch: complianceStatus("compliance_status_at_dispatch").notNull(),
     // Nullable: only meaningful when a branch was chosen (vendor_location_id set).
     // true if that branch carries its own active coverage for the matched trade.
     chosenBranchCoveredTrade: boolean("chosen_branch_covered_trade"),

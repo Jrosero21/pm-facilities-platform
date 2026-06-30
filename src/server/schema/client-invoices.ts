@@ -8,7 +8,7 @@ import {
   pgTable,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { clientInvoiceStatus, paymentStatus, rateType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -26,8 +26,8 @@ import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 // creation (#6 discipline). Totals owned by recalculateClientInvoiceTotals (8c, R-7.2).
 // Issuing a client invoice (status → sent) is ACCOUNTING-gated/ENFORCED (issued_by_user_id;
 // #20, OQ-23) — the platform's first enforced role gate (action layer, 8c).
-const clientInvoiceStatusEnum = ["draft", "sent", "void"] as const;
-const paymentStatusEnum = ["unpaid", "partially_paid", "paid"] as const;
+
+
 
 export const clientInvoices = pgTable(
   "client_invoices",
@@ -41,8 +41,8 @@ export const clientInvoices = pgTable(
     invoiceNumber: varchar("invoice_number", { length: 128 }),
     sequenceNumber: integer("sequence_number"),
     isFinal: boolean("is_final").notNull().default(false),
-    status: mysqlEnum("status", clientInvoiceStatusEnum).notNull().default("draft"),
-    paymentStatus: mysqlEnum("payment_status", paymentStatusEnum)
+    status: clientInvoiceStatus("status").notNull().default("draft"),
+    paymentStatus: paymentStatus("payment_status")
       .notNull()
       .default("unpaid"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
@@ -80,14 +80,7 @@ export const clientInvoiceLineItems = pgTable(
     ...baseLineItemColumns(),
     ...arMarkupColumns(),
     tradeId: varchar("trade_id", { length: 36 }),
-    rateType: mysqlEnum("rate_type", [
-      "hourly",
-      "flat",
-      "trip_charge",
-      "per_unit",
-      "emergency",
-      "after_hours",
-    ]),
+    rateType: rateType("rate_type"),
     clientInvoiceId: varchar("client_invoice_id", { length: 36 }).notNull(),
   },
   (t) => [

@@ -9,7 +9,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { agentDraftStatus, agentReviewDecision, entityStatus, stepSource } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -30,12 +30,12 @@ import { agentRuns } from "./agents-substrate";
 // approved_scope_of_work + scope_generation_status already exist from Phase 4).
 
 // job_scope_drafts.status MIRRORS update_rewrite_drafts.status 1:1 (OQ #4).
-const draftStatusEnum = ["pending_review", "approved", "rejected", "discarded", "published"] as const;
-const reviewDecisionEnum = ["approve", "reject"] as const;
+
+
 // Per-step provenance (NOT NULL, no default — publishScopeDraft sets it per step).
-const stepSourceEnum = ["ai_generated", "template", "manual", "edited"] as const;
+
 // Operational soft-delete on the published step rows.
-const stepStatusEnum = ["active", "inactive", "archived"] as const;
+
 
 // job_scope_drafts — one row per generation attempt. proposed_steps is the AI's ordered
 // steps (JSON, IMMUTABLE — the "what the AI produced" audit; parse at read per R-6.19).
@@ -51,7 +51,7 @@ export const jobScopeDrafts = pgTable(
     jobId: varchar("job_id", { length: 36 }).notNull(),
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
     proposedSteps: json("proposed_steps").notNull(),
-    status: mysqlEnum("status", draftStatusEnum).notNull().default("pending_review"),
+    status: agentDraftStatus("status").notNull().default("pending_review"),
     publishedAt: timestamp("published_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
@@ -77,7 +77,7 @@ export const jobScopeReviews = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     draftId: varchar("draft_id", { length: 36 }).notNull(),
     reviewerUserId: varchar("reviewer_user_id", { length: 36 }),
-    decision: mysqlEnum("decision", reviewDecisionEnum).notNull(),
+    decision: agentReviewDecision("decision").notNull(),
     editedSteps: json("edited_steps"),
     reviewNotes: text("review_notes"),
     reviewedAt: timestamp("reviewed_at").notNull(),
@@ -108,9 +108,9 @@ export const jobScopeSteps = pgTable(
     instruction: text("instruction").notNull(),
     category: varchar("category", { length: 32 }),
     expectsPhoto: boolean("expects_photo").notNull().default(false),
-    source: mysqlEnum("source", stepSourceEnum).notNull(),
+    source: stepSource("source").notNull(),
     sourceDraftId: varchar("source_draft_id", { length: 36 }),
-    status: mysqlEnum("status", stepStatusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

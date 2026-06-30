@@ -8,7 +8,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
@@ -26,7 +26,7 @@ import { trades } from "./trades";
 // a future few-shot example is structurally identical to the output. tenant_id NOT NULL
 // (OQ #3); a platform-shared library, if ever wanted, follows the defaults-table pattern.
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 export const scopeTemplates = pgTable(
   "scope_templates",
@@ -36,7 +36,7 @@ export const scopeTemplates = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     tradeId: varchar("trade_id", { length: 36 }),
     description: text("description"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

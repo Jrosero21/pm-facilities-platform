@@ -7,13 +7,13 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus, portalUpdatesQueueStatus, portalUpdatesTargetPortal } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
 import { vendors } from "./vendors";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // ── Phase 6 batch 6f — STRUCTURAL FORWARD-DECLS ONLY ─────────────────────────────────
 // These two tables are roadmap §8 Phase 6 core tables, created now for completeness, but
@@ -42,7 +42,7 @@ export const vendorUpdateLogs = pgTable(
     vendorId: varchar("vendor_id", { length: 36 }),
     content: text("content").notNull(),
     receivedAt: timestamp("received_at").notNull(),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -65,27 +65,17 @@ export const portalUpdateQueue = pgTable(
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     jobId: varchar("job_id", { length: 36 }).notNull(),
-    targetPortal: mysqlEnum("target_portal", [
-      "client_portal",
-      "vendor_portal",
-      "external_portal",
-    ]).notNull(),
+    targetPortal: portalUpdatesTargetPortal("target_portal").notNull(),
     sourceType: varchar("source_type", { length: 32 }).notNull(),
     sourceId: varchar("source_id", { length: 36 }).notNull(),
-    queueStatus: mysqlEnum("queue_status", [
-      "queued",
-      "processing",
-      "sent",
-      "failed",
-      "cancelled",
-    ])
+    queueStatus: portalUpdatesQueueStatus("queue_status")
       .notNull()
       .default("queued"),
     attempts: integer("attempts").notNull().default(0),
     scheduledAt: timestamp("scheduled_at"),
     processedAt: timestamp("processed_at"),
     lastError: text("last_error"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

@@ -5,7 +5,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 
 // GLOBAL, platform-wide reference table — a DELIBERATE EXCEPTION to the
@@ -25,7 +25,7 @@ export const trades = pgTable(
     // Short canonical code, stored uppercased (e.g. "PLUMB"). Stable join key
     // for external_trade_mappings and seeds.
     code: varchar("code", { length: 32 }).notNull(),
-    status: mysqlEnum("status", ["active", "inactive", "archived"])
+    status: entityStatus("status")
       .notNull()
       .default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),

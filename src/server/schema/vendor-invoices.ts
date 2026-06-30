@@ -9,7 +9,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { paymentStatus, vendorInvoiceSourceType, vendorInvoiceStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -29,21 +29,9 @@ import { baseLineItemColumns } from "./billing-shared";
 // AP control point is OPERATOR approval (approved_by_user_id) — operator validates the
 // agreed amount; accounting approves PAYMENT, not the invoice (#20, OQ-24). payment_status
 // is DERIVED by the payment-recording writer (#16), never hand-set.
-const vendorInvoiceSourceTypeEnum = [
-  "manual",
-  "vendor_portal",
-  "email_ingestion",
-  "external_portal_sync",
-  "api",
-] as const;
-const vendorInvoiceStatusEnum = [
-  "received",
-  "under_review",
-  "approved",
-  "disputed",
-  "paid",
-] as const;
-const paymentStatusEnum = ["unpaid", "partially_paid", "paid"] as const;
+
+
+
 
 export const vendorInvoices = pgTable(
   "vendor_invoices",
@@ -55,21 +43,21 @@ export const vendorInvoices = pgTable(
     jobId: varchar("job_id", { length: 36 }).notNull(),
     vendorId: varchar("vendor_id", { length: 36 }).notNull(),
     assignmentId: varchar("assignment_id", { length: 36 }),
-    sourceType: mysqlEnum("source_type", vendorInvoiceSourceTypeEnum)
+    sourceType: vendorInvoiceSourceType("source_type")
       .notNull()
       .default("manual"),
     sourceExternalId: varchar("source_external_id", { length: 255 }),
     invoiceNumber: varchar("invoice_number", { length: 128 }),
     sequenceNumber: integer("sequence_number"),
     isFinal: boolean("is_final").notNull().default(false),
-    status: mysqlEnum("status", vendorInvoiceStatusEnum).notNull().default("received"),
+    status: vendorInvoiceStatus("status").notNull().default("received"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
     taxTotal: numeric("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
     total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
     nteBaselineAmount: numeric("nte_baseline_amount", { precision: 12, scale: 2 }),
     exceedsNte: boolean("exceeds_nte").notNull().default(false),
-    paymentStatus: mysqlEnum("payment_status", paymentStatusEnum)
+    paymentStatus: paymentStatus("payment_status")
       .notNull()
       .default("unpaid"),
     invoiceDate: timestamp("invoice_date"),

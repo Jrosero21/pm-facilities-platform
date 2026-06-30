@@ -10,7 +10,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { configStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { clients } from "./clients";
@@ -32,7 +32,7 @@ import { clients } from "./clients";
 // the operational soft-delete enum (active/inactive/archived). A row resolves only when
 // status='active'; seeds promote explicitly.
 
-const configStatusEnum = ["draft", "active", "archived"] as const;
+
 
 // ai_prompt_templates — tenant-scoped versioned prompts. A behavior-affecting prompt
 // change inserts a NEW row (version+1, draft→active) and archives the prior active row;
@@ -52,7 +52,7 @@ export const aiPromptTemplates = pgTable(
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     variant: varchar("variant", { length: 64 }).notNull().default("default"),
     version: integer("version").notNull().default(1),
-    status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
+    status: configStatus("status").notNull().default("draft"),
     systemPrompt: text("system_prompt").notNull(),
     userPromptTemplate: text("user_prompt_template"),
     modelHint: varchar("model_hint", { length: 64 }),
@@ -80,7 +80,7 @@ export const aiPromptTemplateDefaults = pgTable(
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     variant: varchar("variant", { length: 64 }).notNull().default("default"),
     version: integer("version").notNull().default(1),
-    status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
+    status: configStatus("status").notNull().default("draft"),
     systemPrompt: text("system_prompt").notNull(),
     userPromptTemplate: text("user_prompt_template"),
     modelHint: varchar("model_hint", { length: 64 }),
@@ -112,7 +112,7 @@ export const agentPolicies = pgTable(
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     policy: json("policy").notNull(),
     version: integer("version").notNull().default(1),
-    status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
+    status: configStatus("status").notNull().default("draft"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -133,7 +133,7 @@ export const agentPolicyDefaults = pgTable(
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     policy: json("policy").notNull(),
     version: integer("version").notNull().default(1),
-    status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
+    status: configStatus("status").notNull().default("draft"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

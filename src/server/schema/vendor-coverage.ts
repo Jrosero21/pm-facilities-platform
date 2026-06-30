@@ -8,14 +8,14 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { entityStatus, vendorCoverageAreaType } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
 import { vendors, vendorLocations } from "./vendors";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Trades a vendor covers. trade_id references the GLOBAL trades table with
 // onDelete RESTRICT (a trade covered by any vendor can't be hard-deleted out
@@ -39,7 +39,7 @@ export const vendorTradeCoverage = pgTable(
       .references(() => trades.id, { onDelete: "restrict" }),
     vendorLocationId: varchar("vendor_location_id", { length: 36 }),
     isPrimary: boolean("is_primary").notNull().default(false),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -84,14 +84,7 @@ export const vendorServiceAreas = pgTable(
       .notNull()
       .references(() => vendors.id, { onDelete: "cascade" }),
     vendorLocationId: varchar("vendor_location_id", { length: 36 }),
-    areaType: mysqlEnum("area_type", [
-      "radius",
-      "postal_code",
-      "city",
-      "county",
-      "state",
-      "national",
-    ]).notNull(),
+    areaType: vendorCoverageAreaType("area_type").notNull(),
     areaLabel: varchar("area_label", { length: 120 }),
     // radius only
     centerLatitude: numeric("center_latitude", { precision: 10, scale: 7 }),
@@ -106,7 +99,7 @@ export const vendorServiceAreas = pgTable(
     // city / county / state
     stateCode: varchar("state_code", { length: 8 }),
     countryCode: varchar("country_code", { length: 2 }).notNull().default("US"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

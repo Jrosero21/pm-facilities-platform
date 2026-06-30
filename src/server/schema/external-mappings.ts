@@ -6,7 +6,7 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { mappingDirection } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
@@ -29,7 +29,7 @@ import { externalSystems } from "./external-systems";
 // external_systems.created_by_user_id at D-12c.1). FK-backing indexes are explicit
 // (the 6d/6g lesson).
 
-const directionEnum = ["inbound", "outbound", "both"] as const;
+
 
 export const externalStatusMappings = pgTable(
   "external_status_mappings",
@@ -44,7 +44,7 @@ export const externalStatusMappings = pgTable(
     jobStatusId: varchar("job_status_id", { length: 36 })
       .notNull()
       .references(() => jobStatuses.id, { onDelete: "cascade" }),
-    direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
+    direction: mappingDirection("direction").notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -76,7 +76,7 @@ export const externalTradeMappings = pgTable(
     tradeId: varchar("trade_id", { length: 36 })
       .notNull()
       .references(() => trades.id, { onDelete: "cascade" }),
-    direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
+    direction: mappingDirection("direction").notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -113,7 +113,7 @@ export const externalPriorityMappings = pgTable(
     priorityId: varchar("priority_id", { length: 36 })
       .notNull()
       .references(() => priorities.id, { onDelete: "cascade" }),
-    direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
+    direction: mappingDirection("direction").notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -159,7 +159,7 @@ export const externalLocationMappings = pgTable(
     // because the table is empty in prod (added the same phase the table was created).
     clientId: varchar("client_id", { length: 36 }).notNull(),
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
-    direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
+    direction: mappingDirection("direction").notNull().default("both"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -213,7 +213,7 @@ export const externalClientMappings = pgTable(
     externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
     externalCode: varchar("external_code", { length: 255 }).notNull(),
     clientId: varchar("client_id", { length: 36 }).notNull(),
-    direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
+    direction: mappingDirection("direction").notNull().default("both"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

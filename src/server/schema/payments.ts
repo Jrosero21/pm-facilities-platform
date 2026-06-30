@@ -7,7 +7,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { ioDirection } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -29,7 +29,7 @@ import { vendorInvoices } from "./vendor-invoices";
 // NEVER accepts job_id as a caller parameter (would open a divergence path). For the job
 // billing section + job_billing_events linkage. recorded_by_user_id = ACCOUNTING (ENFORCED,
 // #20) — the ledger control point. Manual ledger entry only; NO processor integration (OQ-18).
-const paymentDirectionEnum = ["inbound", "outbound"] as const;
+
 
 export const paymentRecords = pgTable(
   "payment_records",
@@ -38,7 +38,7 @@ export const paymentRecords = pgTable(
       .primaryKey()
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
-    direction: mysqlEnum("direction", paymentDirectionEnum).notNull(),
+    direction: ioDirection("direction").notNull(),
     clientInvoiceId: varchar("client_invoice_id", { length: 36 }),
     vendorInvoiceId: varchar("vendor_invoice_id", { length: 36 }),
     jobId: varchar("job_id", { length: 36 }).notNull(),

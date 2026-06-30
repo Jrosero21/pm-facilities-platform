@@ -11,14 +11,14 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { clientDetailsDayOfWeek, entityStatus, rateType, valueSource } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
 import { clients, clientLocations } from "./clients";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Contacts attached at the client (organization) level.
 export const clientContacts = pgTable(
@@ -39,7 +39,7 @@ export const clientContacts = pgTable(
     phone: varchar("phone", { length: 32 }),
     isPrimary: boolean("is_primary").notNull().default(false),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -70,7 +70,7 @@ export const clientLocationContacts = pgTable(
     phone: varchar("phone", { length: 32 }),
     isPrimary: boolean("is_primary").notNull().default(false),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -101,15 +101,7 @@ export const clientLocationHours = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
-    dayOfWeek: mysqlEnum("day_of_week", [
-      "sun",
-      "mon",
-      "tue",
-      "wed",
-      "thu",
-      "fri",
-      "sat",
-    ]).notNull(),
+    dayOfWeek: clientDetailsDayOfWeek("day_of_week").notNull(),
     openTime: time("open_time"),
     closeTime: time("close_time"),
     isClosed: boolean("is_closed").notNull().default(false),
@@ -117,7 +109,7 @@ export const clientLocationHours = pgTable(
     // CF-19.1 — provenance of this hours row: client_provided (operator entered the
     // client's stated hours), system_default (the flat 9–5 seed), looked_up (resolved
     // from an external source). Defaults to system_default; additive, NOT NULL.
-    hoursSource: mysqlEnum("hours_source", ["client_provided", "system_default", "looked_up"])
+    hoursSource: valueSource("hours_source")
       .notNull()
       .default("system_default"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -196,7 +188,7 @@ export const clientBillingRules = pgTable(
     }),
     notes: text("notes"),
     isDefault: boolean("is_default").notNull().default(false),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
@@ -230,21 +222,14 @@ export const clientRates = pgTable(
     tradeId: varchar("trade_id", { length: 36 }).references(() => trades.id, {
       onDelete: "restrict",
     }),
-    rateType: mysqlEnum("rate_type", [
-      "hourly",
-      "flat",
-      "trip_charge",
-      "per_unit",
-      "emergency",
-      "after_hours",
-    ]).notNull(),
+    rateType: rateType("rate_type").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
     effectiveDate: date("effective_date"),
     expiryDate: date("expiry_date"),
     notes: text("notes"),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

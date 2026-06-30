@@ -7,7 +7,7 @@ import {
   text,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { agentDraftStatus, agentReviewDecision } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -30,8 +30,8 @@ import { proposals } from "./proposals";
 // of proposals / proposal_line_items on this path is the human-gated publish action.
 
 // proposal_drafts.status MIRRORS invoice_drafts.status 1:1.
-const draftStatusEnum = ["pending_review", "approved", "rejected", "discarded", "published"] as const;
-const reviewDecisionEnum = ["approve", "reject"] as const;
+
+
 
 // proposal_drafts — one row per generation attempt. proposed_proposal is the AI's structured
 // draft (JSON, IMMUTABLE — the "what the AI produced" audit; parse at read). Shape:
@@ -50,7 +50,7 @@ export const proposalDrafts = pgTable(
     jobId: varchar("job_id", { length: 36 }).notNull(),
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
     proposedProposal: json("proposed_proposal").notNull(),
-    status: mysqlEnum("status", draftStatusEnum).notNull().default("pending_review"),
+    status: agentDraftStatus("status").notNull().default("pending_review"),
     publishedProposalId: varchar("published_proposal_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
@@ -81,7 +81,7 @@ export const proposalReviews = pgTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     proposalDraftId: varchar("proposal_draft_id", { length: 36 }).notNull(),
     reviewerUserId: varchar("reviewer_user_id", { length: 36 }),
-    decision: mysqlEnum("decision", reviewDecisionEnum).notNull(),
+    decision: agentReviewDecision("decision").notNull(),
     editedContent: json("edited_content"),
     reviewNotes: text("review_notes"),
     reviewedAt: timestamp("reviewed_at").notNull(),

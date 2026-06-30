@@ -7,11 +7,11 @@ import {
   uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
-import { mysqlEnum } from "drizzle-orm/mysql-core";
+import { dispatchReferenceCategory, entityStatus } from "./enums";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 
-const statusEnum = ["active", "inactive", "archived"] as const;
+
 
 // Dispatch assignment statuses. GLOBAL (no tenant_id) — mirrors job_statuses
 // exactly (D-4.1): the platform reasons about the dispatch lifecycle
@@ -41,16 +41,10 @@ export const dispatchAssignmentStatuses = pgTable(
     // Nullable; reference-table pattern (D-4.1).
     description: varchar("description", { length: 255 }),
     code: varchar("code", { length: 32 }).notNull(),
-    category: mysqlEnum("category", [
-      "draft",
-      "pending",
-      "active",
-      "completed",
-      "cancelled",
-    ]).notNull(),
+    category: dispatchReferenceCategory("category").notNull(),
     sortOrder: integer("sort_order").notNull(),
     isTerminal: boolean("is_terminal").notNull().default(false),
-    status: mysqlEnum("status", statusEnum).notNull().default("active"),
+    status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
