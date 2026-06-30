@@ -1227,3 +1227,43 @@ OPEN / DEFERRED within this thread:
 - Per-tenant correctness-grounding (separate thread): tenant teaches the agent its own "correct"
   (tenant-specific scope/billing norms) via tenant-scoped few-shot. Deeper Phase-25 build, banked apart
   from the threshold model.
+
+---
+
+## MariaDB → Postgres migration — plan (decided; in progress)
+
+Decision: migrate the DB engine MariaDB → Postgres NOW, while it's test-data-only (cheapest window;
+Postgres is the better long-term fit for this app — JSON/jsonb, geospatial for vendor service-areas,
+multi-tenant scale). Target dev stack: Vercel (free) + Neon Postgres (free). Sizing: medium, wide-but-
+shallow — business SQL is nearly dialect-free (~8 INTERVAL/curdate fragments, no exotic MySQL features).
+The cost centers are (1) 169 mysqlEnum→pgEnum pattern shift, (2) the harness/driver-shape layer
+(46 [rows,fields] tuple-casts, 109 FOREIGN_KEY_CHECKS teardowns, 25 SELECT DATABASE() guards across
+~61 scripts), (3) regenerate 58 MySQL migrations as one clean Postgres baseline.
+
+GOVERNING PRINCIPLES:
+- All work on a `postgres-migration` branch cut from main. MAIN STAYS ON WORKING MARIADB until the
+  app is proven fully green on Postgres locally. Rollback = checkout main. Merge-to-main is a gate.
+- Prove on LOCAL Postgres (Docker; fallback Postgres.app) before Neon; prove on Neon before Vercel.
+  Infrastructure is LAST — the whole migration is validatable for $0, no accounts, until batch 6.
+- Per-batch commits ON THE BRANCH (progress saved); merge-to-main + any host setup are explicit gates.
+
+BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
+- Batch 0 — Setup. Cut postgres-migration branch. Stand up local Postgres (Docker; check first, fallback
+  Postgres.app) with pm + pm_sandbox DBs. Swap core wiring: db.ts (mysql2→pg), drizzle.config.ts
+  (dialect→postgresql), package.json (drop mysql2/add pg, delete fix-mysql-engine.mjs). Gate: tsc parses.
+- Batch 1 — Schema bulk. 47 files / 124 tables: mysqlTable→pgTable, clean-mapping types
+  (decimal→numeric, datetime→timestamp, int, 2 autoincrement→serial). Gate: tsc clean.
+- Batch 2 — Enums. 169 mysqlEnum→pgEnum (separately-declared named types + migration ordering). Isolated
+  because it's a pattern shift, not find/replace. Gate: tsc clean, enums declared+referenced.
+- Batch 3 — Baseline migration. Squash to ONE fresh Postgres baseline (drizzle-kit generate, new dialect);
+  apply to local Postgres. Gate: baseline applies clean — schema physically builds on Postgres.
+- Batch 4 — Harness/driver layer (the hidden cost). 46 [rows,fields]→{rows} casts, 109 FK_CHECKS
+  teardowns→TRUNCATE CASCADE / session_replication_role, 25 SELECT DATABASE()→current_database(),
+  ~8 INTERVAL/curdate fragments. ~61 scripts. Gate: a representative seed+harness runs green on local PG.
+- Batch 5 — Full validation. Run real harnesses (incl. K3b probes) against local Postgres, cold. Gate:
+  green from fresh run — the migration is real.
+- Batch 6 — Infra (last). Neon free tier → point app at it → harnesses pass on Neon → Vercel deploy.
+  Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
+- Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
+
+STATE: plan banked, batch 0 not yet started. main on MariaDB, untouched.
