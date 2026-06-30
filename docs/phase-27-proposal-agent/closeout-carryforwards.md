@@ -1178,3 +1178,52 @@ NEXT-STEP (non-build): the load-bearing decision is now standing up a production
 SUGGESTIVE product in front of one of the two reachable aggregator operators — a much smaller,
 better-justified bet than session-start (it's "host a finished suggestive product for a warm buyer,"
 not "finish autonomy on a belief"). Define the per-agent quality bar BEFORE that exposure.
+
+---
+
+## Per-agent quality bar — design v1 (structure buildable now; numbers calibration-blocked)
+
+The standard for "good enough to suggest" before any agent faces a real tenant's operators. Settled
+this session. Threshold-first; per-tenant correctness-grounding (teaching an agent a tenant's own
+definition of "correct," e.g. tenant-specific scope norms) is a SEPARATE banked thread (Phase-25
+flavored, tenant-scoped few-shot) — NOT in this v1.
+
+MODEL:
+- Each agent has a stakes tier (cost of a wrong suggestion WHEN wrong, not how often). The tier sets
+  a PLATFORM-ENFORCED FLOOR: the minimum approve-as-is accuracy before that agent may face a real
+  tenant's operators or be eligible for the autonomy dial.
+- A tenant sets their own accuracy bar as a RAW NUMBER (accuracy dial), adjustable UPWARD from the
+  floor, NEVER below it. Floor = platform, non-overridable (§2.4 guardrail logic). Dial above = tenant.
+- Tenant-facing control is the raw accuracy number (not named levels) — honest/legible for an
+  SLA-literate operator audience; chosen over "Cautious/Standard/Trusting."
+- STRUCTURE is buildable now, host-free (tiers, floors, the dial, floor-enforcement). The actual
+  PERCENTAGES are calibration-blocked on production approve-as-is data (none exists pre-host). v1 = the
+  frame, not the figures.
+
+STAKES TIERS (current 5 agents; corrected this session):
+- Tier 1 Low — update_rewriter. Bad rewrite caught instantly, internal, trivially reversed. Lowest
+  floor. (Also the agent where universal hard-gating most risks OVER-costing the operator — see banked
+  over-gating concern: trivial+reversible may warrant auto-apply-with-undo vs gate.)
+- Tier 2 Medium — EMPTY. Noted deliberately: scope moved up to Tier 3; most facilities agents are
+  inherently high-stakes. The cheap-mistake agent is the exception, not the rule.
+- Tier 3 High — scope_generator, invoice_creator, proposal_generator.
+  · scope_generator = STRICTEST floor of the three. Rationale: a bad scope reaches the VENDOR and
+    becomes a wrong real-world repair, already out the door before any review surface can catch it;
+    invoice/proposal at least face a billing-review surface. "Scopes cannot be bad in any way."
+  · invoice_creator — bad invoice hits the client's wallet or platform margin; vendor-cost-leak risk;
+    reaches the outside.
+  · proposal_generator — WHEN USED, functions as the internal source-of-truth for the client charge
+    (independent of vendor invoices, which do NOT translate cleanly to client invoices). A bad
+    proposal = a wrong billing basis. High because of what it governs when present. NOTE: proposals
+    are OPTIONAL — no proposal-before-invoice requirement; this is a tiering rationale only, not a
+    workflow rule.
+- Tier 4 Highest — dispatch_tiebreaker. Commits real money to a third-party vendor; ALSO data-blocked
+  (no vendor_performance_scores yet), so highest-stakes AND least-proven. Gated longest regardless of
+  the dial.
+
+OPEN / DEFERRED within this thread:
+- Calibration: the per-tier floor percentages + the approve-as-is measurement, blocked on production
+  data. Set once real usage exists.
+- Per-tenant correctness-grounding (separate thread): tenant teaches the agent its own "correct"
+  (tenant-specific scope/billing norms) via tenant-scoped few-shot. Deeper Phase-25 build, banked apart
+  from the threshold model.
