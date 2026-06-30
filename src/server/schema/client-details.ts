@@ -226,8 +226,8 @@ export const clientRates = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
-    effectiveDate: date("effective_date"),
-    expiryDate: date("expiry_date"),
+    effectiveDate: date("effective_date", { mode: "date" }),
+    expiryDate: date("expiry_date", { mode: "date" }),
     notes: text("notes"),
     status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(

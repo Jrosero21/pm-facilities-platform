@@ -53,8 +53,8 @@ export const vendorRates = pgTable(
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
-    effectiveDate: date("effective_date"),
-    expiryDate: date("expiry_date"),
+    effectiveDate: date("effective_date", { mode: "date" }),
+    expiryDate: date("expiry_date", { mode: "date" }),
     notes: text("notes"),
     status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
@@ -92,8 +92,8 @@ export const vendorDocuments = pgTable(
     fileUrl: varchar("file_url", { length: 1024 }),
     fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
     fileMimeType: varchar("file_mime_type", { length: 127 }),
-    issuedDate: date("issued_date"),
-    expiryDate: date("expiry_date"),
+    issuedDate: date("issued_date", { mode: "date" }),
+    expiryDate: date("expiry_date", { mode: "date" }),
     notes: text("notes"),
     status: entityStatus("status").notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
@@ -126,8 +126,8 @@ export const vendorCompliance = pgTable(
     coverageAmount: numeric("coverage_amount", { precision: 14, scale: 2 }),
     carrier: varchar("carrier", { length: 255 }),
     policyNumber: varchar("policy_number", { length: 128 }),
-    effectiveDate: date("effective_date"),
-    expiryDate: date("expiry_date"),
+    effectiveDate: date("effective_date", { mode: "date" }),
+    expiryDate: date("expiry_date", { mode: "date" }),
     complianceStatus: vendorDetailsComplianceStatus("compliance_status")
       .notNull()
       .default("pending"),
@@ -162,8 +162,8 @@ export const vendorPerformanceScores = pgTable(
     tradeId: varchar("trade_id", { length: 36 }).references(() => trades.id, {
       onDelete: "restrict",
     }),
-    periodStart: date("period_start"),
-    periodEnd: date("period_end"),
+    periodStart: date("period_start", { mode: "date" }),
+    periodEnd: date("period_end", { mode: "date" }),
     jobsCompleted: integer("jobs_completed"),
     jobsOnTime: integer("jobs_on_time"),
     // B-16.4 (0054): completion = jobs_completed / total_dispatches (declines+cancels count
