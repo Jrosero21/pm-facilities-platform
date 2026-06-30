@@ -92,8 +92,8 @@ async function main() {
     .set({ toolInput: null, toolOutput: null })
     .where(toolCallsEligible);
   const adRes = await db.update(agentDecisions).set({ metadata: null }).where(decisionsEligible);
-  console.log(`[retention] APPLIED — agent_tool_calls payloads NULLed: ${tcRes[0].affectedRows}`);
-  console.log(`[retention] APPLIED — agent_decisions metadata NULLed: ${adRes[0].affectedRows}`);
+  console.log(`[retention] APPLIED — agent_tool_calls payloads NULLed: ${tcRes.rowCount}`);
+  console.log(`[retention] APPLIED — agent_decisions metadata NULLed: ${adRes.rowCount}`);
   console.log("[retention] done. Summary columns (model/tokens/status/disposition/timestamps) untouched.");
 }
 

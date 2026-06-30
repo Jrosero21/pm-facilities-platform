@@ -113,7 +113,7 @@ export async function activatePromptTemplate(input: {
     // Counts are therefore identical under default mysql2 and under CLIENT_FOUND_ROWS.
     // Switching to count-then-update would introduce a within-transaction race window
     // (count, then-update) that this shape doesn't have.
-    const demoted = demote[0].affectedRows;
+    const demoted = demote.rowCount ?? 0;
     if (demoted > 1) throw new SingleActiveInvariantViolated("ai_prompt_templates", key, demoted);
 
     const promote = await tx
@@ -127,6 +127,6 @@ export async function activatePromptTemplate(input: {
           eq(aiPromptTemplates.variant, input.variant),
         ),
       );
-    if (promote[0].affectedRows !== 1) throw new ActivationTargetMismatch("ai_prompt_templates", input.id);
+    if (promote.rowCount !== 1) throw new ActivationTargetMismatch("ai_prompt_templates", input.id);
   });
 }

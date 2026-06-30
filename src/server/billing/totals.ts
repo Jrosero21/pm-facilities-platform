@@ -138,7 +138,7 @@ export async function recalculateProposalTotals(tx: Tx, tenantId: string, propos
     .update(proposals)
     .set({ subtotal: c.subtotal, markupTotal: c.markupTotal, taxTotal: c.taxTotal, total: c.total })
     .where(and(eq(proposals.tenantId, tenantId), eq(proposals.id, proposalId)));
-  if (res[0].affectedRows === 0) throw new Error("PROPOSAL_NOT_FOUND");
+  if (res.rowCount === 0) throw new Error("PROPOSAL_NOT_FOUND");
 }
 
 /** Recompute change-order line extended/markup + header totals. Caller owns the txn. */
@@ -164,7 +164,7 @@ export async function recalculateChangeOrderTotals(tx: Tx, tenantId: string, cha
     .update(changeOrders)
     .set({ subtotal: c.subtotal, markupTotal: c.markupTotal, taxTotal: c.taxTotal, total: c.total })
     .where(and(eq(changeOrders.tenantId, tenantId), eq(changeOrders.id, changeOrderId)));
-  if (res[0].affectedRows === 0) throw new Error("CHANGE_ORDER_NOT_FOUND");
+  if (res.rowCount === 0) throw new Error("CHANGE_ORDER_NOT_FOUND");
 }
 
 /** Recompute client-invoice line extended/markup + header totals. Caller owns the txn. */
@@ -190,7 +190,7 @@ export async function recalculateClientInvoiceTotals(tx: Tx, tenantId: string, c
     .update(clientInvoices)
     .set({ subtotal: c.subtotal, markupTotal: c.markupTotal, taxTotal: c.taxTotal, total: c.total })
     .where(and(eq(clientInvoices.tenantId, tenantId), eq(clientInvoices.id, clientInvoiceId)));
-  if (res[0].affectedRows === 0) throw new Error("CLIENT_INVOICE_NOT_FOUND");
+  if (res.rowCount === 0) throw new Error("CLIENT_INVOICE_NOT_FOUND");
 }
 
 /**
@@ -230,5 +230,5 @@ export async function recalculateVendorInvoiceTotals(
     .update(vendorInvoices)
     .set({ subtotal: c.subtotal, taxTotal: c.taxTotal, total: c.total, nteBaselineAmount: governingNte, exceedsNte })
     .where(and(eq(vendorInvoices.tenantId, tenantId), eq(vendorInvoices.id, vendorInvoiceId)));
-  if (res[0].affectedRows === 0) throw new Error("VENDOR_INVOICE_NOT_FOUND");
+  if (res.rowCount === 0) throw new Error("VENDOR_INVOICE_NOT_FOUND");
 }

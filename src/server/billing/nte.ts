@@ -182,7 +182,7 @@ export async function createClientNteRule(input: {
         ),
       );
     // affectedRows is driver-mode invariant: WHERE status='active' excludes the post-state.
-    const demoted = demote[0].affectedRows;
+    const demoted = demote.rowCount ?? 0;
     if (demoted > 1) throw new SingleActiveInvariantViolated("client_nte_rules", tupleKey(input), demoted);
 
     await tx.insert(clientNteRules).values({
@@ -262,7 +262,7 @@ export async function activateClientNteRule(input: {
           eq(clientNteRules.status, "active"),
         ),
       );
-    const demoted = demote[0].affectedRows;
+    const demoted = demote.rowCount ?? 0;
     if (demoted > 1) throw new SingleActiveInvariantViolated("client_nte_rules", tupleKey(input), demoted);
 
     const promote = await tx
@@ -278,7 +278,7 @@ export async function activateClientNteRule(input: {
           locMatch(input.clientLocationId),
         ),
       );
-    if (promote[0].affectedRows !== 1) throw new ActivationTargetMismatch("client_nte_rules", input.id);
+    if (promote.rowCount !== 1) throw new ActivationTargetMismatch("client_nte_rules", input.id);
     // CF-8c.1.1 audit (inside the tx — atomic with the promote/demote).
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId, userId: input.actorUserId,

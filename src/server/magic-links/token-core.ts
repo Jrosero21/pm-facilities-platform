@@ -98,5 +98,5 @@ export async function revokeToken(input: {
         isNull(magicLinkTokens.revokedAt),
       ),
     );
-  return { revoked: res[0].affectedRows === 1 };
+  return { revoked: res.rowCount === 1 };
 }

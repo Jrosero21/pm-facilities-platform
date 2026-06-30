@@ -269,7 +269,7 @@ async function main() {
     const cap = sendCaptured();
     check("6c: send capture body contains the /link/ URL", cap.length >= 1 && cap[cap.length - 1].body.includes("/link/"));
     const guard = await db.update(magicLinkTokens).set({ sentAt: sql`now()` }).where(and(eq(magicLinkTokens.id, sent.tokenId), isNull(magicLinkTokens.sentAt)));
-    check("6d: link-level idempotency — 2nd sent_at guard affects 0 rows", guard[0].affectedRows === 0);
+    check("6d: link-level idempotency — 2nd sent_at guard affects 0 rows", guard.rowCount === 0);
     // send-level idempotency: compose a comm, send twice → 2nd short-circuits.
     sendReset();
     const omId = uuidv7();

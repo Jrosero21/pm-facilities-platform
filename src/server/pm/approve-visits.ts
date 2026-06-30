@@ -121,7 +121,7 @@ export async function approvePmVisits(
             eq(pmVisits.generationStatus, "pending_review"),
           ),
         );
-      if (linkRes[0].affectedRows === 0) {
+      if (linkRes.rowCount === 0) {
         await writeAuditLog({
           tenantId,
           userId: opts.actorUserId,

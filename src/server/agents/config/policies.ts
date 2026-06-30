@@ -146,7 +146,7 @@ export async function activateAgentPolicy(input: {
     // Counts are therefore identical under default mysql2 and under CLIENT_FOUND_ROWS.
     // Switching to count-then-update would introduce a within-transaction race window
     // (count, then-update) that this shape doesn't have.
-    const demoted = demote[0].affectedRows;
+    const demoted = demote.rowCount ?? 0;
     if (demoted > 1) throw new SingleActiveInvariantViolated("agent_policies", key, demoted);
 
     const promote = await tx
@@ -160,6 +160,6 @@ export async function activateAgentPolicy(input: {
           eq(agentPolicies.agentId, input.agentId),
         ),
       );
-    if (promote[0].affectedRows !== 1) throw new ActivationTargetMismatch("agent_policies", input.id);
+    if (promote.rowCount !== 1) throw new ActivationTargetMismatch("agent_policies", input.id);
   });
 }

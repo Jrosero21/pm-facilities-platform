@@ -126,7 +126,7 @@ async function main() {
   // 4) TEARDOWN — remove the demo policies (phase9-seed-tenant had 0 dispatch_router_v1 rows before).
   const removed = await db.delete(agentPolicies).where(and(eq(agentPolicies.tenantId, tenantId), eq(agentPolicies.agentId, agentId)));
   const remaining = (await db.select({ id: agentPolicies.id }).from(agentPolicies).where(and(eq(agentPolicies.tenantId, tenantId), eq(agentPolicies.agentId, agentId)))).length;
-  console.log(`\n[set-cond] teardown: removed demo policies (affected ${removed[0]?.affectedRows ?? "?"}); remaining dispatch_router_v1 rows for tenant: ${remaining} (expect 0). Resolver now falls back to agent_policy_defaults.`);
+  console.log(`\n[set-cond] teardown: removed demo policies (affected ${removed.rowCount ?? "?"}); remaining dispatch_router_v1 rows for tenant: ${remaining} (expect 0). Resolver now falls back to agent_policy_defaults.`);
 
   console.log(`\n[set-cond] ${ok && remaining === 0 ? "DEMONSTRATION PASSED" : "DEMONSTRATION INCOMPLETE"}`);
   process.exit(ok && remaining === 0 ? 0 : 1);

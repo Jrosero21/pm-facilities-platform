@@ -460,9 +460,9 @@ export async function approveEmailDraft({
         eq(emailWorkOrderDrafts.draftStatus, "pending_review"),
       ),
     );
-  // drizzle/mysql2 update → [ResultSetHeader, FieldPacket[]]; the count is [0].affectedRows
-  // (verified against drizzle-orm 0.45.2 mysql2 types).
-  const affected = result[0].affectedRows;
+  // drizzle/node-postgres update → QueryResult; the affected-row count is result.rowCount
+  // (pg replaces mysql2's [ResultSetHeader].affectedRows tuple shape).
+  const affected = result.rowCount;
   if (affected === 0) {
     // The draft changed under us after the job committed (CF-13.6 orphan window). The job
     // is real; record the orphan in audit rather than throw.

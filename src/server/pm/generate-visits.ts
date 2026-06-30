@@ -150,7 +150,7 @@ export async function generateVisitsForSchedule(
             eq(pmVisits.generationStatus, "pending_review"),
           ),
         );
-      const affected = linkRes[0].affectedRows;
+      const affected = linkRes.rowCount;
       if (affected === 0) {
         // The visit changed under us after the job committed. The job is real; audit, don't throw.
         await writeAuditLog({

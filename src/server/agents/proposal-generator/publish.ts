@@ -212,7 +212,7 @@ export async function publishProposalDraft(input: {
       );
     // The WHERE excludes the new value, so a matching row necessarily changed; 0 rows means a
     // concurrent publish already stamped it (the lock above should already have caught it).
-    if (res[0].affectedRows !== 1) throw new ProposalAlreadyMaterialized(input.draftId);
+    if (res.rowCount !== 1) throw new ProposalAlreadyMaterialized(input.draftId);
 
     await tx.insert(auditLogs).values({
       tenantId: input.tenantId,
