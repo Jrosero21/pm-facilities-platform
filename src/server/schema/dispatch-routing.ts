@@ -1,13 +1,13 @@
 import {
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -30,7 +30,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // trade_id references the GLOBAL trades table with onDelete RESTRICT; vendor_id
 // RESTRICT (a referenced vendor can't be hard-deleted, matching
 // job_vendor_assignments). Client-level default fallback is deferred (CF-22.2).
-export const locationPreferredVendors = mysqlTable(
+export const locationPreferredVendors = pgTable(
   "location_preferred_vendors",
   {
     id: varchar("id", { length: 36 })
@@ -47,7 +47,7 @@ export const locationPreferredVendors = mysqlTable(
       .notNull()
       .references(() => vendors.id, { onDelete: "restrict" }),
     // lower = stronger preference (1 = primary). Non-unique: ties broken downstream.
-    priority: int("priority").notNull(),
+    priority: integer("priority").notNull(),
     notes: varchar("notes", { length: 500 }),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
@@ -55,7 +55,7 @@ export const locationPreferredVendors = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Explicit short name: the auto-generated FK name would exceed MySQL's
@@ -85,7 +85,7 @@ export const locationPreferredVendors = mysqlTable(
 // so a blocklisted vendor never reaches preference ordering — a preferred-but-blocked
 // vendor is still excluded. vendor_id RESTRICT (matches job_vendor_assignments);
 // created_by_user_id + created_at are the who/when audit of who barred the vendor.
-export const locationBlockedVendors = mysqlTable(
+export const locationBlockedVendors = pgTable(
   "location_blocked_vendors",
   {
     id: varchar("id", { length: 36 })
@@ -110,7 +110,7 @@ export const locationBlockedVendors = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Explicit short name: the auto-generated FK name would exceed MySQL's

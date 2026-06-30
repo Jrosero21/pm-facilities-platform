@@ -1,14 +1,13 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -43,7 +42,7 @@ const reviewDecisionEnum = ["approve", "reject"] as const;
 // link to the canonical proposals row on publish (the idempotency-guard target).
 // Index set mirrors invd_* minus the vendor-invoice lookup (no AP source here):
 // tenant_job / tenant_status / run.
-export const proposalDrafts = mysqlTable(
+export const proposalDrafts = pgTable(
   "proposal_drafts",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -54,7 +53,7 @@ export const proposalDrafts = mysqlTable(
     status: mysqlEnum("status", draftStatusEnum).notNull().default("pending_review"),
     publishedProposalId: varchar("published_proposal_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "prpd_tenant_fk" }).onDelete("cascade"),
@@ -75,7 +74,7 @@ export const proposalDrafts = mysqlTable(
 // on the draft stays immutable. Effective published proposal = edited_content ?? proposed_proposal.
 // NULL edited_content = approved-as-is. Append-only (created_at is the canonical latest-review
 // ordering, + reviewed_at).
-export const proposalReviews = mysqlTable(
+export const proposalReviews = pgTable(
   "proposal_reviews",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -85,7 +84,7 @@ export const proposalReviews = mysqlTable(
     decision: mysqlEnum("decision", reviewDecisionEnum).notNull(),
     editedContent: json("edited_content"),
     reviewNotes: text("review_notes"),
-    reviewedAt: datetime("reviewed_at").notNull(),
+    reviewedAt: timestamp("reviewed_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [

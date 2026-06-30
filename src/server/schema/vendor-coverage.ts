@@ -1,14 +1,14 @@
 import {
   boolean,
-  decimal,
+  numeric,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -22,7 +22,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // from under it). vendor_location_id is optional: null = the vendor covers this
 // trade everywhere; set = scoped to one branch. is_primary marks the vendor's
 // single primary trade — one per vendor, enforced in the create path.
-export const vendorTradeCoverage = mysqlTable(
+export const vendorTradeCoverage = pgTable(
   "vendor_trade_coverage",
   {
     id: varchar("id", { length: 36 })
@@ -45,7 +45,7 @@ export const vendorTradeCoverage = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Explicit short name: the auto-generated FK name would near the 64-char
@@ -71,7 +71,7 @@ export const vendorTradeCoverage = mysqlTable(
 // value columns are meaningful (validated in the create path — MySQL has no
 // conditional NOT NULL). vendor_location_id optional (null = vendor-wide). The
 // shape anticipates Phase 5 geographic dispatch; no matching logic lives here.
-export const vendorServiceAreas = mysqlTable(
+export const vendorServiceAreas = pgTable(
   "vendor_service_areas",
   {
     id: varchar("id", { length: 36 })
@@ -94,9 +94,9 @@ export const vendorServiceAreas = mysqlTable(
     ]).notNull(),
     areaLabel: varchar("area_label", { length: 120 }),
     // radius only
-    centerLatitude: decimal("center_latitude", { precision: 10, scale: 7 }),
-    centerLongitude: decimal("center_longitude", { precision: 10, scale: 7 }),
-    radiusMiles: decimal("radius_miles", { precision: 6, scale: 2 }),
+    centerLatitude: numeric("center_latitude", { precision: 10, scale: 7 }),
+    centerLongitude: numeric("center_longitude", { precision: 10, scale: 7 }),
+    radiusMiles: numeric("radius_miles", { precision: 6, scale: 2 }),
     // postal_code only
     postalCode: varchar("postal_code", { length: 32 }),
     // city only
@@ -112,7 +112,7 @@ export const vendorServiceAreas = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

@@ -1,16 +1,15 @@
 import {
   boolean,
-  datetime,
-  decimal,
-  index,
-  int,
-  mysqlEnum,
-  mysqlTable,
-  text,
   timestamp,
+  numeric,
+  index,
+  integer,
+  pgTable,
+  text,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -35,7 +34,7 @@ import { priorities, jobStatuses } from "./job-reference";
 // scope_generation_status is varchar (Phase 4 vocab = 'not_started' only; Phase 7
 // owns the rest — D-4.6). primary_trade_id / priority_id are nullable for non-manual
 // intake; the manual form requires them (D-4.7).
-export const jobs = mysqlTable(
+export const jobs = pgTable(
   "jobs",
   {
     id: varchar("id", { length: 36 })
@@ -46,7 +45,7 @@ export const jobs = mysqlTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     // Human-facing per-tenant sequence; allocated in the createJob transaction
     // via tenant_job_sequences (D-4.5). Unique per tenant.
-    jobNumber: int("job_number", { unsigned: true }).notNull(),
+    jobNumber: integer("job_number").notNull(),
     clientId: varchar("client_id", { length: 36 })
       .notNull()
       .references(() => clients.id, { onDelete: "restrict" }),
@@ -84,7 +83,7 @@ export const jobs = mysqlTable(
     scopeGenerationStatus: varchar("scope_generation_status", { length: 32 })
       .notNull()
       .default("not_started"),
-    notToExceedAmount: decimal("not_to_exceed_amount", {
+    notToExceedAmount: numeric("not_to_exceed_amount", {
       precision: 12,
       scale: 2,
     }),
@@ -94,30 +93,30 @@ export const jobs = mysqlTable(
     // clients.billing_model. The operator's "one method per job" — a job pins its method
     // only when it must deviate from the client default.
     billingModel: mysqlEnum("billing_model", ["rate_sheet", "cost_plus", "flat"]),
-    scheduledStartAt: datetime("scheduled_start_at"),
-    scheduledEndAt: datetime("scheduled_end_at"),
-    dueAt: datetime("due_at"),
+    scheduledStartAt: timestamp("scheduled_start_at"),
+    scheduledEndAt: timestamp("scheduled_end_at"),
+    dueAt: timestamp("due_at"),
     // Phase 19 follow-up — the operator's "next action" reminder on a job. NULLABLE: a job has
     // no follow-up until one is set. follow_up_category is required-by-form only when a date is
     // set (the form enforces the pairing; the column stays nullable so neither blocks a
     // migration). The exception reader surfaces a follow_up_overdue kind once follow_up_at has
     // passed. Distinct from due_at (the SLA seam) — this is a categorized operator reminder.
-    followUpAt: datetime("follow_up_at"),
+    followUpAt: timestamp("follow_up_at"),
     followUpCategory: mysqlEnum("follow_up_category", [
       "vendor_followup",
       "confirm_onsite",
       "proposal_followup",
       "general",
     ]),
-    completedAt: datetime("completed_at"),
-    closedAt: datetime("closed_at"),
+    completedAt: timestamp("completed_at"),
+    closedAt: timestamp("closed_at"),
     isArchived: boolean("is_archived").notNull().default(false),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("jobs_tenant_number_unique").on(t.tenantId, t.jobNumber),
@@ -138,10 +137,10 @@ export const jobs = mysqlTable(
 // gapless and concurrency-safe (D-4.5, 06-business-rules.md). Seeded with one row
 // for the Demo Aggregator; the per-tenant "create on tenant creation" hook is a
 // Phase 1 carry-forward.
-export const tenantJobSequences = mysqlTable("tenant_job_sequences", {
+export const tenantJobSequences = pgTable("tenant_job_sequences", {
   tenantId: varchar("tenant_id", { length: 36 })
     .primaryKey()
     .references(() => tenants.id, { onDelete: "cascade" }),
-  nextNumber: int("next_number", { unsigned: true }).notNull().default(1),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  nextNumber: integer("next_number").notNull().default(1),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });

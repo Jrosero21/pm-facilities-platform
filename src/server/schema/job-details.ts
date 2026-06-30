@@ -2,12 +2,12 @@ import {
   bigint,
   boolean,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -32,7 +32,7 @@ const visibilityEnum = [
 
 // Contacts attached to a job. Mirrors vendor_contacts / client_contacts; reuses
 // the generalized ContactForm / ContactList (SOP-3.E).
-export const jobContacts = mysqlTable(
+export const jobContacts = pgTable(
   "job_contacts",
   {
     id: varchar("id", { length: 36 })
@@ -56,14 +56,14 @@ export const jobContacts = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("job_contacts_tenant_job_idx").on(t.tenantId, t.jobId)],
 );
 
 // Operator notes on a job. `visibility` is the forward-pointer column (Phase 4 UI
 // sets internal_only only). `status` is soft-delete (a note can be hidden later).
-export const jobNotes = mysqlTable(
+export const jobNotes = pgTable(
   "job_notes",
   {
     id: varchar("id", { length: 36 })
@@ -98,7 +98,7 @@ export const jobNotes = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("job_notes_tenant_job_idx").on(t.tenantId, t.jobId)],
 );
@@ -106,7 +106,7 @@ export const jobNotes = mysqlTable(
 // Job attachments. Schema-only in Phase 4 (no upload UI; file-upload infra still
 // deferred — Phase 3 L-3.2). Mirrors vendor_documents; carries `visibility` for
 // the same Phase 6 reason as job_notes. file_url/size/mime stay null until infra.
-export const jobAttachments = mysqlTable(
+export const jobAttachments = pgTable(
   "job_attachments",
   {
     id: varchar("id", { length: 36 })
@@ -167,7 +167,7 @@ export const jobAttachments = mysqlTable(
     ),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("job_attachments_tenant_job_idx").on(t.tenantId, t.jobId),

@@ -1,15 +1,14 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
@@ -47,7 +46,7 @@ const runStatusEnum = ["running", "succeeded", "failed", "partial"] as const;
 const outcomeEnum = ["ok", "skipped", "error"] as const;
 const payloadDirectionEnum = ["inbound", "outbound"] as const;
 
-export const externalWorkOrderLinks = mysqlTable(
+export const externalWorkOrderLinks = pgTable(
   "external_work_order_links",
   {
     id: varchar("id", { length: 36 })
@@ -62,9 +61,9 @@ export const externalWorkOrderLinks = mysqlTable(
     linkStatus: mysqlEnum("link_status", linkStatusEnum)
       .notNull()
       .default("active"),
-    lastSyncedAt: datetime("last_synced_at"),
+    lastSyncedAt: timestamp("last_synced_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -93,7 +92,7 @@ export const externalWorkOrderLinks = mysqlTable(
   ],
 );
 
-export const externalSyncRuns = mysqlTable(
+export const externalSyncRuns = pgTable(
   "external_sync_runs",
   {
     id: varchar("id", { length: 36 })
@@ -103,14 +102,14 @@ export const externalSyncRuns = mysqlTable(
     externalSystemId: varchar("external_system_id", { length: 36 }).notNull(),
     runType: varchar("run_type", { length: 64 }).notNull(),
     status: mysqlEnum("status", runStatusEnum).notNull().default("running"),
-    startedAt: datetime("started_at")
+    startedAt: timestamp("started_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
-    finishedAt: datetime("finished_at"),
+    finishedAt: timestamp("finished_at"),
     counts: json("counts"),
     errorSummary: text("error_summary"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -129,7 +128,7 @@ export const externalSyncRuns = mysqlTable(
   ],
 );
 
-export const externalSyncEvents = mysqlTable(
+export const externalSyncEvents = pgTable(
   "external_sync_events",
   {
     id: varchar("id", { length: 36 })
@@ -165,7 +164,7 @@ export const externalSyncEvents = mysqlTable(
   ],
 );
 
-export const externalPayloadLogs = mysqlTable(
+export const externalPayloadLogs = pgTable(
   "external_payload_logs",
   {
     id: varchar("id", { length: 36 })
@@ -180,7 +179,7 @@ export const externalPayloadLogs = mysqlTable(
     externalWoId: varchar("external_wo_id", { length: 255 }),
     // Raw provider body. NEVER a credential (F1/F10.4). JSON-at-read gotcha applies.
     payload: json("payload"),
-    receivedAt: datetime("received_at")
+    receivedAt: timestamp("received_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),
     createdAt: timestamp("created_at").notNull().defaultNow(),

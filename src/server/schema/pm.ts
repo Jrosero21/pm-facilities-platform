@@ -1,15 +1,14 @@
 import {
   boolean,
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -48,7 +47,7 @@ import { jobs } from "./jobs";
 const frequencyEnum = ["day", "week", "month"] as const;
 
 // ── pm_programs ──
-export const pmPrograms = mysqlTable(
+export const pmPrograms = pgTable(
   "pm_programs",
   {
     id: varchar("id", { length: 36 })
@@ -68,7 +67,7 @@ export const pmPrograms = mysqlTable(
     isActive: boolean("is_active").notNull().default(true),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -108,7 +107,7 @@ export const pmPrograms = mysqlTable(
 // Recurrence columns named to NOT collide with the dispatch ADJECTIVE "scheduled"
 // (scheduled_start_at/scheduled_end_at on job_vendor_assignments): frequency / interval_count /
 // next_due_at / last_generated_at — none shaped like the dispatch columns (14b naming-care).
-export const pmSchedules = mysqlTable(
+export const pmSchedules = pgTable(
   "pm_schedules",
   {
     id: varchar("id", { length: 36 })
@@ -117,12 +116,12 @@ export const pmSchedules = mysqlTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     pmProgramId: varchar("pm_program_id", { length: 36 }).notNull(),
     frequency: mysqlEnum("frequency", frequencyEnum).notNull(),
-    intervalCount: int("interval_count").notNull().default(1), // every N (quarterly = month + 3)
-    nextDueAt: datetime("next_due_at").notNull(),
-    lastGeneratedAt: datetime("last_generated_at"),
+    intervalCount: integer("interval_count").notNull().default(1), // every N (quarterly = month + 3)
+    nextDueAt: timestamp("next_due_at").notNull(),
+    lastGeneratedAt: timestamp("last_generated_at"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -143,7 +142,7 @@ export const pmSchedules = mysqlTable(
 );
 
 // ── pm_schedule_locations (the fan-out membership: explicit subset) ──
-export const pmScheduleLocations = mysqlTable(
+export const pmScheduleLocations = pgTable(
   "pm_schedule_locations",
   {
     id: varchar("id", { length: 36 })
@@ -197,7 +196,7 @@ export const pmScheduleLocations = mysqlTable(
 const generationStatusEnum = ["generated", "skipped", "pending_review"] as const;
 
 // ── pm_generation_runs (the F2 batch-event record) — declared before pm_visits (FK target) ──
-export const pmGenerationRuns = mysqlTable(
+export const pmGenerationRuns = pgTable(
   "pm_generation_runs",
   {
     id: varchar("id", { length: 36 })
@@ -205,10 +204,10 @@ export const pmGenerationRuns = mysqlTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     pmScheduleId: varchar("pm_schedule_id", { length: 36 }).notNull(),
-    requestedCount: int("requested_count").notNull().default(0), // locations the fan-out attempted
-    generatedCount: int("generated_count").notNull().default(0), // visits/jobs created
-    skippedCount: int("skipped_count").notNull().default(0), // skip-and-flag failures (F2)
-    runAt: datetime("run_at").notNull(),
+    requestedCount: integer("requested_count").notNull().default(0), // locations the fan-out attempted
+    generatedCount: integer("generated_count").notNull().default(0), // visits/jobs created
+    skippedCount: integer("skipped_count").notNull().default(0), // skip-and-flag failures (F2)
+    runAt: timestamp("run_at").notNull(),
     createdByUserId: varchar("created_by_user_id", { length: 36 }), // SYSTEM for auto runs
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -235,7 +234,7 @@ export const pmGenerationRuns = mysqlTable(
 );
 
 // ── pm_visits (one scheduled occurrence per location; F5 spawns a job) ──
-export const pmVisits = mysqlTable(
+export const pmVisits = pgTable(
   "pm_visits",
   {
     id: varchar("id", { length: 36 })
@@ -245,7 +244,7 @@ export const pmVisits = mysqlTable(
     pmScheduleId: varchar("pm_schedule_id", { length: 36 }).notNull(),
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
     pmGenerationRunId: varchar("pm_generation_run_id", { length: 36 }), // which batch produced it
-    dueAt: datetime("due_at").notNull(),
+    dueAt: timestamp("due_at").notNull(),
     generationStatus: mysqlEnum("generation_status", generationStatusEnum).notNull(),
     skipReason: varchar("skip_reason", { length: 512 }), // F2 skip-and-flag detail; null unless skipped
     jobId: varchar("job_id", { length: 36 }), // F5 spawn link; null until spawned
@@ -287,7 +286,7 @@ export const pmVisits = mysqlTable(
 );
 
 // ── pm_assets (LIGHTWEIGHT reference only — B-14.5, NOT EAM lifecycle) ──
-export const pmAssets = mysqlTable(
+export const pmAssets = pgTable(
   "pm_assets",
   {
     id: varchar("id", { length: 36 })
@@ -327,7 +326,7 @@ export const pmAssets = mysqlTable(
 const resultEnum = ["done", "skipped", "na"] as const;
 
 // ── pm_visit_checklists (TEMPLATE — program-level definition) ──
-export const pmVisitChecklists = mysqlTable(
+export const pmVisitChecklists = pgTable(
   "pm_visit_checklists",
   {
     id: varchar("id", { length: 36 })
@@ -336,7 +335,7 @@ export const pmVisitChecklists = mysqlTable(
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     pmProgramId: varchar("pm_program_id", { length: 36 }).notNull(), // the template lives on the program
     itemText: varchar("item_text", { length: 512 }).notNull(), // e.g. "Replace HVAC filter"
-    sortOrder: int("sort_order").notNull().default(0),
+    sortOrder: integer("sort_order").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
@@ -357,7 +356,7 @@ export const pmVisitChecklists = mysqlTable(
 );
 
 // ── pm_visit_results (INSTANCE — per-visit filled answer for one template item) ──
-export const pmVisitResults = mysqlTable(
+export const pmVisitResults = pgTable(
   "pm_visit_results",
   {
     id: varchar("id", { length: 36 })
@@ -368,7 +367,7 @@ export const pmVisitResults = mysqlTable(
     pmVisitChecklistId: varchar("pm_visit_checklist_id", { length: 36 }).notNull(), // which template item
     result: mysqlEnum("result", resultEnum), // null = not yet recorded
     notes: text("notes"),
-    completedAt: datetime("completed_at"),
+    completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [

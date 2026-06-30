@@ -1,15 +1,14 @@
 import {
   boolean,
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
-  timestamp,
+  integer,
+  pgTable,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -30,7 +29,7 @@ import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 const clientInvoiceStatusEnum = ["draft", "sent", "void"] as const;
 const paymentStatusEnum = ["unpaid", "partially_paid", "paid"] as const;
 
-export const clientInvoices = mysqlTable(
+export const clientInvoices = pgTable(
   "client_invoices",
   {
     id: varchar("id", { length: 36 })
@@ -40,24 +39,24 @@ export const clientInvoices = mysqlTable(
     jobId: varchar("job_id", { length: 36 }).notNull(),
     clientId: varchar("client_id", { length: 36 }).notNull(),
     invoiceNumber: varchar("invoice_number", { length: 128 }),
-    sequenceNumber: int("sequence_number"),
+    sequenceNumber: integer("sequence_number"),
     isFinal: boolean("is_final").notNull().default(false),
     status: mysqlEnum("status", clientInvoiceStatusEnum).notNull().default("draft"),
     paymentStatus: mysqlEnum("payment_status", paymentStatusEnum)
       .notNull()
       .default("unpaid"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
-    markupTotal: decimal("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
-    taxTotal: decimal("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
-    total: decimal("total", { precision: 12, scale: 2 }).notNull().default("0"),
-    paymentTermsDays: int("payment_terms_days"),
-    issuedAt: datetime("issued_at"),
-    dueAt: datetime("due_at"),
+    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
+    markupTotal: numeric("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxTotal: numeric("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    paymentTermsDays: integer("payment_terms_days"),
+    issuedAt: timestamp("issued_at"),
+    dueAt: timestamp("due_at"),
     issuedByUserId: varchar("issued_by_user_id", { length: 36 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "cinv_tenant_fk" }).onDelete("cascade"),
@@ -75,7 +74,7 @@ export const clientInvoices = mysqlTable(
 // Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
 // record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
 // (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
-export const clientInvoiceLineItems = mysqlTable(
+export const clientInvoiceLineItems = pgTable(
   "client_invoice_line_items",
   {
     ...baseLineItemColumns(),

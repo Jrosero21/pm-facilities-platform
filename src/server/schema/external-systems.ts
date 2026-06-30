@@ -1,14 +1,13 @@
 import {
-  datetime,
+  timestamp,
   index,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -32,7 +31,7 @@ import { tenants } from "./tenants";
 
 const statusEnum = ["active", "inactive", "archived"] as const;
 
-export const externalSystems = mysqlTable(
+export const externalSystems = pgTable(
   "external_systems",
   {
     id: varchar("id", { length: 36 })
@@ -53,7 +52,7 @@ export const externalSystems = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("external_systems_tenant_provider_name_unique").on(
@@ -67,7 +66,7 @@ export const externalSystems = mysqlTable(
   ],
 );
 
-export const externalAccounts = mysqlTable(
+export const externalAccounts = pgTable(
   "external_accounts",
   {
     id: varchar("id", { length: 36 })
@@ -86,7 +85,7 @@ export const externalAccounts = mysqlTable(
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     config: json("config"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("external_accounts_tenant_system_idx").on(
@@ -101,7 +100,7 @@ export const externalAccounts = mysqlTable(
 // F1: full secrets-capable shape; NO live secret written this phase.
 const credentialStatusEnum = ["active", "inactive", "revoked"] as const;
 
-export const externalCredentials = mysqlTable(
+export const externalCredentials = pgTable(
   "external_credentials",
   {
     id: varchar("id", { length: 36 })
@@ -119,12 +118,12 @@ export const externalCredentials = mysqlTable(
     encryptedPayload: text("encrypted_payload"),
     // Which key / KMS alias encrypted the payload.
     keyRef: varchar("key_ref", { length: 255 }),
-    expiresAt: datetime("expires_at"),
+    expiresAt: timestamp("expires_at"),
     status: mysqlEnum("status", credentialStatusEnum)
       .notNull()
       .default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("external_credentials_tenant_idx").on(t.tenantId),

@@ -1,15 +1,14 @@
 import {
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -45,7 +44,7 @@ const proposalStatusEnum = [
 // (the default preserves all pre-27 rows). 'internal' = the operator-only AI-drafted proposal.
 const proposalKindEnum = ["client", "internal"] as const;
 
-export const proposals = mysqlTable(
+export const proposals = pgTable(
   "proposals",
   {
     id: varchar("id", { length: 36 })
@@ -56,23 +55,23 @@ export const proposals = mysqlTable(
     // Revision chain (#10): parent = chain root; supersedes = the prior revision.
     parentProposalId: varchar("parent_proposal_id", { length: 36 }),
     supersedesProposalId: varchar("supersedes_proposal_id", { length: 36 }),
-    revisionNumber: int("revision_number").notNull().default(1),
+    revisionNumber: integer("revision_number").notNull().default(1),
     status: mysqlEnum("status", proposalStatusEnum).notNull().default("draft"),
     // Phase 27 — NOT NULL default 'client' so all 121 existing rows remain client-facing.
     kind: mysqlEnum("kind", proposalKindEnum).notNull().default("client"),
     title: varchar("title", { length: 255 }),
     scopeSnapshot: text("scope_snapshot"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
-    markupTotal: decimal("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
-    taxTotal: decimal("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
-    total: decimal("total", { precision: 12, scale: 2 }).notNull().default("0"),
-    validUntil: datetime("valid_until"),
+    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
+    markupTotal: numeric("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxTotal: numeric("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    validUntil: timestamp("valid_until"),
     notes: text("notes"),
-    sentAt: datetime("sent_at"),
+    sentAt: timestamp("sent_at"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "prop_tenant_fk" }).onDelete("cascade"),
@@ -92,7 +91,7 @@ export const proposals = mysqlTable(
 // Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
 // record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
 // (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
-export const proposalLineItems = mysqlTable(
+export const proposalLineItems = pgTable(
   "proposal_line_items",
   {
     ...baseLineItemColumns(),
@@ -121,7 +120,7 @@ export const proposalLineItems = mysqlTable(
 // placeholder (no upload wiring). Append-only (no updated_at).
 const approvalDecisionEnum = ["accepted", "declined"] as const;
 
-export const proposalApprovals = mysqlTable(
+export const proposalApprovals = pgTable(
   "proposal_approvals",
   {
     id: varchar("id", { length: 36 })
@@ -132,7 +131,7 @@ export const proposalApprovals = mysqlTable(
     decision: mysqlEnum("decision", approvalDecisionEnum).notNull(),
     approverUserId: varchar("approver_user_id", { length: 36 }),
     approverName: varchar("approver_name", { length: 255 }),
-    decidedAt: datetime("decided_at").notNull(),
+    decidedAt: timestamp("decided_at").notNull(),
     notes: text("notes"),
     signatureRef: varchar("signature_ref", { length: 1024 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

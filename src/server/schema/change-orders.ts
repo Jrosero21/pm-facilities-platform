@@ -1,14 +1,13 @@
 import {
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -36,7 +35,7 @@ const changeOrderStatusEnum = [
   "withdrawn",
 ] as const;
 
-export const changeOrders = mysqlTable(
+export const changeOrders = pgTable(
   "change_orders",
   {
     id: varchar("id", { length: 36 })
@@ -49,13 +48,13 @@ export const changeOrders = mysqlTable(
     scopeDeltaSnapshot: text("scope_delta_snapshot"),
     reason: text("reason"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
-    markupTotal: decimal("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
-    taxTotal: decimal("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
-    total: decimal("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
+    markupTotal: numeric("markup_total", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxTotal: numeric("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "co_tenant_fk" }).onDelete("cascade"),
@@ -71,7 +70,7 @@ export const changeOrders = mysqlTable(
 // Phase (ii) billing-from-rates (0050) — labor-rate PROVENANCE (AR-only). trade_id/rate_type
 // record which client_rates row a labor line's unit_price was resolved from; both NULLABLE
 // (materials/operator-authored lines carry neither). NOT on vendor (AP) lines — cost side.
-export const changeOrderLineItems = mysqlTable(
+export const changeOrderLineItems = pgTable(
   "change_order_line_items",
   {
     ...baseLineItemColumns(),
@@ -98,7 +97,7 @@ export const changeOrderLineItems = mysqlTable(
 // Parallel to proposal_approvals (OQ-13) — identical shape, separate table. Append-only.
 const coApprovalDecisionEnum = ["accepted", "declined"] as const;
 
-export const changeOrderApprovals = mysqlTable(
+export const changeOrderApprovals = pgTable(
   "change_order_approvals",
   {
     id: varchar("id", { length: 36 })
@@ -109,7 +108,7 @@ export const changeOrderApprovals = mysqlTable(
     decision: mysqlEnum("decision", coApprovalDecisionEnum).notNull(),
     approverUserId: varchar("approver_user_id", { length: 36 }),
     approverName: varchar("approver_name", { length: 255 }),
-    decidedAt: datetime("decided_at").notNull(),
+    decidedAt: timestamp("decided_at").notNull(),
     notes: text("notes"),
     signatureRef: varchar("signature_ref", { length: 1024 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

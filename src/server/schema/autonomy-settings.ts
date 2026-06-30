@@ -1,13 +1,13 @@
 import {
   boolean,
-  decimal,
+  numeric,
   foreignKey,
-  int,
-  mysqlTable,
+  integer,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 
@@ -31,7 +31,7 @@ import { tenants } from "./tenants";
 //     forbid any committed spend / token use).
 //   • LLM usage is metered in TOKENS this phase (max_llm_tokens_*), not dollars — there is
 //     no LLM dollar-cost column anywhere yet (agent_runs tracks input/output token counts).
-export const tenantAutonomySettings = mysqlTable(
+export const tenantAutonomySettings = pgTable(
   "tenant_autonomy_settings",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -39,14 +39,14 @@ export const tenantAutonomySettings = mysqlTable(
     // One control reverts all autonomy to gated, above all policy.
     killSwitch: boolean("kill_switch").notNull().default(false),
     // Committed-$ ceilings (NTE/DNE the autonomy engine may commit). NULL = no cap.
-    maxCommittedPerJob: decimal("max_committed_per_job", { precision: 12, scale: 2 }),
-    maxCommittedPerDay: decimal("max_committed_per_day", { precision: 12, scale: 2 }),
-    maxCommittedPerTenant: decimal("max_committed_per_tenant", { precision: 12, scale: 2 }),
+    maxCommittedPerJob: numeric("max_committed_per_job", { precision: 12, scale: 2 }),
+    maxCommittedPerDay: numeric("max_committed_per_day", { precision: 12, scale: 2 }),
+    maxCommittedPerTenant: numeric("max_committed_per_tenant", { precision: 12, scale: 2 }),
     // LLM ceilings metered in TOKENS this phase (not dollars). NULL = no cap.
-    maxLlmTokensPerDay: int("max_llm_tokens_per_day"),
-    maxLlmTokensPerTenant: int("max_llm_tokens_per_tenant"),
+    maxLlmTokensPerDay: integer("max_llm_tokens_per_day"),
+    maxLlmTokensPerTenant: integer("max_llm_tokens_per_tenant"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "tas_tenant_fk" }).onDelete("cascade"),

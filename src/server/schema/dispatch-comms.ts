@@ -1,12 +1,12 @@
 import {
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -45,7 +45,7 @@ const visibilityEnum = [
 // grows without a migration (mirrors job_events.event_type, D-4.5). Phase 5 vocab:
 // dispatch_notice, reminder, schedule_request, schedule_confirmation, cancellation,
 // general.
-export const dispatchMessages = mysqlTable(
+export const dispatchMessages = pgTable(
   "dispatch_messages",
   {
     id: varchar("id", { length: 36 })
@@ -65,7 +65,7 @@ export const dispatchMessages = mysqlTable(
     sentByUserId: varchar("sent_by_user_id", { length: 36 }),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

@@ -1,16 +1,16 @@
 import {
-  decimal,
+  numeric,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { clients } from "./clients";
@@ -44,21 +44,21 @@ const configStatusEnum = ["draft", "active", "archived"] as const;
 // (MariaDB has no partial unique). Single-active is a WRITE-PATH invariant enforced in the
 // data layer (next batch); the read resolver should ORDER BY version DESC LIMIT 1 as a
 // non-load-bearing tie-break safety net.
-export const aiPromptTemplates = mysqlTable(
+export const aiPromptTemplates = pgTable(
   "ai_prompt_templates",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     variant: varchar("variant", { length: 64 }).notNull().default("default"),
-    version: int("version").notNull().default(1),
+    version: integer("version").notNull().default(1),
     status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
     systemPrompt: text("system_prompt").notNull(),
     userPromptTemplate: text("user_prompt_template"),
     modelHint: varchar("model_hint", { length: 64 }),
-    temperature: decimal("temperature", { precision: 3, scale: 2 }),
+    temperature: numeric("temperature", { precision: 3, scale: 2 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "apt_tenant_fk" }).onDelete("cascade"),
@@ -73,20 +73,20 @@ export const aiPromptTemplates = mysqlTable(
 // default bumps `version` in place (UPDATE), so the fall-through resolver can never hit
 // multiple rows. (Tenant config keeps full history; platform defaults trade history for
 // the single-row guarantee F1 needs — discoverable here, carried to 02-decisions.md.)
-export const aiPromptTemplateDefaults = mysqlTable(
+export const aiPromptTemplateDefaults = pgTable(
   "ai_prompt_template_defaults",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     variant: varchar("variant", { length: 64 }).notNull().default("default"),
-    version: int("version").notNull().default(1),
+    version: integer("version").notNull().default(1),
     status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
     systemPrompt: text("system_prompt").notNull(),
     userPromptTemplate: text("user_prompt_template"),
     modelHint: varchar("model_hint", { length: 64 }),
-    temperature: decimal("temperature", { precision: 3, scale: 2 }),
+    temperature: numeric("temperature", { precision: 3, scale: 2 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("aptd_agent_variant_unique").on(t.agentId, t.variant),
@@ -103,7 +103,7 @@ export const aiPromptTemplateDefaults = mysqlTable(
 // client_id, agent_id). There is NO DB unique here — the nullable client_id plus
 // MariaDB's NULL-as-distinct semantics make a unique unreliable (two (tenant, NULL, agent)
 // rows would not collide). The invariant is therefore 100% a WRITE-PATH guarantee.
-export const agentPolicies = mysqlTable(
+export const agentPolicies = pgTable(
   "agent_policies",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -111,10 +111,10 @@ export const agentPolicies = mysqlTable(
     clientId: varchar("client_id", { length: 36 }),
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     policy: json("policy").notNull(),
-    version: int("version").notNull().default(1),
+    version: integer("version").notNull().default(1),
     status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "ap_tenant_fk" }).onDelete("cascade"),
@@ -126,16 +126,16 @@ export const agentPolicies = mysqlTable(
 // agent_policy_defaults — global platform policy defaults (NO tenant_id). Resolver fall-
 // through target for agent_policies. F1: UNIQUE(agent_id) — SINGLE-ROW-PER-KEY (decision
 // A), no retained version history; bump `version` in place on update.
-export const agentPolicyDefaults = mysqlTable(
+export const agentPolicyDefaults = pgTable(
   "agent_policy_defaults",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     agentId: varchar("agent_id", { length: 64 }).notNull(),
     policy: json("policy").notNull(),
-    version: int("version").notNull().default(1),
+    version: integer("version").notNull().default(1),
     status: mysqlEnum("status", configStatusEnum).notNull().default("draft"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("apd_agent_unique").on(t.agentId),

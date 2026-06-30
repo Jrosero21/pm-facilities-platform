@@ -1,15 +1,15 @@
 import {
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 
-export const tenants = mysqlTable("tenants", {
+export const tenants = pgTable("tenants", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -22,10 +22,10 @@ export const tenants = mysqlTable("tenants", {
     .notNull()
     .default("active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const tenantUsers = mysqlTable(
+export const tenantUsers = pgTable(
   "tenant_users",
   {
     id: varchar("id", { length: 36 })
@@ -41,7 +41,7 @@ export const tenantUsers = mysqlTable(
       .notNull()
       .default("active"),
     joinedAt: timestamp("joined_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("tenant_users_tenant_user_unique").on(t.tenantId, t.userId),

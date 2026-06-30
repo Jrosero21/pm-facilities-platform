@@ -1,14 +1,13 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -48,7 +47,7 @@ const reviewDecisionEnum = ["approve", "reject"] as const;
 // canonical AR record on publish (analog of update_rewrite_drafts.published_communication_id).
 // Index set mirrors jsd_* (tenant_job / tenant_status / run) PLUS a vendor_invoice lookup (the
 // AP source this draft marks up).
-export const invoiceDrafts = mysqlTable(
+export const invoiceDrafts = pgTable(
   "invoice_drafts",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -61,7 +60,7 @@ export const invoiceDrafts = mysqlTable(
     status: mysqlEnum("status", draftStatusEnum).notNull().default("pending_review"),
     publishedClientInvoiceId: varchar("published_client_invoice_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "invd_tenant_fk" }).onDelete("cascade"),
@@ -87,7 +86,7 @@ export const invoiceDrafts = mysqlTable(
 // proposed_invoice on the draft stays immutable. Effective published invoice = edited_content
 // ?? proposed_invoice. NULL edited_content = approved-as-is — the signal Phase-24 approve-as-is
 // and the Phase-25 positive/gold split both read. Append-only (created_at + reviewed_at).
-export const invoiceReviews = mysqlTable(
+export const invoiceReviews = pgTable(
   "invoice_reviews",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -97,7 +96,7 @@ export const invoiceReviews = mysqlTable(
     decision: mysqlEnum("decision", reviewDecisionEnum).notNull(),
     editedContent: json("edited_content"),
     reviewNotes: text("review_notes"),
-    reviewedAt: datetime("reviewed_at").notNull(),
+    reviewedAt: timestamp("reviewed_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [

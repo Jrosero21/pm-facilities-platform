@@ -1,12 +1,12 @@
 import {
-  decimal,
+  numeric,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -38,7 +38,7 @@ import { priorities } from "./job-reference";
 // Emergency multiplier lives on client_billing_rules.emergency_nte_multiplier (8b-D1).
 const nteStatusEnum = ["active", "archived"] as const;
 
-export const clientNteRules = mysqlTable(
+export const clientNteRules = pgTable(
   "client_nte_rules",
   {
     id: varchar("id", { length: 36 })
@@ -50,12 +50,12 @@ export const clientNteRules = mysqlTable(
     priorityId: varchar("priority_id", { length: 36 }).notNull(),
     // NULL = client-wide rule; a non-NULL row is a location-specific override (A4).
     clientLocationId: varchar("client_location_id", { length: 36 }),
-    nteAmount: decimal("nte_amount", { precision: 12, scale: 2 }).notNull(),
+    nteAmount: numeric("nte_amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     status: mysqlEnum("status", nteStatusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

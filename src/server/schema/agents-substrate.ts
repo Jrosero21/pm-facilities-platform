@@ -1,15 +1,14 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -31,7 +30,7 @@ import { jobs } from "./jobs";
 // `prompt_version` is implicitly scoped to `agent_id` — the lookup key is the
 // (agent_id, prompt_version) pair (R-6.x; Phase 7+ may add prompt_id with
 // ai_prompt_templates). `job_id` is NULLABLE — non-job agents (chatbot) come later.
-export const agentRuns = mysqlTable(
+export const agentRuns = pgTable(
   "agent_runs",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -45,13 +44,13 @@ export const agentRuns = mysqlTable(
     outputSummary: varchar("output_summary", { length: 500 }),
     model: varchar("model", { length: 64 }),
     promptVersion: varchar("prompt_version", { length: 64 }),
-    inputTokens: int("input_tokens"),
-    outputTokens: int("output_tokens"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
     errorMessage: text("error_message"),
-    startedAt: datetime("started_at").notNull(),
-    completedAt: datetime("completed_at"),
+    startedAt: timestamp("started_at").notNull(),
+    completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "ar_tenant_fk" }).onDelete("cascade"),
@@ -66,13 +65,13 @@ export const agentRuns = mysqlTable(
 // agent_tool_calls — every read/write tool the agent used, in `sequence` order (§2.9).
 // Denormalized tenant_id (project convention; reachable via agent_run_id but kept direct
 // for tenant-filtered analytics). Immutable — created_at only, no updated_at.
-export const agentToolCalls = mysqlTable(
+export const agentToolCalls = pgTable(
   "agent_tool_calls",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
-    sequence: int("sequence").notNull(),
+    sequence: integer("sequence").notNull(),
     toolName: varchar("tool_name", { length: 128 }).notNull(),
     toolKind: mysqlEnum("tool_kind", ["read", "write"]).notNull(),
     toolInput: json("tool_input"),
@@ -94,7 +93,7 @@ export const agentToolCalls = mysqlTable(
 // "always require review" only ever emits 'queued_for_review' (R-6.x). 'policy_blocked'
 // (not 'rejected') disambiguates the POLICY refusing a proposal from the OPERATOR
 // rejecting a queued draft (update_rewrite_drafts.status='rejected'). Immutable.
-export const agentDecisions = mysqlTable(
+export const agentDecisions = pgTable(
   "agent_decisions",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),

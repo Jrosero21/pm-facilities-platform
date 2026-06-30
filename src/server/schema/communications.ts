@@ -1,16 +1,15 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -91,7 +90,7 @@ const recipientTypeEnum = [
 // excerpt for the timeline + log (the full body lives in the channel-detail row).
 // Append-on-create with a MUTABLE delivery tail (sent_at/delivered_at/read_at +
 // delivery_status) — distinct from job_events' strict immutability.
-export const communicationLogs = mysqlTable(
+export const communicationLogs = pgTable(
   "communication_logs",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -113,18 +112,18 @@ export const communicationLogs = mysqlTable(
     deliveryStatus: mysqlEnum("delivery_status", deliveryStatusEnum)
       .notNull()
       .default("draft"),
-    sentAt: datetime("sent_at"),
-    deliveredAt: datetime("delivered_at"),
-    readAt: datetime("read_at"),
+    sentAt: timestamp("sent_at"),
+    deliveredAt: timestamp("delivered_at"),
+    readAt: timestamp("read_at"),
     // Phase 19 (0042) — live-send provider tracking. Additive, nullable/defaulted; the
     // send adapter writes provider_message_id on success and last_error on failure;
     // attempts counts send tries (idempotency/observability). No FK.
     providerMessageId: varchar("provider_message_id", { length: 255 }),
-    attempts: int("attempts").notNull().default(0),
+    attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "cl_tenant_fk" }).onDelete("cascade"),
@@ -142,7 +141,7 @@ export const communicationLogs = mysqlTable(
 // ships the table + (6e) a management UI ONLY; the substitution/rendering + send
 // pipeline is Phase 13. applicable_channels JSON validity is application-layer (the DB
 // only enforces json_valid). Declared before outbound_messages (FK target).
-export const emailTemplates = mysqlTable(
+export const emailTemplates = pgTable(
   "email_templates",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -154,7 +153,7 @@ export const emailTemplates = mysqlTable(
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "et_tenant_fk" }).onDelete("cascade"),
@@ -167,7 +166,7 @@ export const emailTemplates = mysqlTable(
 // communications (operator-authored, not a dispatch message and not a shared note).
 // Common fields (channel/direction/recipient/delivery/visibility/job) live on the
 // communication_logs spine; this carries the full content + optional template link.
-export const outboundMessages = mysqlTable(
+export const outboundMessages = pgTable(
   "outbound_messages",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -178,7 +177,7 @@ export const outboundMessages = mysqlTable(
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "om_tenant_fk" }).onDelete("cascade"),
@@ -192,7 +191,7 @@ export const outboundMessages = mysqlTable(
 // operator manually logs an inbound message (pastes raw_body); Phase 13's email parser
 // auto-populates + advances parse_status. external_sender is the outside party (not a
 // user). Common fields live on the spine.
-export const inboundMessages = mysqlTable(
+export const inboundMessages = pgTable(
   "inbound_messages",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -200,11 +199,11 @@ export const inboundMessages = mysqlTable(
     externalSender: varchar("external_sender", { length: 255 }),
     subject: varchar("subject", { length: 255 }),
     rawBody: text("raw_body").notNull(),
-    receivedAt: datetime("received_at").notNull(),
+    receivedAt: timestamp("received_at").notNull(),
     parseStatus: varchar("parse_status", { length: 32 }).notNull().default("unparsed"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "im_tenant_fk" }).onDelete("cascade"),

@@ -1,11 +1,11 @@
 import {
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 
 // GLOBAL, platform-wide reference table — a DELIBERATE EXCEPTION to the
@@ -15,7 +15,7 @@ import { v7 as uuidv7 } from "uuid";
 // by super_admin and seeded from db/seeds/trades.ts; retired via the status
 // enum, never hard-deleted. No tenant_id, no FK to tenants, no created_by user
 // (it is not operator-created data).
-export const trades = mysqlTable(
+export const trades = pgTable(
   "trades",
   {
     id: varchar("id", { length: 36 })
@@ -29,7 +29,7 @@ export const trades = mysqlTable(
       .notNull()
       .default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Globally unique — no tenant dimension.

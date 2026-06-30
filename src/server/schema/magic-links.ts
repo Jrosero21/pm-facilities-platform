@@ -1,12 +1,11 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  mysqlTable,
-  timestamp,
+  pgTable,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -20,7 +19,7 @@ import { jobVendorAssignments } from "./dispatch-assignments";
 // (expires_at), single-assignment-scoped (assignment_id), and the idempotency home for link
 // delivery (sent_at) — invariant 6. A tampered/forged token matches no stored hash → "not
 // found" (no existence leak, mirroring Phase-20). FKs pre-named (WP-12.2).
-export const magicLinkTokens = mysqlTable(
+export const magicLinkTokens = pgTable(
   "magic_link_tokens",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -28,12 +27,12 @@ export const magicLinkTokens = mysqlTable(
     assignmentId: varchar("assignment_id", { length: 36 }).notNull(),
     // sha256(rawToken) hex = 64 chars. The raw token is never stored.
     tokenHash: varchar("token_hash", { length: 64 }).notNull(),
-    expiresAt: datetime("expires_at").notNull(),
-    revokedAt: datetime("revoked_at"),
-    sentAt: datetime("sent_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    sentAt: timestamp("sent_at"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "mlt_tenant_fk" }).onDelete("cascade"),

@@ -2,13 +2,13 @@ import {
   boolean,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
@@ -28,7 +28,7 @@ import { trades } from "./trades";
 
 const statusEnum = ["active", "inactive", "archived"] as const;
 
-export const scopeTemplates = mysqlTable(
+export const scopeTemplates = pgTable(
   "scope_templates",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -38,7 +38,7 @@ export const scopeTemplates = mysqlTable(
     description: text("description"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "st_tenant_fk" }).onDelete("cascade"),
@@ -49,18 +49,18 @@ export const scopeTemplates = mysqlTable(
 
 // scope_template_steps — the template's ordered steps (pure child; no own soft-delete
 // status — cascade-deleted with the template).
-export const scopeTemplateSteps = mysqlTable(
+export const scopeTemplateSteps = pgTable(
   "scope_template_steps",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     templateId: varchar("template_id", { length: 36 }).notNull(),
-    stepOrder: int("step_order").notNull(),
+    stepOrder: integer("step_order").notNull(),
     instruction: text("instruction").notNull(),
     category: varchar("category", { length: 32 }),
     expectsPhoto: boolean("expects_photo").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "sts_tenant_fk" }).onDelete("cascade"),

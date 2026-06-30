@@ -1,13 +1,12 @@
 import {
   foreignKey,
-  datetime,
-  index,
-  mysqlEnum,
-  mysqlTable,
-  text,
   timestamp,
+  index,
+  pgTable,
+  text,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -29,7 +28,7 @@ import { communicationLogs } from "./communications";
 // → rejected (formal review row exists, terminal); pending_review → discarded (silent
 // dismissal, no review row, terminal). draft_content is IMMUTABLE — operator edits live
 // on the review row (audit: what the rewriter produced vs what the operator approved).
-export const updateRewriteDrafts = mysqlTable(
+export const updateRewriteDrafts = pgTable(
   "update_rewrite_drafts",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -50,7 +49,7 @@ export const updateRewriteDrafts = mysqlTable(
       .default("pending_review"),
     publishedCommunicationId: varchar("published_communication_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "urd_tenant_fk" }).onDelete("cascade"),
@@ -69,7 +68,7 @@ export const updateRewriteDrafts = mysqlTable(
 // immutable, so the audit trail preserves "what the rewriter produced" vs "what the
 // operator approved". On publish, effective content = edited_content ?? draft_content.
 // 'reject' has a formal review row (operator reason); 'discard' has none (silent).
-export const updateRewriteReviews = mysqlTable(
+export const updateRewriteReviews = pgTable(
   "update_rewrite_reviews",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -79,7 +78,7 @@ export const updateRewriteReviews = mysqlTable(
     decision: mysqlEnum("decision", ["approve", "reject"]).notNull(),
     editedContent: text("edited_content"),
     reviewNotes: text("review_notes"),
-    reviewedAt: datetime("reviewed_at").notNull(),
+    reviewedAt: timestamp("reviewed_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [

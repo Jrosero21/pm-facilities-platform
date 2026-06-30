@@ -1,17 +1,17 @@
 import {
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 
-export const roles = mysqlTable("roles", {
+export const roles = pgTable("roles", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -20,10 +20,10 @@ export const roles = mysqlTable("roles", {
   scope: mysqlEnum("scope", ["global", "tenant"]).notNull(),
   description: text("description"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const userRoles = mysqlTable(
+export const userRoles = pgTable(
   "user_roles",
   {
     id: varchar("id", { length: 36 })

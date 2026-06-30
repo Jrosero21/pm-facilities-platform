@@ -1,14 +1,13 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { jobs } from "./jobs";
@@ -34,7 +33,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // it lands here. Per LOCK 1, Phase 10+ can register vendor_update as a polymorphic
 // rewriter input source via the same source_type+source_id contract — no rewriter
 // redesign. No Phase 6 writer.
-export const vendorUpdateLogs = mysqlTable(
+export const vendorUpdateLogs = pgTable(
   "vendor_update_logs",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -42,10 +41,10 @@ export const vendorUpdateLogs = mysqlTable(
     jobId: varchar("job_id", { length: 36 }).notNull(),
     vendorId: varchar("vendor_id", { length: 36 }),
     content: text("content").notNull(),
-    receivedAt: datetime("received_at").notNull(),
+    receivedAt: timestamp("received_at").notNull(),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "vul_tenant_fk" }).onDelete("cascade"),
@@ -60,7 +59,7 @@ export const vendorUpdateLogs = mysqlTable(
 // drains it. `source_type`+`source_id` is the polymorphic pointer to the content being
 // pushed (e.g. client_update → client_update_logs row), consistent with
 // communication_logs (6d). No FK on the source (spans tables). No Phase 6 writer.
-export const portalUpdateQueue = mysqlTable(
+export const portalUpdateQueue = pgTable(
   "portal_update_queue",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -82,13 +81,13 @@ export const portalUpdateQueue = mysqlTable(
     ])
       .notNull()
       .default("queued"),
-    attempts: int("attempts").notNull().default(0),
-    scheduledAt: datetime("scheduled_at"),
-    processedAt: datetime("processed_at"),
+    attempts: integer("attempts").notNull().default(0),
+    scheduledAt: timestamp("scheduled_at"),
+    processedAt: timestamp("processed_at"),
     lastError: text("last_error"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "puq_tenant_fk" }).onDelete("cascade"),

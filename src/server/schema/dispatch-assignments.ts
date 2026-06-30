@@ -1,16 +1,15 @@
 import {
   boolean,
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -59,7 +58,7 @@ const complianceStatusEnum = [
 // FKs carry explicit short `jva_` names: Drizzle's auto-generated
 // {table}_{col}_{ref}_{refcol}_fk names overrun MySQL's 64-char limit on this
 // table (see check-migration-identifiers.mjs).
-export const jobVendorAssignments = mysqlTable(
+export const jobVendorAssignments = pgTable(
   "job_vendor_assignments",
   {
     id: varchar("id", { length: 36 })
@@ -76,9 +75,9 @@ export const jobVendorAssignments = mysqlTable(
     vendorContactId: varchar("vendor_contact_id", { length: 36 }),
     currentStatusId: varchar("current_status_id", { length: 36 }).notNull(),
     // NTE and DNE are practical synonyms in this domain — one field (lock (d)).
-    agreedNteAmount: decimal("agreed_nte_amount", { precision: 12, scale: 2 }),
-    scheduledStartAt: datetime("scheduled_start_at"),
-    scheduledEndAt: datetime("scheduled_end_at"),
+    agreedNteAmount: numeric("agreed_nte_amount", { precision: 12, scale: 2 }),
+    scheduledStartAt: timestamp("scheduled_start_at"),
+    scheduledEndAt: timestamp("scheduled_end_at"),
     // Immutable snapshot of the job's scope at dispatch time (lock (e)).
     dispatchScope: text("dispatch_scope"),
     // --- matcher facet snapshot (re-derived server-side at dispatch) ---
@@ -99,13 +98,13 @@ export const jobVendorAssignments = mysqlTable(
     // true if that branch carries its own active coverage for the matched trade.
     chosenBranchCoveredTrade: boolean("chosen_branch_covered_trade"),
     // Set by sendDispatch when the dispatch transitions DRAFT → SENT.
-    sentAt: datetime("sent_at"),
+    sentAt: timestamp("sent_at"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     // Phase 28: a re-dispatch DRAFT points at the stuck assignment it replaces (self-FK).
     // Null for a normal/first dispatch; set only on a re-dispatch suggestion DRAFT.
     replacesAssignmentId: varchar("replaces_assignment_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -165,7 +164,7 @@ export const jobVendorAssignments = mysqlTable(
 // changed_by = creator (R-4.x convention). This is the assignment's authoritative
 // transition audit; the job-side timeline ('job.dispatched') and dispatch_messages
 // are separate streams.
-export const jobVendorAssignmentStatusHistory = mysqlTable(
+export const jobVendorAssignmentStatusHistory = pgTable(
   "job_vendor_assignment_status_history",
   {
     id: varchar("id", { length: 36 })

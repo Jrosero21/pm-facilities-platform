@@ -1,12 +1,12 @@
 import {
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -24,7 +24,7 @@ import { tenants } from "./tenants";
 const llmKeyProviderEnum = ["anthropic", "openai"] as const;
 const llmKeyStatusEnum = ["active", "revoked"] as const;
 
-export const tenantLlmKeys = mysqlTable(
+export const tenantLlmKeys = pgTable(
   "tenant_llm_keys",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -36,7 +36,7 @@ export const tenantLlmKeys = mysqlTable(
     label: varchar("label", { length: 255 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "tlk_tenant_fk" }).onDelete("cascade"),

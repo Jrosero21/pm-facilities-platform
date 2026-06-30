@@ -1,13 +1,13 @@
 import {
   boolean,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -24,7 +24,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // See 02-decisions.md D-4.1.
 
 // Priority levels. `rank` is severity/sort (lower = more urgent).
-export const priorities = mysqlTable(
+export const priorities = pgTable(
   "priorities",
   {
     id: varchar("id", { length: 36 })
@@ -42,14 +42,14 @@ export const priorities = mysqlTable(
     // Short canonical code, stored uppercased (e.g. "EMERGENCY"). Stable join key
     // for external_priority_mappings (Phase 12) and seeds.
     code: varchar("code", { length: 32 }).notNull(),
-    rank: int("rank").notNull(),
+    rank: integer("rank").notNull(),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Unique per tenant (not global) — each tenant owns its priority set.
@@ -64,7 +64,7 @@ export const priorities = mysqlTable(
 // reasons about statuses semantically (state machines, dispatch, analytics), so
 // they are canonical and shared. `category` groups statuses into lifecycle
 // buckets; `is_terminal` marks end states; `sort_order` drives display order.
-export const jobStatuses = mysqlTable(
+export const jobStatuses = pgTable(
   "job_statuses",
   {
     id: varchar("id", { length: 36 })
@@ -82,7 +82,7 @@ export const jobStatuses = mysqlTable(
       "completed",
       "cancelled",
     ]).notNull(),
-    sortOrder: int("sort_order").notNull(),
+    sortOrder: integer("sort_order").notNull(),
     isTerminal: boolean("is_terminal").notNull().default(false),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
@@ -90,7 +90,7 @@ export const jobStatuses = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Globally unique — no tenant dimension (like trades).

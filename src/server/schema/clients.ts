@@ -1,18 +1,18 @@
 import {
   boolean,
-  decimal,
+  numeric,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 
-export const clients = mysqlTable(
+export const clients = pgTable(
   "clients",
   {
     id: varchar("id", { length: 36 })
@@ -46,7 +46,7 @@ export const clients = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Name unique per tenant. client_code unique per tenant *when present* —
@@ -58,7 +58,7 @@ export const clients = mysqlTable(
   ],
 );
 
-export const clientLocations = mysqlTable(
+export const clientLocations = pgTable(
   "client_locations",
   {
     id: varchar("id", { length: 36 })
@@ -84,8 +84,8 @@ export const clientLocations = mysqlTable(
     stateProvince: varchar("state_province", { length: 128 }).notNull(),
     postalCode: varchar("postal_code", { length: 32 }).notNull(),
     country: varchar("country", { length: 2 }).notNull().default("US"),
-    latitude: decimal("latitude", { precision: 10, scale: 7 }),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }),
     // Phase 19 (0042) — IANA timezone seam for the business-hours SLA clock. Additive,
     // nullable; data-model only — NO Phase-19 logic consumes it (backfill + clock logic
     // banked CF-19.1).
@@ -101,7 +101,7 @@ export const clientLocations = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // location_code unique within a client when present.
@@ -123,7 +123,7 @@ export const clientLocations = mysqlTable(
 // vendor_users twin (11c A1 confirmed vendor_users carries no status column) —
 // all three FKs cascade; the unique (tenant,user,client) enforces one mapping
 // per triple; (tenant,client) backs operator-side "who can access this client".
-export const clientUsers = mysqlTable(
+export const clientUsers = pgTable(
   "client_users",
   {
     id: varchar("id", { length: 36 })
@@ -139,7 +139,7 @@ export const clientUsers = mysqlTable(
       .notNull()
       .references(() => clients.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("client_users_tenant_user_client_unique").on(

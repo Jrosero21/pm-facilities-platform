@@ -1,7 +1,13 @@
-import { boolean, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  pgTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 
-export const users = mysqlTable("users", {
+export const users = pgTable("users", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -10,10 +16,10 @@ export const users = mysqlTable("users", {
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const sessions = mysqlTable("sessions", {
+export const sessions = pgTable("sessions", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -25,10 +31,10 @@ export const sessions = mysqlTable("sessions", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const accounts = mysqlTable("accounts", {
+export const accounts = pgTable("accounts", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -45,10 +51,10 @@ export const accounts = mysqlTable("accounts", {
   scope: text("scope"),
   password: text("password"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
-export const verifications = mysqlTable("verifications", {
+export const verifications = pgTable("verifications", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
@@ -56,5 +62,5 @@ export const verifications = mysqlTable("verifications", {
   value: text("value").notNull(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });

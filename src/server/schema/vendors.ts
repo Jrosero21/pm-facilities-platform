@@ -1,14 +1,14 @@
 import {
   boolean,
-  decimal,
+  numeric,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -18,7 +18,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // Vendor (subcontractor) organization. Mirrors the clients table shape.
 // vendor_type spans the local → national range called for in Phase 3; multi-
 // location/national vendors carry one row per branch in vendor_locations.
-export const vendors = mysqlTable(
+export const vendors = pgTable(
   "vendors",
   {
     id: varchar("id", { length: 36 })
@@ -46,7 +46,7 @@ export const vendors = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Vendor name is intentionally NOT unique per tenant (unlike client name):
@@ -64,7 +64,7 @@ export const vendors = mysqlTable(
 );
 
 // Contacts attached at the vendor (organization) level. Mirrors client_contacts.
-export const vendorContacts = mysqlTable(
+export const vendorContacts = pgTable(
   "vendor_contacts",
   {
     id: varchar("id", { length: 36 })
@@ -88,7 +88,7 @@ export const vendorContacts = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("vendor_contacts_tenant_idx").on(t.tenantId),
@@ -98,9 +98,9 @@ export const vendorContacts = mysqlTable(
 
 // Vendor branch/location. Mirrors client_locations: tenant_id is denormalized
 // from the parent vendor (location.tenant_id must equal vendor.tenant_id).
-// lat/lng reuse the decimal(10,7) precision used on client_locations and feed
+// lat/lng reuse the numeric(10,7) precision used on client_locations and feed
 // radius service-area centers in Phase 3d / dispatch in Phase 5.
-export const vendorLocations = mysqlTable(
+export const vendorLocations = pgTable(
   "vendor_locations",
   {
     id: varchar("id", { length: 36 })
@@ -121,14 +121,14 @@ export const vendorLocations = mysqlTable(
     stateProvince: varchar("state_province", { length: 128 }).notNull(),
     postalCode: varchar("postal_code", { length: 32 }).notNull(),
     country: varchar("country", { length: 2 }).notNull().default("US"),
-    latitude: decimal("latitude", { precision: 10, scale: 7 }),
-    longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    latitude: numeric("latitude", { precision: 10, scale: 7 }),
+    longitude: numeric("longitude", { precision: 10, scale: 7 }),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // location_code unique within a vendor when present.
@@ -152,7 +152,7 @@ export const vendorLocations = mysqlTable(
 // updated_at kept per 10b lock (entity-style flexibility). Indexes: the unique
 // (tenant,user,vendor) enforces one mapping per triple; (tenant,vendor) backs
 // operator-side "who staffs this vendor" reads.
-export const vendorUsers = mysqlTable(
+export const vendorUsers = pgTable(
   "vendor_users",
   {
     id: varchar("id", { length: 36 })
@@ -168,7 +168,7 @@ export const vendorUsers = mysqlTable(
       .notNull()
       .references(() => vendors.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     uniqueIndex("vendor_users_tenant_user_vendor_unique").on(

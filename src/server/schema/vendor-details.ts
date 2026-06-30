@@ -1,15 +1,15 @@
 import {
   bigint,
   date,
-  decimal,
+  numeric,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -30,7 +30,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // vendor_location_id (null = vendor-wide) -> vendor_locations cascade. `unit` is
 // meaningful only when rate_type = 'per_unit' (Decision). Resolution precedence
 // (most-specific-wins) is a Phase 8 concern — not modeled here.
-export const vendorRates = mysqlTable(
+export const vendorRates = pgTable(
   "vendor_rates",
   {
     id: varchar("id", { length: 36 })
@@ -57,7 +57,7 @@ export const vendorRates = mysqlTable(
       "emergency",
       "after_hours",
     ]).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
     effectiveDate: date("effective_date"),
@@ -69,7 +69,7 @@ export const vendorRates = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("vendor_rates_tenant_vendor_idx").on(t.tenantId, t.vendorId)],
 );
@@ -78,7 +78,7 @@ export const vendorRates = mysqlTable(
 // nullable: file-upload infrastructure is deferred, so a row can be metadata
 // only or hold an external URL. expiry_date index deferred until Phase 5 (see
 // 02-decisions.md).
-export const vendorDocuments = mysqlTable(
+export const vendorDocuments = pgTable(
   "vendor_documents",
   {
     id: varchar("id", { length: 36 })
@@ -115,7 +115,7 @@ export const vendorDocuments = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("vendor_documents_tenant_vendor_idx").on(t.tenantId, t.vendorId)],
 );
@@ -124,7 +124,7 @@ export const vendorDocuments = mysqlTable(
 // `status` (soft-delete) and `compliance_status` (business state) are DISTINCT
 // concerns and must not be collapsed (see 06-business-rules.md). expiry_date
 // index deferred until Phase 5 (see 02-decisions.md).
-export const vendorCompliance = mysqlTable(
+export const vendorCompliance = pgTable(
   "vendor_compliance",
   {
     id: varchar("id", { length: 36 })
@@ -146,7 +146,7 @@ export const vendorCompliance = mysqlTable(
       "certification",
       "other",
     ]).notNull(),
-    coverageAmount: decimal("coverage_amount", { precision: 14, scale: 2 }),
+    coverageAmount: numeric("coverage_amount", { precision: 14, scale: 2 }),
     carrier: varchar("carrier", { length: 255 }),
     policyNumber: varchar("policy_number", { length: 128 }),
     effectiveDate: date("effective_date"),
@@ -166,7 +166,7 @@ export const vendorCompliance = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("vendor_compliance_tenant_vendor_idx").on(t.tenantId, t.vendorId),
@@ -175,7 +175,7 @@ export const vendorCompliance = mysqlTable(
 
 // Vendor performance scores, computed in Phase 9 from Phase 4 job data.
 // trade_id (null = overall vendor score) -> trades RESTRICT.
-export const vendorPerformanceScores = mysqlTable(
+export const vendorPerformanceScores = pgTable(
   "vendor_performance_scores",
   {
     id: varchar("id", { length: 36 })
@@ -192,15 +192,15 @@ export const vendorPerformanceScores = mysqlTable(
     }),
     periodStart: date("period_start"),
     periodEnd: date("period_end"),
-    jobsCompleted: int("jobs_completed"),
-    jobsOnTime: int("jobs_on_time"),
+    jobsCompleted: integer("jobs_completed"),
+    jobsOnTime: integer("jobs_on_time"),
     // B-16.4 (0054): completion = jobs_completed / total_dispatches (declines+cancels count
     // against). Additive, nullable, backfill-free — beside the on-time pair.
-    totalDispatches: int("total_dispatches"),
-    completionRate: decimal("completion_rate", { precision: 5, scale: 2 }),
-    onTimeRate: decimal("on_time_rate", { precision: 5, scale: 2 }),
-    avgRating: decimal("avg_rating", { precision: 3, scale: 2 }),
-    score: decimal("score", { precision: 6, scale: 2 }),
+    totalDispatches: integer("total_dispatches"),
+    completionRate: numeric("completion_rate", { precision: 5, scale: 2 }),
+    onTimeRate: numeric("on_time_rate", { precision: 5, scale: 2 }),
+    avgRating: numeric("avg_rating", { precision: 3, scale: 2 }),
+    score: numeric("score", { precision: 6, scale: 2 }),
     computedAt: timestamp("computed_at"),
     notes: text("notes"),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
@@ -209,7 +209,7 @@ export const vendorPerformanceScores = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("vendor_performance_scores_tenant_vendor_idx").on(

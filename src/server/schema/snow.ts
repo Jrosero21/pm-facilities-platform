@@ -1,16 +1,16 @@
 import {
   boolean,
-  decimal,
+  numeric,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -48,7 +48,7 @@ import { jobs } from "./jobs";
 //   overlay is subordinate to the program, never to the canonical location.
 
 // ── snow_programs ── (program-level client/trade/priority + spawn defaults; the pm_programs analog)
-export const snowPrograms = mysqlTable(
+export const snowPrograms = pgTable(
   "snow_programs",
   {
     id: varchar("id", { length: 36 })
@@ -69,7 +69,7 @@ export const snowPrograms = mysqlTable(
     isActive: boolean("is_active").notNull().default(true),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -106,7 +106,7 @@ export const snowPrograms = mysqlTable(
 );
 
 // ── snow_sites ── (OVERLAY on client_locations — F15-B; the pm_schedule_locations analog)
-export const snowSites = mysqlTable(
+export const snowSites = pgTable(
   "snow_sites",
   {
     id: varchar("id", { length: 36 })
@@ -117,11 +117,11 @@ export const snowSites = mysqlTable(
     // The overlay FK: client_locations.id is varchar(36) (15b V4). RESTRICT — see asymmetry note.
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
     // Snow-specific attrs (the overlay payload). plow_priority = site service order within a storm.
-    plowPriority: int("plow_priority"),
+    plowPriority: integer("plow_priority"),
     siteNotes: text("site_notes"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -149,7 +149,7 @@ export const snowSites = mysqlTable(
 // 'manual' is the only live trigger_type this phase. 'weather_threshold' is a future value;
 // threshold_value/threshold_unit are PLACEHOLDER columns (schema room) — no runtime reads them
 // in Phase 15.
-export const snowServiceTriggers = mysqlTable(
+export const snowServiceTriggers = pgTable(
   "snow_service_triggers",
   {
     id: varchar("id", { length: 36 })
@@ -161,11 +161,11 @@ export const snowServiceTriggers = mysqlTable(
     // Rule-shape, not an enum (future values land without a schema change). 'manual' only this phase.
     triggerType: varchar("trigger_type", { length: 32 }).notNull().default("manual"),
     // Placeholders for the deferred weather feed (B-15.2): unused at runtime this phase.
-    thresholdValue: decimal("threshold_value", { precision: 6, scale: 2 }),
+    thresholdValue: numeric("threshold_value", { precision: 6, scale: 2 }),
     thresholdUnit: varchar("threshold_unit", { length: 16 }),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -217,7 +217,7 @@ const dispatchStatusEnum = ["staged", "spawned", "skipped", "cancelled"] as cons
 // snow_events). snow_service_logs (references snow_dispatches, defined above) is appended at end.
 
 // ── snow_weather_observations ── (PLACEHOLDER — manual event references it; live feed defers, B-15.2)
-export const snowWeatherObservations = mysqlTable(
+export const snowWeatherObservations = pgTable(
   "snow_weather_observations",
   {
     id: varchar("id", { length: 36 })
@@ -228,11 +228,11 @@ export const snowWeatherObservations = mysqlTable(
     observedAt: timestamp("observed_at").notNull().defaultNow(),
     // Placeholder; 'manual' is the only live source this phase (the weather feed defers).
     source: varchar("source", { length: 64 }).notNull().default("manual"),
-    snowDepth: decimal("snow_depth", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
-    temperature: decimal("temperature", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
+    snowDepth: numeric("snow_depth", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
+    temperature: numeric("temperature", { precision: 6, scale: 2 }), // placeholder metric; unused at runtime
     notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -251,7 +251,7 @@ export const snowWeatherObservations = mysqlTable(
 );
 
 // ── snow_events ── (BATCH-RUN HEADER — the storm; pm_generation_runs analog, F15-G)
-export const snowEvents = mysqlTable(
+export const snowEvents = pgTable(
   "snow_events",
   {
     id: varchar("id", { length: 36 })
@@ -270,7 +270,7 @@ export const snowEvents = mysqlTable(
     // event survives deletion of the observation it referenced).
     snowWeatherObservationId: varchar("snow_weather_observation_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -302,7 +302,7 @@ export const snowEvents = mysqlTable(
 );
 
 // ── snow_event_sites ── (MEMBERSHIP fan-out — which enrolled sites this storm hits; pm_visits analog)
-export const snowEventSites = mysqlTable(
+export const snowEventSites = pgTable(
   "snow_event_sites",
   {
     id: varchar("id", { length: 36 })
@@ -312,7 +312,7 @@ export const snowEventSites = mysqlTable(
     snowEventId: varchar("snow_event_id", { length: 36 }).notNull(),
     snowSiteId: varchar("snow_site_id", { length: 36 }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -337,7 +337,7 @@ export const snowEventSites = mysqlTable(
 );
 
 // ── snow_dispatches ── (per-site SPAWN/OUTCOME record — F15-C; the spawned job reuses Phase-5 dispatch)
-export const snowDispatches = mysqlTable(
+export const snowDispatches = pgTable(
   "snow_dispatches",
   {
     id: varchar("id", { length: 36 })
@@ -354,7 +354,7 @@ export const snowDispatches = mysqlTable(
     skipReason: text("skip_reason"), // set when status='skipped' (createJob err.message — skip-and-flag)
     spawnedAt: timestamp("spawned_at"), // set when createJob succeeds
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -382,7 +382,7 @@ export const snowDispatches = mysqlTable(
 // ── snow_service_logs ── (per-dispatch PROOF-OF-SERVICE capture; schema only — runtime defers, B-15.1)
 // References snow_dispatches (defined above — backward ref). The capture runtime (mobile/field
 // fill of serviced_at/photo_refs/gps/notes) is DEFERRED this phase; only the schema lands now.
-export const snowServiceLogs = mysqlTable(
+export const snowServiceLogs = pgTable(
   "snow_service_logs",
   {
     id: varchar("id", { length: 36 })
@@ -393,12 +393,12 @@ export const snowServiceLogs = mysqlTable(
     servicedAt: timestamp("serviced_at"), // when service performed; nullable — capture runtime fills later
     // MariaDB: json → longtext + json_valid CHECK. Parse at the read boundary (the repo json idiom).
     photoRefs: json("photo_refs"),
-    gpsLat: decimal("gps_lat", { precision: 10, scale: 7 }),
-    gpsLng: decimal("gps_lng", { precision: 10, scale: 7 }),
+    gpsLat: numeric("gps_lat", { precision: 10, scale: 7 }),
+    gpsLng: numeric("gps_lng", { precision: 10, scale: 7 }),
     notes: text("notes"),
     loggedByUserId: varchar("logged_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

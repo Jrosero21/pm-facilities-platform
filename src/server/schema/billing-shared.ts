@@ -1,4 +1,11 @@
-import { decimal, int, mysqlEnum, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  numeric,
+  integer,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 
 // ── Phase 8 batch 8b — SHARED LINE-ITEM COLUMN SHAPE (8b-D4) ─────────────────────────
@@ -26,32 +33,32 @@ export const lineItemCategoryEnum = [
   "other",
 ] as const;
 
-// Base shape — spread into ALL four line-item tables. Money is decimal(12,2) (OQ-1);
-// quantity decimal(10,2) (fractional hours/units); tax placeholders (OQ-7). extended_amount
+// Base shape — spread into ALL four line-item tables. Money is numeric(12,2) (OQ-1);
+// quantity numeric(10,2) (fractional hours/units); tax placeholders (OQ-7). extended_amount
 // is writer-owned (recalculate*Totals); the default 0 is just an insert safety net.
 export const baseLineItemColumns = () => ({
   id: varchar("id", { length: 36 })
     .primaryKey()
     .$defaultFn(() => uuidv7()),
   tenantId: varchar("tenant_id", { length: 36 }).notNull(),
-  lineNumber: int("line_number").notNull(),
+  lineNumber: integer("line_number").notNull(),
   category: mysqlEnum("category", lineItemCategoryEnum).notNull(),
   description: text("description").notNull(),
-  quantity: decimal("quantity", { precision: 10, scale: 2 }).notNull().default("1"),
+  quantity: numeric("quantity", { precision: 10, scale: 2 }).notNull().default("1"),
   unit: varchar("unit", { length: 32 }),
-  unitPrice: decimal("unit_price", { precision: 12, scale: 2 }).notNull(),
-  extendedAmount: decimal("extended_amount", { precision: 12, scale: 2 })
+  unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
+  extendedAmount: numeric("extended_amount", { precision: 12, scale: 2 })
     .notNull()
     .default("0"),
-  taxRate: decimal("tax_rate", { precision: 6, scale: 3 }),
-  taxAmount: decimal("tax_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  taxRate: numeric("tax_rate", { precision: 6, scale: 3 }),
+  taxAmount: numeric("tax_amount", { precision: 14, scale: 2 }).notNull().default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 // AR-only markup columns — spread into proposal/change_order/client_invoice line items.
 // NOT on vendor_invoice_line_items (#6). markup_amount writer-owned (recalculate*Totals).
 export const arMarkupColumns = () => ({
-  markupPercent: decimal("markup_percent", { precision: 6, scale: 3 }),
-  markupAmount: decimal("markup_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  markupPercent: numeric("markup_percent", { precision: 6, scale: 3 }),
+  markupAmount: numeric("markup_amount", { precision: 12, scale: 2 }).notNull().default("0"),
 });

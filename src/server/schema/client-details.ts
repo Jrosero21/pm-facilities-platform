@@ -1,17 +1,17 @@
 import {
   boolean,
   date,
-  decimal,
+  numeric,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
   time,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -21,7 +21,7 @@ import { clients, clientLocations } from "./clients";
 const statusEnum = ["active", "inactive", "archived"] as const;
 
 // Contacts attached at the client (organization) level.
-export const clientContacts = mysqlTable(
+export const clientContacts = pgTable(
   "client_contacts",
   {
     id: varchar("id", { length: 36 })
@@ -45,7 +45,7 @@ export const clientContacts = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("client_contacts_tenant_idx").on(t.tenantId),
@@ -54,7 +54,7 @@ export const clientContacts = mysqlTable(
 );
 
 // Contacts attached to a specific location.
-export const clientLocationContacts = mysqlTable(
+export const clientLocationContacts = pgTable(
   "client_location_contacts",
   {
     id: varchar("id", { length: 36 })
@@ -76,7 +76,7 @@ export const clientLocationContacts = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -91,7 +91,7 @@ export const clientLocationContacts = mysqlTable(
 
 // Operating hours per location. Multiple rows per day allowed (split hours).
 // Schema-only in Phase 2 (no CRUD UI yet).
-export const clientLocationHours = mysqlTable(
+export const clientLocationHours = pgTable(
   "client_location_hours",
   {
     id: varchar("id", { length: 36 })
@@ -121,7 +121,7 @@ export const clientLocationHours = mysqlTable(
       .notNull()
       .default("system_default"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -136,7 +136,7 @@ export const clientLocationHours = mysqlTable(
 
 // Free-form access/entry notes per location (gate codes, dock info, etc.).
 // Schema-only in Phase 2.
-export const clientLocationAccessNotes = mysqlTable(
+export const clientLocationAccessNotes = pgTable(
   "client_location_access_notes",
   {
     id: varchar("id", { length: 36 })
@@ -153,7 +153,7 @@ export const clientLocationAccessNotes = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -168,7 +168,7 @@ export const clientLocationAccessNotes = mysqlTable(
 
 // Billing rules per client (markup, payment terms). Schema-only in Phase 2;
 // consumed by billing in Phase 8.
-export const clientBillingRules = mysqlTable(
+export const clientBillingRules = pgTable(
   "client_billing_rules",
   {
     id: varchar("id", { length: 36 })
@@ -181,8 +181,8 @@ export const clientBillingRules = mysqlTable(
       .notNull()
       .references(() => clients.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 255 }).notNull(),
-    markupPercent: decimal("markup_percent", { precision: 6, scale: 3 }),
-    paymentTermsDays: int("payment_terms_days"),
+    markupPercent: numeric("markup_percent", { precision: 6, scale: 3 }),
+    paymentTermsDays: integer("payment_terms_days"),
     // Phase 8 (8b migration 0016) — two per-client billing-policy columns added to
     // this client-side billing-config substrate (8a §A; 8b-D1 Option B):
     // - is_tax_exempt: recorded, NOT enforced in Phase 8 (OQ-7).
@@ -190,7 +190,7 @@ export const clientBillingRules = mysqlTable(
     //   NULL = tenant-default resolver constant 1.50, applied only when the job's
     //   priority.code = 'EMERGENCY' (Surface 23 A3). Resolver/enforcement is 8c code.
     isTaxExempt: boolean("is_tax_exempt").notNull().default(false),
-    emergencyNteMultiplier: decimal("emergency_nte_multiplier", {
+    emergencyNteMultiplier: numeric("emergency_nte_multiplier", {
       precision: 4,
       scale: 2,
     }),
@@ -202,7 +202,7 @@ export const clientBillingRules = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     index("client_billing_rules_tenant_idx").on(t.tenantId),
@@ -215,7 +215,7 @@ export const clientBillingRules = mysqlTable(
 // vendor_location_id dimension DROPPED (deferred). trade_id null = a general (all-trade) rate.
 // `unit` is meaningful when rate_type = 'per_unit' (e.g. materials). Resolution precedence
 // (most-specific-wins) + how a rate produces a billed line is a Phase (ii) concern — not here.
-export const clientRates = mysqlTable(
+export const clientRates = pgTable(
   "client_rates",
   {
     id: varchar("id", { length: 36 })
@@ -238,7 +238,7 @@ export const clientRates = mysqlTable(
       "emergency",
       "after_hours",
     ]).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     unit: varchar("unit", { length: 32 }),
     effectiveDate: date("effective_date"),
@@ -250,7 +250,7 @@ export const clientRates = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [index("client_rates_tenant_client_idx").on(t.tenantId, t.clientId)],
 );

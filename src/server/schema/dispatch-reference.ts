@@ -1,13 +1,13 @@
 import {
   boolean,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 
@@ -30,7 +30,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 // dispatch module (several dispatch tables overrun MySQL's 64-char identifier
 // limit with Drizzle's auto-generated names, so the module standardises on
 // short explicit names — see check-migration-identifiers.mjs).
-export const dispatchAssignmentStatuses = mysqlTable(
+export const dispatchAssignmentStatuses = pgTable(
   "dispatch_assignment_statuses",
   {
     id: varchar("id", { length: 36 })
@@ -48,7 +48,7 @@ export const dispatchAssignmentStatuses = mysqlTable(
       "completed",
       "cancelled",
     ]).notNull(),
-    sortOrder: int("sort_order").notNull(),
+    sortOrder: integer("sort_order").notNull(),
     isTerminal: boolean("is_terminal").notNull().default(false),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
@@ -56,7 +56,7 @@ export const dispatchAssignmentStatuses = mysqlTable(
       { onDelete: "set null" },
     ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     // Globally unique — no tenant dimension (mirrors job_statuses / trades).

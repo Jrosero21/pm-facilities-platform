@@ -1,17 +1,15 @@
 import {
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  longtext,
-  mysqlEnum,
-  mysqlTable,
   text,
-  timestamp,
+  pgTable,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -48,7 +46,7 @@ const statusEnum = ["active", "inactive", "archived"] as const;
 const sourceTypeEnum = ["email_ingestion", "forwarded_email"] as const;
 
 // ── email_parser_rules (manifest §4.6) — authored FIRST (accounts FK-references it) ──
-export const emailParserRules = mysqlTable(
+export const emailParserRules = pgTable(
   "email_parser_rules",
   {
     id: varchar("id", { length: 36 })
@@ -70,7 +68,7 @@ export const emailParserRules = mysqlTable(
     direction: varchar("direction", { length: 32 }),
     status: mysqlEnum("status", statusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -84,7 +82,7 @@ export const emailParserRules = mysqlTable(
 );
 
 // ── email_ingestion_accounts (manifest §4.1) — FK → email_parser_rules ──
-export const emailIngestionAccounts = mysqlTable(
+export const emailIngestionAccounts = pgTable(
   "email_ingestion_accounts",
   {
     id: varchar("id", { length: 36 })
@@ -102,7 +100,7 @@ export const emailIngestionAccounts = mysqlTable(
     // SET NULL: preserve the account if its creator is deleted (the D-12c.1 pattern).
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -150,7 +148,7 @@ const processingStatusEnum = [
 ] as const;
 
 // ── inbound_emails (manifest §4.2) — FK → email_ingestion_accounts (Group 1) ──
-export const inboundEmails = mysqlTable(
+export const inboundEmails = pgTable(
   "inbound_emails",
   {
     id: varchar("id", { length: 36 })
@@ -164,16 +162,16 @@ export const inboundEmails = mysqlTable(
     fromAddress: varchar("from_address", { length: 255 }).notNull(),
     toAddress: varchar("to_address", { length: 255 }),
     subject: varchar("subject", { length: 998 }), // RFC-max subject length.
-    bodyText: longtext("body_text"),
-    bodyHtml: longtext("body_html"),
+    bodyText: text("body_text"),
+    bodyHtml: text("body_html"),
     // json → longtext+json_valid; parse-at-read.
     rawHeaders: json("raw_headers"),
-    receivedAt: datetime("received_at"),
+    receivedAt: timestamp("received_at"),
     processingStatus: mysqlEnum("processing_status", processingStatusEnum)
       .notNull()
       .default("received"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -198,7 +196,7 @@ export const inboundEmails = mysqlTable(
 );
 
 // ── email_attachments (manifest §4.5) — FK → inbound_emails ──
-export const emailAttachments = mysqlTable(
+export const emailAttachments = pgTable(
   "email_attachments",
   {
     id: varchar("id", { length: 36 })
@@ -208,11 +206,11 @@ export const emailAttachments = mysqlTable(
     inboundEmailId: varchar("inbound_email_id", { length: 36 }).notNull(),
     filename: varchar("filename", { length: 255 }).notNull(),
     mimeType: varchar("mime_type", { length: 255 }),
-    sizeBytes: int("size_bytes"),
+    sizeBytes: integer("size_bytes"),
     // Reference ONLY (OQ-13.2) — no in-DB blobs; the physical backend is CF-13.4.
     storageRef: varchar("storage_ref", { length: 512 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -235,7 +233,7 @@ export const emailAttachments = mysqlTable(
 const parserKindEnum = ["deterministic", "ai_assist"] as const;
 const parseOutcomeEnum = ["parsed", "partial", "failed"] as const;
 
-export const emailParseResults = mysqlTable(
+export const emailParseResults = pgTable(
   "email_parse_results",
   {
     id: varchar("id", { length: 36 })
@@ -249,7 +247,7 @@ export const emailParseResults = mysqlTable(
     matchedRuleId: varchar("matched_rule_id", { length: 36 }),
     // CF-13.1 — continuous 0.0000–1.0000; stored precise so the future auto-create
     // threshold is a config change, not a schema change (the autonomy-enabling field).
-    confidence: decimal("confidence", { precision: 5, scale: 4 }),
+    confidence: numeric("confidence", { precision: 5, scale: 4 }),
     // json → longtext+json_valid; parse-at-read.
     extractedFields: json("extracted_fields"),
     // Feeds the Phase-12 D-1 resolver (external_client_mappings). NOT a client FK — D-7
@@ -257,7 +255,7 @@ export const emailParseResults = mysqlTable(
     extractedClientCode: varchar("extracted_client_code", { length: 64 }),
     parseOutcome: mysqlEnum("parse_outcome", parseOutcomeEnum).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -308,7 +306,7 @@ const draftStatusEnum = [
   "superseded",
 ] as const;
 
-export const emailWorkOrderDrafts = mysqlTable(
+export const emailWorkOrderDrafts = pgTable(
   "email_work_order_drafts",
   {
     id: varchar("id", { length: 36 })
@@ -333,9 +331,9 @@ export const emailWorkOrderDrafts = mysqlTable(
     // ── outcome links ──
     createdJobId: varchar("created_job_id", { length: 36 }), // set only at approval (D-5).
     reviewedByUserId: varchar("reviewed_by_user_id", { length: 36 }),
-    reviewedAt: datetime("reviewed_at"),
+    reviewedAt: timestamp("reviewed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

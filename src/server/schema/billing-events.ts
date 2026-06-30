@@ -1,12 +1,12 @@
 import {
-  decimal,
+  numeric,
   foreignKey,
   index,
   json,
-  mysqlTable,
+  pgTable,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -31,7 +31,7 @@ import { paymentRecords } from "./payments";
 // amount/currency nullable (not every event carries a figure). metadata json parsed at read
 // (R-6.19).
 
-export const jobBillingEvents = mysqlTable(
+export const jobBillingEvents = pgTable(
   "job_billing_events",
   {
     id: varchar("id", { length: 36 })
@@ -42,7 +42,7 @@ export const jobBillingEvents = mysqlTable(
     eventType: varchar("event_type", { length: 64 }).notNull(),
     actorUserId: varchar("actor_user_id", { length: 36 }),
     summary: varchar("summary", { length: 500 }).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }),
     currency: varchar("currency", { length: 3 }),
     proposalId: varchar("proposal_id", { length: 36 }),
     changeOrderId: varchar("change_order_id", { length: 36 }),

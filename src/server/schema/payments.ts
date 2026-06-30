@@ -1,14 +1,13 @@
 import {
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -32,7 +31,7 @@ import { vendorInvoices } from "./vendor-invoices";
 // #20) — the ledger control point. Manual ledger entry only; NO processor integration (OQ-18).
 const paymentDirectionEnum = ["inbound", "outbound"] as const;
 
-export const paymentRecords = mysqlTable(
+export const paymentRecords = pgTable(
   "payment_records",
   {
     id: varchar("id", { length: 36 })
@@ -43,15 +42,15 @@ export const paymentRecords = mysqlTable(
     clientInvoiceId: varchar("client_invoice_id", { length: 36 }),
     vendorInvoiceId: varchar("vendor_invoice_id", { length: 36 }),
     jobId: varchar("job_id", { length: 36 }).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
     method: varchar("method", { length: 64 }),
     reference: varchar("reference", { length: 255 }),
-    paidAt: datetime("paid_at").notNull(),
+    paidAt: timestamp("paid_at").notNull(),
     recordedByUserId: varchar("recorded_by_user_id", { length: 36 }),
     notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "pay_tenant_fk" }).onDelete("cascade"),

@@ -1,12 +1,12 @@
 import {
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { trades } from "./trades";
@@ -31,7 +31,7 @@ import { externalSystems } from "./external-systems";
 
 const directionEnum = ["inbound", "outbound", "both"] as const;
 
-export const externalStatusMappings = mysqlTable(
+export const externalStatusMappings = pgTable(
   "external_status_mappings",
   {
     id: varchar("id", { length: 36 })
@@ -46,7 +46,7 @@ export const externalStatusMappings = mysqlTable(
       .references(() => jobStatuses.id, { onDelete: "cascade" }),
     direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -64,7 +64,7 @@ export const externalStatusMappings = mysqlTable(
   ],
 );
 
-export const externalTradeMappings = mysqlTable(
+export const externalTradeMappings = pgTable(
   "external_trade_mappings",
   {
     id: varchar("id", { length: 36 })
@@ -78,7 +78,7 @@ export const externalTradeMappings = mysqlTable(
       .references(() => trades.id, { onDelete: "cascade" }),
     direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -96,7 +96,7 @@ export const externalTradeMappings = mysqlTable(
   ],
 );
 
-export const externalPriorityMappings = mysqlTable(
+export const externalPriorityMappings = pgTable(
   "external_priority_mappings",
   {
     id: varchar("id", { length: 36 })
@@ -115,7 +115,7 @@ export const externalPriorityMappings = mysqlTable(
       .references(() => priorities.id, { onDelete: "cascade" }),
     direction: mysqlEnum("direction", directionEnum).notNull().default("inbound"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -145,7 +145,7 @@ export const externalPriorityMappings = mysqlTable(
 // alphanumeric than the 128-char code mappings). direction defaults 'both' — a location
 // ref is used inbound (resolve on ingest) AND outbound (reference on push). All FKs
 // CASCADE; pre-named (elm_ prefix, WP-12.2); explicit FK-backing indexes (6d/6g).
-export const externalLocationMappings = mysqlTable(
+export const externalLocationMappings = pgTable(
   "external_location_mappings",
   {
     id: varchar("id", { length: 36 })
@@ -161,7 +161,7 @@ export const externalLocationMappings = mysqlTable(
     clientLocationId: varchar("client_location_id", { length: 36 }).notNull(),
     direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({
@@ -203,7 +203,7 @@ export const externalLocationMappings = mysqlTable(
 // tenant-scoped. This is the FIRST resolution step at ingest (12h-A.2 order): an unmapped
 // client parks the WO (IF-7). All FKs CASCADE; pre-named (ecm_ prefix, WP-12.2); explicit
 // FK-backing indexes (6d/6g).
-export const externalClientMappings = mysqlTable(
+export const externalClientMappings = pgTable(
   "external_client_mappings",
   {
     id: varchar("id", { length: 36 })
@@ -215,7 +215,7 @@ export const externalClientMappings = mysqlTable(
     clientId: varchar("client_id", { length: 36 }).notNull(),
     direction: mysqlEnum("direction", directionEnum).notNull().default("both"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({

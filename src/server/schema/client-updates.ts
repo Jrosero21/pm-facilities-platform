@@ -1,12 +1,12 @@
 import {
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -23,7 +23,7 @@ import { updateRewriteDrafts } from "./agents-rewriter";
 // provenance link back to the rewrite draft — NULLABLE because non-rewriter client
 // updates (operator-composed) may land here later. Operational content → keeps the
 // soft-delete status enum (unlike the immutable audit substrate).
-export const clientUpdateLogs = mysqlTable(
+export const clientUpdateLogs = pgTable(
   "client_update_logs",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -34,7 +34,7 @@ export const clientUpdateLogs = mysqlTable(
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     status: mysqlEnum("status", ["active", "inactive", "archived"]).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "cul_tenant_fk" }).onDelete("cascade"),

@@ -1,16 +1,16 @@
 import {
   index,
   json,
-  mysqlTable,
+  pgTable,
   text,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
 
-export const auditLogs = mysqlTable(
+export const auditLogs = pgTable(
   "audit_logs",
   {
     id: varchar("id", { length: 36 })

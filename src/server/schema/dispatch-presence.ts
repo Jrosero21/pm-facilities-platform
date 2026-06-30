@@ -1,11 +1,10 @@
 import {
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  mysqlTable,
-  timestamp,
+  pgTable,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -15,7 +14,7 @@ import { jobVendorAssignments } from "./dispatch-assignments";
 // created_at is the CURRENT ETA; prior rows are the schedule audit trail (same
 // append-only pattern as job_status_history). eta_start_at is the committed
 // arrival; eta_end_at the optional window end.
-export const vendorEtaConfirmations = mysqlTable(
+export const vendorEtaConfirmations = pgTable(
   "vendor_eta_confirmations",
   {
     id: varchar("id", { length: 36 })
@@ -23,8 +22,8 @@ export const vendorEtaConfirmations = mysqlTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     assignmentId: varchar("assignment_id", { length: 36 }).notNull(),
-    etaStartAt: datetime("eta_start_at").notNull(),
-    etaEndAt: datetime("eta_end_at"),
+    etaStartAt: timestamp("eta_start_at").notNull(),
+    etaEndAt: timestamp("eta_end_at"),
     note: varchar("note", { length: 500 }),
     confirmedByUserId: varchar("confirmed_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -56,7 +55,7 @@ export const vendorEtaConfirmations = mysqlTable(
 // columns (work_summary / signature / parts_used on check-outs) are NOT added
 // preemptively — they arrive when real divergence does (Phase 6/8). occurred_at is
 // when the vendor arrived/left; created_at is when the operator recorded it.
-export const vendorCheckIns = mysqlTable(
+export const vendorCheckIns = pgTable(
   "vendor_check_ins",
   {
     id: varchar("id", { length: 36 })
@@ -64,7 +63,7 @@ export const vendorCheckIns = mysqlTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     assignmentId: varchar("assignment_id", { length: 36 }).notNull(),
-    occurredAt: datetime("occurred_at").notNull(),
+    occurredAt: timestamp("occurred_at").notNull(),
     note: varchar("note", { length: 500 }),
     recordedByUserId: varchar("recorded_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -90,7 +89,7 @@ export const vendorCheckIns = mysqlTable(
   ],
 );
 
-export const vendorCheckOuts = mysqlTable(
+export const vendorCheckOuts = pgTable(
   "vendor_check_outs",
   {
     id: varchar("id", { length: 36 })
@@ -98,7 +97,7 @@ export const vendorCheckOuts = mysqlTable(
       .$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     assignmentId: varchar("assignment_id", { length: 36 }).notNull(),
-    occurredAt: datetime("occurred_at").notNull(),
+    occurredAt: timestamp("occurred_at").notNull(),
     note: varchar("note", { length: 500 }),
     recordedByUserId: varchar("recorded_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),

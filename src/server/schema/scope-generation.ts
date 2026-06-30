@@ -1,16 +1,15 @@
 import {
   boolean,
-  datetime,
+  timestamp,
   foreignKey,
   index,
-  int,
+  integer,
   json,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
 import { users } from "./auth";
@@ -44,7 +43,7 @@ const stepStatusEnum = ["active", "inactive", "archived"] as const;
 // job_scope_steps). Index set mirrors urd_* (tenant_job / tenant_status / run); the
 // rewriter's urd_source_idx does NOT translate — a scope draft has no polymorphic source
 // (its source is the job itself, via job_id + the agent_run provenance).
-export const jobScopeDrafts = mysqlTable(
+export const jobScopeDrafts = pgTable(
   "job_scope_drafts",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -53,9 +52,9 @@ export const jobScopeDrafts = mysqlTable(
     agentRunId: varchar("agent_run_id", { length: 36 }).notNull(),
     proposedSteps: json("proposed_steps").notNull(),
     status: mysqlEnum("status", draftStatusEnum).notNull().default("pending_review"),
-    publishedAt: datetime("published_at"),
+    publishedAt: timestamp("published_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "jsd_tenant_fk" }).onDelete("cascade"),
@@ -71,7 +70,7 @@ export const jobScopeDrafts = mysqlTable(
 // edited_steps (JSON, NULL when unchanged — carries "the operator changed something");
 // proposed_steps on the draft stays immutable. Effective published steps = edited_steps
 // ?? proposed_steps. Append-only (created_at + reviewed_at; no updated_at).
-export const jobScopeReviews = mysqlTable(
+export const jobScopeReviews = pgTable(
   "job_scope_reviews",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
@@ -81,7 +80,7 @@ export const jobScopeReviews = mysqlTable(
     decision: mysqlEnum("decision", reviewDecisionEnum).notNull(),
     editedSteps: json("edited_steps"),
     reviewNotes: text("review_notes"),
-    reviewedAt: datetime("reviewed_at").notNull(),
+    reviewedAt: timestamp("reviewed_at").notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [
@@ -99,13 +98,13 @@ export const jobScopeReviews = mysqlTable(
 // status enum. Ordering index (tenant_id, job_id, step_order) is NON-unique: soft-deleted
 // rows may retain stale orders and reorder passes through transient collisions; active-step
 // order uniqueness is an app invariant.
-export const jobScopeSteps = mysqlTable(
+export const jobScopeSteps = pgTable(
   "job_scope_steps",
   {
     id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
     tenantId: varchar("tenant_id", { length: 36 }).notNull(),
     jobId: varchar("job_id", { length: 36 }).notNull(),
-    stepOrder: int("step_order").notNull(),
+    stepOrder: integer("step_order").notNull(),
     instruction: text("instruction").notNull(),
     category: varchar("category", { length: 32 }),
     expectsPhoto: boolean("expects_photo").notNull().default(false),
@@ -113,7 +112,7 @@ export const jobScopeSteps = mysqlTable(
     sourceDraftId: varchar("source_draft_id", { length: 36 }),
     status: mysqlEnum("status", stepStatusEnum).notNull().default("active"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "jss_tenant_fk" }).onDelete("cascade"),

@@ -1,16 +1,15 @@
 import {
   boolean,
-  datetime,
-  decimal,
+  timestamp,
+  numeric,
   foreignKey,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
-  timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
+import { mysqlEnum } from "drizzle-orm/mysql-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -46,7 +45,7 @@ const vendorInvoiceStatusEnum = [
 ] as const;
 const paymentStatusEnum = ["unpaid", "partially_paid", "paid"] as const;
 
-export const vendorInvoices = mysqlTable(
+export const vendorInvoices = pgTable(
   "vendor_invoices",
   {
     id: varchar("id", { length: 36 })
@@ -61,25 +60,25 @@ export const vendorInvoices = mysqlTable(
       .default("manual"),
     sourceExternalId: varchar("source_external_id", { length: 255 }),
     invoiceNumber: varchar("invoice_number", { length: 128 }),
-    sequenceNumber: int("sequence_number"),
+    sequenceNumber: integer("sequence_number"),
     isFinal: boolean("is_final").notNull().default(false),
     status: mysqlEnum("status", vendorInvoiceStatusEnum).notNull().default("received"),
     currency: varchar("currency", { length: 3 }).notNull().default("USD"),
-    subtotal: decimal("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
-    taxTotal: decimal("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
-    total: decimal("total", { precision: 12, scale: 2 }).notNull().default("0"),
-    nteBaselineAmount: decimal("nte_baseline_amount", { precision: 12, scale: 2 }),
+    subtotal: numeric("subtotal", { precision: 12, scale: 2 }).notNull().default("0"),
+    taxTotal: numeric("tax_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull().default("0"),
+    nteBaselineAmount: numeric("nte_baseline_amount", { precision: 12, scale: 2 }),
     exceedsNte: boolean("exceeds_nte").notNull().default(false),
     paymentStatus: mysqlEnum("payment_status", paymentStatusEnum)
       .notNull()
       .default("unpaid"),
-    invoiceDate: datetime("invoice_date"),
+    invoiceDate: timestamp("invoice_date"),
     approvedByUserId: varchar("approved_by_user_id", { length: 36 }),
-    approvedAt: datetime("approved_at"),
+    approvedAt: timestamp("approved_at"),
     notes: text("notes"),
     createdByUserId: varchar("created_by_user_id", { length: 36 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (t) => [
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "vinv_tenant_fk" }).onDelete("cascade"),
@@ -95,7 +94,7 @@ export const vendorInvoices = mysqlTable(
 );
 
 // Base shape ONLY — NO markup (AP, #6/8b-D4). extended_amount writer-owned.
-export const vendorInvoiceLineItems = mysqlTable(
+export const vendorInvoiceLineItems = pgTable(
   "vendor_invoice_line_items",
   {
     ...baseLineItemColumns(),

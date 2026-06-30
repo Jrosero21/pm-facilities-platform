@@ -1,10 +1,10 @@
 import {
   index,
   json,
-  mysqlTable,
+  pgTable,
   timestamp,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { users } from "./auth";
 import { tenants } from "./tenants";
@@ -22,7 +22,7 @@ import { jobs } from "./jobs";
 // so "who set this job's current X?" is queryable uniformly for every row (D-4.8).
 // All three share an identical shape (only the reference FK target differs).
 
-export const jobStatusHistory = mysqlTable(
+export const jobStatusHistory = pgTable(
   "job_status_history",
   {
     id: varchar("id", { length: 36 })
@@ -51,7 +51,7 @@ export const jobStatusHistory = mysqlTable(
   (t) => [index("job_status_history_tenant_job_idx").on(t.tenantId, t.jobId)],
 );
 
-export const jobPriorityHistory = mysqlTable(
+export const jobPriorityHistory = pgTable(
   "job_priority_history",
   {
     id: varchar("id", { length: 36 })
@@ -80,7 +80,7 @@ export const jobPriorityHistory = mysqlTable(
   (t) => [index("job_priority_history_tenant_job_idx").on(t.tenantId, t.jobId)],
 );
 
-export const jobTradeHistory = mysqlTable(
+export const jobTradeHistory = pgTable(
   "job_trade_history",
   {
     id: varchar("id", { length: 36 })
@@ -115,7 +115,7 @@ export const jobTradeHistory = mysqlTable(
 // vocab: job.created, job.status_changed, job.priority_changed, job.trade_changed,
 // job.note_added, job.contact_added. actor_user_id is nullable (system/external
 // events). metadata is event-specific JSON (treat defensively — Phase 2 L-2.13).
-export const jobEvents = mysqlTable(
+export const jobEvents = pgTable(
   "job_events",
   {
     id: varchar("id", { length: 36 })
