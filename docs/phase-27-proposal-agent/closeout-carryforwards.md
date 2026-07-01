@@ -1266,10 +1266,10 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–5 COMPLETE + VALIDATED (branch postgres-migration; validation marker c03fd77). main on MariaDB,
-untouched. MIGRATION CODE-AND-DATA LAYER DONE — 48/48 harnesses green cold on local Postgres, first try, zero
-regressions, zero teardown-ordering issues, K3b passing, tsc=0. Remaining: batch 6 ONLY (Neon + Vercel infra),
-then the explicit merge-to-main gate.
+STATE: batches 0–6 COMPLETE + VALIDATED ON NEON (branch postgres-migration; b6 marker d552675). main STILL on
+MariaDB, untouched. Migration validated on local pg (48/48 cold) AND Neon cloud pg (baseline 124/68/377 +
+representative suite green over pooler/SSL, populated teardown clean, K3b passing). Remaining: MERGE-TO-MAIN gate
+(Jonny's call) + Vercel deploy (follows merge). No migration work left.
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1419,3 +1419,17 @@ the full app-query layer, ZERO migration regressions — every issue was a pre-e
 (vendor-performance count corruption silently stored as 0 on MySQL; job-photos unenforced FK), a mechanical
 driver-semantics port, or stale test/seed drift. The migration FOUND bugs rather than creating them. Code-and-data
 layer DONE and validated on local Postgres.
+
+BATCH 6 DONE (d552675 marker) — Neon cloud Postgres VALIDATED. Baseline applied to Neon neondb (124/68/377,
+identical to local, PG 18.4). Then a scoped Neon-connectivity proof (the real value = app queries over Neon's
+SSL+pooler, NOT re-proving engine-identical teardowns): created Neon pm_sandbox, applied baseline, seeded the full
+recipe (phase9/system-user/b16-4/agent-config all exit 0), ran a representative subset over Neon —
+seed-sandbox-phase9 (populated ordered-delete teardown clean, "post-delete rows: 0", zero FK violations),
+check-vendor-performance (count-fix holds), check-invoice-rate-sheet (billing), check-phase-22 (dispatch/rank),
+probe-k3b1 (tenant-key path) — ALL EXIT=0. The session_replication_role caveat is now EMPIRICALLY closed on the
+real cloud engine (pure ordered DELETEs work on Neon as on local). Gotcha caught: naïve sed on the Neon URL
+corrupted the username (neondb_owner→pm_sandbox_owner); fixed with anchored regex (/neondb([?]|$)). Only cosmetic:
+node-postgres sslmode=require→verify-full deprecation warning (non-blocking; optional hardening later).
+
+CARRY-FORWARD (post-migration polish, non-blocking): tighten Neon SSL mode (sslmode=verify-full or
+uselibpqcompat=true) before real production traffic — cosmetic deprecation warning today, not a correctness issue.
