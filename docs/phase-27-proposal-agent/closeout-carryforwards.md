@@ -1266,10 +1266,10 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–4b-2 COMPLETE (branch postgres-migration; …b4b-1 e14f074, b4b-2 62c61fa). main on MariaDB,
-untouched. App executes on pg (date-math); harness layer pg-ported (sandbox guard proven safe on pg, ordered-
-delete teardowns proven on a populated graph). tsc=0. BLOCKER before batch 5: batch 4b-3 (systematic app-query
-MySQL-ism audit) — 4b-INSPECT's raw-SQL sweep was INCOMPLETE. Then 5 (cold harness proof) + 6 (infra).
+STATE: batches 0–4b-3 COMPLETE (branch postgres-migration; …b4b-2 62c61fa, b4b-3 fc2034f). main on MariaDB,
+untouched. ALL CODE-LAYER CONVERSION DONE + app-query layer provably pg-clean (silent CAST truncation fixed,
+proven by result). tsc=0. Remaining: batch 5 (cold full-harness proof) + 6 (infra Neon+Vercel). Batch 5 is now
+UNBLOCKED.
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1364,3 +1364,15 @@ The class: (1) identifier case-sensitivity on unquoted camelCase aliases/columns
 be found by run-and-fix (silent members don't throw) — requires a SYSTEMATIC sweep of every src/ sql`` fragment.
 Batch 4b-3 does this BEFORE batch 5, because batch 5's harness run would pass while silent MySQL-isms return
 wrong results.
+
+BATCH 4b-3 DONE (fc2034f) — app-query pg-compat, the audit-by-reading batch (silent members can't be found by
+running). Confirmed CAST(x AS CHAR)=char(1) on pg (length 1, verified live). Fixed 17 sites in 3 groups:
+(A) SILENT 8: CAST AS CHAR→AS text in agent-observability + correction-pairs — a 1-char truncation of draft/edited
+JSON in the FEEDBACK-LOOP comparison; ran clean, returned "{". Proven fixed by RESULT (seeded 100-char content →
+returned 100, not 1). This was the migration's most dangerous find — invisible to every harness. (B) LOUD 8:
+SUM(bool)→SUM(CASE WHEN..THEN 1 ELSE 0 END) (pg has no sum(boolean)). (C) LOUD 1: vendor-matching ORDER BY —
+quoted camelCase aliases AND replaced MySQL (x IS NULL) ASC nulls-trick with pg-native NULLS LAST (quote-alone
+still threw 42703; corrected at the execution proof). All proven: CAST by result, loud by execution (4 readers
+clean). The 4b-3A audit's safe-by-consumption calls held — Number(x)>0 coercions defuse EXISTS-as-number and
+bigint→string; no silent members beyond the 8 CASTs. vendor-matching (5 cumulative fixes across b2/b3) now runs
+end-to-end.
