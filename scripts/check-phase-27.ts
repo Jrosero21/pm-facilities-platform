@@ -246,7 +246,7 @@ async function main() {
     // ── jobUnder (NTE 1000, total 500 ≤ NTE) → internal + event; also M1/M2/M3 + I1 ──
     const jobUnder = await mkJob("1000.00");
     const underDraft = await runDraft(jobUnder);
-    const rawProposed = (await db.select({ raw: sql<string>`CAST(${proposalDrafts.proposedProposal} AS CHAR)` }).from(proposalDrafts).where(eq(proposalDrafts.id, underDraft)))[0]?.raw ?? "";
+    const rawProposed = (await db.select({ raw: sql<string>`CAST(${proposalDrafts.proposedProposal} AS text)` }).from(proposalDrafts).where(eq(proposalDrafts.id, underDraft)))[0]?.raw ?? "";
     check("M1: stored proposed_proposal is NUMBER-FREE (no quantity/unitPrice/markup/tax keys)",
       !/quantity|unitPrice|markup|tax/i.test(rawProposed), rawProposed);
     await createProposalReview({ tenantId: tId, proposalDraftId: underDraft, reviewerUserId: operator.id, decision: "approve", editedContent: pricedEdited });

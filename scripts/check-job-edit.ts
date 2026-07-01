@@ -171,7 +171,7 @@ async function main() {
     console.log("\n[H] HISTORY/EVENT/AUDIT dual-write");
     await updateJob({ tenantId: tId, jobId: jobM, actorUserId: operator.id, patch: { priorityId: prioP2 } });
     const ph = (await db.select().from(jobPriorityHistory).where(eq(jobPriorityHistory.jobId, jobM)));
-    const auditM1 = (await db.select({ m: sql<string>`CAST(${auditLogs.metadata} AS CHAR)` }).from(auditLogs).where(and(eq(auditLogs.targetId, jobM), eq(auditLogs.action, "job.updated"))));
+    const auditM1 = (await db.select({ m: sql<string>`CAST(${auditLogs.metadata} AS text)` }).from(auditLogs).where(and(eq(auditLogs.targetId, jobM), eq(auditLogs.action, "job.updated"))));
     check("H1: priority edit → job_priority_history {from=P1,to=P2} + job.priority_changed + audit changedFields[priorityId]",
       ph.length === 1 && ph[0].fromPriorityId === prioP1 && ph[0].toPriorityId === prioP2 && ph[0].changedByUserId === operator.id
         && (await eventsFor(jobM, "job.priority_changed")) === 1
@@ -201,7 +201,7 @@ async function main() {
     // ════════ GROUP N — NTE 2nd writer ════════
     console.log("\n[N] NTE 2nd writer (not_to_exceed_amount + nte.adjusted + getEffectiveNte)");
     await updateJob({ tenantId: tId, jobId: jobM, actorUserId: operator.id, patch: { notToExceedAmount: "2500.00" } });
-    const nteBe = (await db.select({ et: jobBillingEvents.eventType, amt: jobBillingEvents.amount, m: sql<string>`CAST(${jobBillingEvents.metadata} AS CHAR)` }).from(jobBillingEvents).where(and(eq(jobBillingEvents.jobId, jobM), eq(jobBillingEvents.eventType, "nte.adjusted"))));
+    const nteBe = (await db.select({ et: jobBillingEvents.eventType, amt: jobBillingEvents.amount, m: sql<string>`CAST(${jobBillingEvents.metadata} AS text)` }).from(jobBillingEvents).where(and(eq(jobBillingEvents.jobId, jobM), eq(jobBillingEvents.eventType, "nte.adjusted"))));
     const effNte = await getEffectiveNte(tId, jobM);
     check("N1: NTE edit → column=2500.00 + nte.adjusted{from:1000.00,to:2500.00} + getEffectiveNte=2500.00",
       (await jobCol(jobM)).notToExceedAmount === "2500.00"

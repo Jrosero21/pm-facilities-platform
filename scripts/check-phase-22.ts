@@ -258,7 +258,7 @@ async function main() {
     const meta = (typeof ar?.metadata === "string" ? JSON.parse(ar.metadata) : (ar?.metadata ?? {})) as Record<string, unknown>;
     check("10a: auto_drafted audit row exists for the assignment", !!ar);
     check("10b: audit userId IS NULL (system actor)", ar?.userId === null);
-    check("10c: audit metadata carries rule + preferenceRank", meta.rule === "preferred-then-rank" && meta.preferenceRank === 1);
+    check("10c: audit metadata carries rule + preferenceRank", meta.rule === "preferred-then-track-record" && meta.preferenceRank === 1);
 
     // ════════ 11. NO-CANDIDATES ════════
     console.log("\n[11] NO-CANDIDATES (empty floor → no draft)");
