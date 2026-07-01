@@ -1266,9 +1266,10 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–5.1 COMPLETE (branch postgres-migration; …b5.1 ecaf4f0). main on MariaDB, untouched. Batch 5
-was 29/36; 5.1 fixed 3 (→ 32/36 expected). Remaining: batch 5.2 (4 logic failures — confirm numeric-as-string
-root cause, then fix) → green batch-5 re-run → batch 6 (infra). tsc=0.
+STATE: batches 0–5 COMPLETE + VALIDATED (branch postgres-migration; validation marker c03fd77). main on MariaDB,
+untouched. MIGRATION CODE-AND-DATA LAYER DONE — 48/48 harnesses green cold on local Postgres, first try, zero
+regressions, zero teardown-ordering issues, K3b passing, tsc=0. Remaining: batch 6 ONLY (Neon + Vercel infra),
+then the explicit merge-to-main gate.
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1409,3 +1410,12 @@ locations→jobs) before attachments (MySQL FK-disable → pg enforces), teardow
 check-email-ingestion MySQL information_schema.STATISTICS/.COLUMNS/KEY_COLUMN_USAGE → pg pg_index/information_schema
 .columns/table_constraints+constraint_column_usage; tuple-casts→.rows; TABLE_SCHEMA='pm_sandbox'→schema 'public';
 assertions preserved. All 3 pass (tsc=0).
+
+BATCH 5 VALIDATED (c03fd77 marker) — cold full-suite re-run: 48/48 GREEN (36 check-* + 12 probe-*) from a fresh
+pm_sandbox (drop→baseline 124 tables→recipe: phase9→system-user→b16-4→agent-config, all seeds exit 0). All 7
+formerly-failing harnesses EXIT=0; K3b1/K3b2=0; tsc=0; ZERO teardown FK violations across all 48 logs (ordered
+deletes held at full scale, cold, populated). MIGRATION VERDICT: across 124 tables / 68 enums / ~61 scripts /
+the full app-query layer, ZERO migration regressions — every issue was a pre-existing defect pg exposed
+(vendor-performance count corruption silently stored as 0 on MySQL; job-photos unenforced FK), a mechanical
+driver-semantics port, or stale test/seed drift. The migration FOUND bugs rather than creating them. Code-and-data
+layer DONE and validated on local Postgres.
