@@ -6,7 +6,7 @@ import { accounts, sessions, users, verifications } from "@/server/schema/auth";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
-    provider: "mysql",
+    provider: "pg",
     schema: {
       user: users,
       session: sessions,
