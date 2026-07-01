@@ -20,8 +20,8 @@ if (!originalUrl) {
   console.error("[check-pm] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-pm] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -70,7 +70,6 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         // PM rows hang off the programs the harness created (schedule→program, visits/runs→schedule).
         if (createdProgramIds.length) {
           const schedRows = await tx
@@ -114,7 +113,6 @@ async function main() {
           await tx.delete(priorities).where(eq(priorities.tenantId, tBId));
           await tx.delete(tenants).where(eq(tenants.id, tBId));
         }
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) {
       console.error("[check-pm] teardown warning:", e);

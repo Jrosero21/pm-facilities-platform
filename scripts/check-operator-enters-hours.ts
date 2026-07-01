@@ -31,8 +31,8 @@ if (!originalUrl) {
   console.error("[check-operator-enters-hours] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-operator-enters-hours] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -73,7 +73,6 @@ async function main() {
 
   async function teardownTenant(id: string) {
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       await tx.delete(clientInvoiceLineItems).where(eq(clientInvoiceLineItems.tenantId, id));
       await tx.delete(clientInvoices).where(eq(clientInvoices.tenantId, id));
       await tx.delete(invoiceReviews).where(eq(invoiceReviews.tenantId, id));
@@ -91,7 +90,6 @@ async function main() {
       await tx.delete(auditLogs).where(eq(auditLogs.tenantId, id));
       await tx.delete(clients).where(eq(clients.tenantId, id));
       await tx.delete(tenants).where(eq(tenants.id, id));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
   }
 

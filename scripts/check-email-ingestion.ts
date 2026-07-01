@@ -27,8 +27,8 @@ if (!originalUrl) {
   console.error("[check-email] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-email] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -80,7 +80,6 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         // Everything the harness inserted under T-A hangs off inbound_emails (drafts +
         // parse_results FK→inbound_emails) + any jobs it created via approve.
         if (createdInboundIds.length) {
@@ -101,7 +100,6 @@ async function main() {
           await tx.delete(priorities).where(eq(priorities.tenantId, tBId));
           await tx.delete(tenants).where(eq(tenants.id, tBId));
         }
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) {
       console.error("[check-email] teardown warning:", e);
@@ -219,7 +217,7 @@ async function main() {
     check("C2: the duplicate inbound row still exists (stored, not hard-deleted)", !!inCRow);
     const dedupIdx = await db.execute(sql`
       SELECT NON_UNIQUE FROM information_schema.STATISTICS
-      WHERE TABLE_SCHEMA = 'jonnyrosero_pm_sandbox'
+      WHERE TABLE_SCHEMA = 'pm_sandbox'
         AND TABLE_NAME = 'inbound_emails'
         AND INDEX_NAME = 'inbound_emails_tenant_message_idx'
       LIMIT 1
@@ -304,13 +302,13 @@ async function main() {
     console.log("\n[F] D-7 config-only parser rules");
     const cols = await db.execute(sql`
       SELECT COLUMN_NAME FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = 'jonnyrosero_pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
+      WHERE TABLE_SCHEMA = 'pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
     `);
     const colRows = (cols as unknown as [Array<{ COLUMN_NAME: string }>, unknown])[0];
     const colNames = colRows.map((r) => r.COLUMN_NAME.toLowerCase());
     const fkConstraints = await db.execute(sql`
       SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = 'jonnyrosero_pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
+      WHERE TABLE_SCHEMA = 'pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
         AND REFERENCED_TABLE_NAME IS NOT NULL
     `);
     const fkRows = (fkConstraints as unknown as [Array<{ REFERENCED_TABLE_NAME: string }>, unknown])[0];

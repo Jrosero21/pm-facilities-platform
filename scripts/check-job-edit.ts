@@ -23,8 +23,8 @@ if (!originalUrl) {
   console.error("[check-job-edit] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-job-edit] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -62,7 +62,6 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (jobIds.length) {
           await tx.delete(jobPriorityHistory).where(inArray(jobPriorityHistory.jobId, jobIds));
           await tx.delete(jobTradeHistory).where(inArray(jobTradeHistory.jobId, jobIds));
@@ -80,7 +79,6 @@ async function main() {
           await tx.delete(vendors).where(eq(vendors.tenantId, tId));
           await tx.delete(tenants).where(eq(tenants.id, tId));
         }
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) { console.error("[check-job-edit] teardown warning:", e); }
   }
@@ -92,7 +90,6 @@ async function main() {
       const pt = prior[0].id;
       const pJobs = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.tenantId, pt))).map((j) => j.id);
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (pJobs.length) {
           await tx.delete(jobPriorityHistory).where(inArray(jobPriorityHistory.jobId, pJobs));
           await tx.delete(jobTradeHistory).where(inArray(jobTradeHistory.jobId, pJobs));
@@ -108,7 +105,6 @@ async function main() {
         await tx.delete(priorities).where(eq(priorities.tenantId, pt));
         await tx.delete(vendors).where(eq(vendors.tenantId, pt));
         await tx.delete(tenants).where(eq(tenants.id, pt));
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     }
   }

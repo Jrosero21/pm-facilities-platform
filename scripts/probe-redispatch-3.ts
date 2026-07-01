@@ -16,8 +16,8 @@ export {};
 // ===== SANDBOX GUARD =====
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[probe-3] DATABASE_URL not set — refusing."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[probe-3] refusing: resolved URL is not a *_sandbox DB."); process.exit(2);
 }
 process.env.DATABASE_URL = sandboxUrl;
@@ -41,7 +41,7 @@ async function main() {
   const { createDispatch, sendDispatch, setAssignmentStatus } = await import("@/server/dispatch");
   const { prepareRedispatchSuggestion, approveRedispatch } = await import("@/server/redispatch-suggestion");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (!/_sandbox$/.test(dbName)) { console.error(`[probe-3] ABORT: DB "${dbName}" is not *_sandbox.`); process.exit(2); }
   console.log("[probe-3] connected DB confirmed:", dbName);
@@ -116,7 +116,6 @@ async function main() {
       : [];
     const aIds = aRows.map((r) => r.id);
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (aIds.length) {
         await tx.delete(jobVendorAssignmentStatusHistory).where(inArray(jobVendorAssignmentStatusHistory.assignmentId, aIds));
         await tx.delete(auditLogs).where(inArray(auditLogs.targetId, aIds));
@@ -134,7 +133,6 @@ async function main() {
         await tx.delete(jobEvents).where(inArray(jobEvents.jobId, jIds));
         await tx.delete(jobs).where(inArray(jobs.id, jIds));
       }
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     return { jobs: jIds.length, vendors: vIds.length, assignments: aIds.length };
   }

@@ -35,8 +35,8 @@ if (!originalUrl) {
   console.error("[check-p26] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-p26] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -86,7 +86,6 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (invDraftIds.length) {
           await tx.delete(invoiceReviews).where(inArray(invoiceReviews.draftId, invDraftIds));
           await tx.delete(invoiceDrafts).where(inArray(invoiceDrafts.id, invDraftIds));
@@ -110,7 +109,6 @@ async function main() {
         if (locationId) await tx.delete(clientLocations).where(eq(clientLocations.id, locationId));
         if (clientId) await tx.delete(clients).where(eq(clients.id, clientId));
         if (tId) await tx.delete(tenants).where(eq(tenants.id, tId));
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) { console.error("[check-p26] teardown warning:", e); }
   }
@@ -125,7 +123,6 @@ async function main() {
       const pVinvs = (await db.select({ id: vendorInvoices.id }).from(vendorInvoices).where(eq(vendorInvoices.tenantId, pt))).map((v) => v.id);
       const pJobs = (await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.tenantId, pt))).map((j) => j.id);
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (pDrafts.length) {
           await tx.delete(invoiceReviews).where(inArray(invoiceReviews.draftId, pDrafts));
           await tx.delete(invoiceDrafts).where(inArray(invoiceDrafts.id, pDrafts));
@@ -148,7 +145,6 @@ async function main() {
         await tx.delete(clientLocations).where(eq(clientLocations.tenantId, pt));
         await tx.delete(clients).where(eq(clients.tenantId, pt));
         await tx.delete(tenants).where(eq(tenants.id, pt));
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     }
   }

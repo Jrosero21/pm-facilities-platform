@@ -33,9 +33,9 @@ if (PROD) {
   if (RAW.includes("_sandbox")) { console.error("[set-cond] SET_CONDITIONS_PROD=1 but URL is sandbox — abort."); process.exit(2); }
   target = RAW; intendedDb = "jonnyrosero_pm";
 } else {
-  target = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-  if (!target.includes("jonnyrosero_pm_sandbox")) { console.error("[set-cond] could not resolve a *_sandbox DB and SET_CONDITIONS_PROD!=1."); process.exit(2); }
-  intendedDb = "jonnyrosero_pm_sandbox";
+  target = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+  if (!target.includes("pm_sandbox")) { console.error("[set-cond] could not resolve a *_sandbox DB and SET_CONDITIONS_PROD!=1."); process.exit(2); }
+  intendedDb = "pm_sandbox";
 }
 process.env.DATABASE_URL = target;
 console.log(`[set-cond] target: ${target.replace(/\/\/[^@]+@/, "//<creds>@")}  (intended: ${intendedDb})`);
@@ -51,7 +51,7 @@ async function main() {
   const { activateAgentPolicy, resolveAgentPolicy } = await import("@/server/agents/config/policies");
   const { conditionsSchema, parseConditions } = await import("@/server/agents/config/conditions");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   if ((dbRows[0]?.db ?? "") !== intendedDb) { console.error(`[set-cond] ABORT: connected "${dbRows[0]?.db}" != "${intendedDb}".`); process.exit(2); }
   console.log("[set-cond] connected DB confirmed:", dbRows[0]?.db);
 

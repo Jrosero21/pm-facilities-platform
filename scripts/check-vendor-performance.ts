@@ -16,8 +16,8 @@ export {};
 // ===== SANDBOX GUARD — module top, before any db import =====
 const originalUrl = process.env.DATABASE_URL;
 if (!originalUrl) { console.error("[vps-check] DATABASE_URL not set"); process.exit(2); }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[vps-check] refusing: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -41,9 +41,9 @@ async function main() {
   // ground-truth backstop: confirm the live connection is sandbox before any write
   const { db } = await import("@/server/db");
   const { sql } = await import("drizzle-orm");
-  // drizzle mysql2 .execute returns [rows, fields]; rows[0].db is DATABASE()
-  const res = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
-  const dbName = res[0]?.[0]?.db ?? "";
+  // drizzle node-postgres .execute returns QueryResult; rows[0].db is current_database()
+  const res = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
+  const dbName = res.rows[0]?.db ?? "";
   if (!/_sandbox$/.test(String(dbName))) {
     console.error("[vps-check] ABORT — connected DB is not *_sandbox:", dbName); process.exit(2);
   }

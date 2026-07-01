@@ -41,12 +41,12 @@ if (APPLY_PROD) {
   intendedDb = "jonnyrosero_pm";
 } else {
   // DEFAULT path: derive the *_sandbox DB; refuse if it doesn't resolve to one.
-  target = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-  if (!target.includes("jonnyrosero_pm_sandbox")) {
+  target = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+  if (!target.includes("pm_sandbox")) {
     console.error("[apply-0057] refusing: could not resolve a *_sandbox DB and APPLY_0057_PROD!=1");
     process.exit(2);
   }
-  intendedDb = "jonnyrosero_pm_sandbox";
+  intendedDb = "pm_sandbox";
 }
 process.env.DATABASE_URL = target;
 console.log(`[apply-0057] target: ${target.replace(/\/\/[^@]+@/, "//<creds>@")}  (intended: ${intendedDb})`);

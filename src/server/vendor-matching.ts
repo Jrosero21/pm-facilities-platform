@@ -74,9 +74,9 @@ export async function findCandidateVendorsForJobByFacets(
   const stateUpper = state.trim().toUpperCase();
   // Qualified outer reference. Drizzle renders a bare vendors.id column
   // unqualified inside SELECT-list sql fragments, which is ambiguous against a
-  // subquery table's own `id`; forcing `vendors`.`id` binds correlated
+  // subquery table's own `id`; forcing "vendors"."id" binds correlated
   // subqueries to the outer row.
-  const vid = sql.raw("`vendors`.`id`");
+  const vid = sql.raw('"vendors"."id"');
 
   // Reused fragments. branchActive(x): the contributing row is vendor-wide, or
   // its parent vendor_location is active (refinement A).
@@ -94,7 +94,7 @@ export async function findCandidateVendorsForJobByFacets(
       vendorName: vendors.name,
       vendorType: vendors.vendorType,
       primaryTradeMatch: sql<number>`COALESCE((
-        SELECT MAX(c.is_primary) FROM vendor_trade_coverage c
+        SELECT MAX((c.is_primary)::int) FROM vendor_trade_coverage c
         WHERE c.vendor_id = ${vid} AND c.trade_id = ${tradeId} AND c.status = 'active'
           AND ${tradeBranchActive}
       ), 0)`.as("primaryTradeMatch"),
@@ -109,7 +109,7 @@ export async function findCandidateVendorsForJobByFacets(
         WHERE c.vendor_id = ${vid} AND c.trade_id = ${tradeId} AND c.status = 'active'
       )`,
       geoMatchTypes: sql<string | null>`(
-        SELECT GROUP_CONCAT(DISTINCT a.area_type) FROM vendor_service_areas a
+        SELECT string_agg(DISTINCT a.area_type::text, ',') FROM vendor_service_areas a
         WHERE a.vendor_id = ${vid} AND a.status = 'active' AND ${areaBranchActive} AND ${geoPredicate}
       )`,
       tightestGeoRank: sql<number>`(

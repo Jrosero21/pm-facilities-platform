@@ -11,14 +11,14 @@ export {};
 // -------- Sandbox guard + capture flag (BEFORE any DB/storage import) --------
 // Lifted verbatim from scripts/check-phase-20.ts:23-37 — the proven sandbox convention.
 // .env.local's DATABASE_URL points at the live `jonnyrosero_pm`; we swap to the separate
-// `jonnyrosero_pm_sandbox` DB here, before @/server/db reads the env var at import.
+// `pm_sandbox` DB here, before @/server/db reads the env var at import.
 const originalUrl = process.env.DATABASE_URL;
 if (!originalUrl) {
   console.error("[cf-20-1] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[cf-20-1] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -63,9 +63,7 @@ async function main() {
 
   async function teardown() {
     // children-first; this table is a leaf, but keep the FK_CHECKS=0 discipline
-    await db.execute("SET FOREIGN_KEY_CHECKS=0" as any).catch(() => {});
     await db.delete(jobAttachments).where(inArray(jobAttachments.id, allIds));
-    await db.execute("SET FOREIGN_KEY_CHECKS=1" as any).catch(() => {});
   }
 
   await teardown(); // pre-clean any prior run
@@ -84,7 +82,6 @@ async function main() {
   // Synthetic tenant/job ids are intentional: the readers under test only SELECT from
   // job_attachments (no joins to tenants/jobs), so the FK relationship is irrelevant here.
   // Disable FK checks around the insert, mirroring the teardown's discipline.
-  await db.execute("SET FOREIGN_KEY_CHECKS=0" as any).catch(() => {});
   await db.insert(jobAttachments).values([
     { id: pStored,    tenantId: tA, jobId: jobA, title: "after",  storageKey: storedKey, createdAt: new Date(now),          ...base },
     { id: pOlder,     tenantId: tA, jobId: jobA, title: "before", storageKey: "tenant/A/job/A/attachment/older.jpg",  createdAt: new Date(now - 60000),  ...base },
@@ -93,7 +90,6 @@ async function main() {
     { id: pDoc,       tenantId: tA, jobId: jobA, title: "a-doc",  storageKey: "tenant/A/job/A/attachment/doc.pdf",    createdAt: new Date(now),          ...base, attachmentType: "document" as const, fileMimeType: "application/pdf" },
     { id: pTenantB,   tenantId: tB, jobId: jobB, title: "bphoto", storageKey: "tenant/B/job/B/attachment/b.jpg",      createdAt: new Date(now),          ...base },
   ] as any);
-  await db.execute("SET FOREIGN_KEY_CHECKS=1" as any).catch(() => {});
 
   // Put the stored photo's bytes into the capture store so getSignedUrl can sign the key.
   // The capture provider signs ONLY keys put() this process (in-memory Map) — without this,

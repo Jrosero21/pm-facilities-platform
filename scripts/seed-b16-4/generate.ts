@@ -18,8 +18,8 @@ if (!originalUrl) {
   console.error("[b16.4-seed] DATABASE_URL not set — refusing to run.");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[b16.4-seed] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }

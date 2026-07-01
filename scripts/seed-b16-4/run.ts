@@ -21,8 +21,8 @@ if (!originalUrl) {
   console.error("[b16.4-seed] DATABASE_URL not set — refusing to run.");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[b16.4-seed] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -56,9 +56,9 @@ import { writeTimelines } from "./timeline";
  */
 async function assertSandboxConnection(): Promise<void> {
   const { db } = await import("@/server/db");
-  const [rows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [
-    { db: string }[],
-  ];
+  const { rows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as {
+    rows: { db: string }[];
+  };
   const dbName = rows[0]?.db ?? "";
   if (!/_sandbox$/.test(dbName)) {
     console.error(`[b16.4-seed] ABORT: connected DB is "${dbName}", not a *_sandbox DB. Refusing to write.`);
@@ -113,14 +113,12 @@ async function teardown(): Promise<void> {
     jobVendorAssignments, jobStatusHistory, jobEvents, jobPriorityHistory, jobTradeHistory,
     vendorTradeCoverage, auditLogs, tenantJobSequences, jobs, vendors, clientLocations, clients,
   ];
-  await db.execute(sql`SET FOREIGN_KEY_CHECKS=0`);
   try {
     for (const tbl of tenantScoped) {
       await db.delete(tbl).where(eq(tbl.tenantId, tenantId));
     }
     await db.delete(tenants).where(eq(tenants.id, tenantId)); // the tenant itself (no tenant_id)
   } finally {
-    await db.execute(sql`SET FOREIGN_KEY_CHECKS=1`);
   }
   console.log(`[b16.4-seed] teardown complete: ${vendorCount} vendors, ${assignmentCount} assignments + all job/presence/history/audit rows under the seed tenant removed.`);
 }

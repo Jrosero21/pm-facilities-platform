@@ -19,8 +19,8 @@ import assert from "node:assert/strict";
 
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[k3b1] DATABASE_URL not set."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) { console.error("[k3b1] refusing: not *_sandbox."); process.exit(2); }
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) { console.error("[k3b1] refusing: not *_sandbox."); process.exit(2); }
 process.env.DATABASE_URL = sandboxUrl;
 console.log(`[k3b1] sandbox target confirmed: ${sandboxUrl.replace(/\/\/[^@]+@/, "//<creds>@")}`);
 
@@ -75,7 +75,7 @@ async function main() {
   const { runScopeGenerator } = await import("@/server/agents/scope-generator");
   const { setTenantLlmKey } = await import("@/server/security/llm-keys");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   if (!/_sandbox$/.test(dbRows[0]?.db ?? "")) { console.error("[k3b1] ABORT: not *_sandbox."); process.exit(2); }
   console.log("[k3b1] connected DB confirmed:", dbRows[0]?.db);
 
@@ -91,13 +91,11 @@ async function main() {
     const runIds = jIds.length ? (await db.select({ id: agentRuns.id }).from(agentRuns).where(inArray(agentRuns.jobId, jIds))).map((r) => r.id) : [];
     const draftIds = jIds.length ? (await db.select({ id: jobScopeDrafts.id }).from(jobScopeDrafts).where(inArray(jobScopeDrafts.jobId, jIds))).map((d) => d.id) : [];
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (jIds.length) await tx.delete(jobScopeSteps).where(inArray(jobScopeSteps.jobId, jIds));
       if (draftIds.length) { await tx.delete(jobScopeReviews).where(inArray(jobScopeReviews.draftId, draftIds)); await tx.delete(jobScopeDrafts).where(inArray(jobScopeDrafts.id, draftIds)); }
       if (runIds.length) { await tx.delete(agentDecisions).where(inArray(agentDecisions.agentRunId, runIds)); await tx.delete(agentToolCalls).where(inArray(agentToolCalls.agentRunId, runIds)); await tx.delete(agentRuns).where(inArray(agentRuns.id, runIds)); }
       if (jIds.length) { await tx.delete(auditLogs).where(inArray(auditLogs.targetId, jIds)); await tx.delete(jobStatusHistory).where(inArray(jobStatusHistory.jobId, jIds)); await tx.delete(jobEvents).where(inArray(jobEvents.jobId, jIds)); await tx.delete(jobs).where(inArray(jobs.id, jIds)); }
       await tx.delete(tenantLlmKeys).where(eq(tenantLlmKeys.tenantId, tenantId));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     return { jobs: jIds.length, runs: runIds.length };
   }

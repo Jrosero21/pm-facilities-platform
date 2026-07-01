@@ -40,8 +40,8 @@ if (!RAW) { console.error("[seed:agent-config] DATABASE_URL not set"); process.e
 const ALLOW_PROD = process.env.SEED_ALLOW_PROD === "1";
 let target = RAW;
 if (!ALLOW_PROD) {
-  target = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-  if (!target.includes("jonnyrosero_pm_sandbox")) {
+  target = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+  if (!target.includes("pm_sandbox")) {
     console.error("[seed:agent-config] refusing: could not resolve a *_sandbox DB and SEED_ALLOW_PROD!=1");
     process.exit(2);
   }

@@ -35,12 +35,12 @@ if (INSERT_PROD) {
   intendedDb = "jonnyrosero_pm";
 } else {
   // DEFAULT path: derive the *_sandbox DB; refuse if it doesn't resolve to one.
-  target = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-  if (!target.includes("jonnyrosero_pm_sandbox")) {
+  target = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+  if (!target.includes("pm_sandbox")) {
     console.error("[ghosted] refusing: could not resolve a *_sandbox DB and INSERT_GHOSTED_PROD!=1");
     process.exit(2);
   }
-  intendedDb = "jonnyrosero_pm_sandbox";
+  intendedDb = "pm_sandbox";
 }
 process.env.DATABASE_URL = target;
 console.log(`[ghosted] target: ${target.replace(/\/\/[^@]+@/, "//<creds>@")}  (intended: ${intendedDb})`);
@@ -62,7 +62,7 @@ async function main() {
   const { eq, sql } = await import("drizzle-orm");
 
   // Ground-truth: connected DB must equal the intended target.
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (dbName !== intendedDb) {
     console.error(`[ghosted] ABORT: connected DB is "${dbName}", expected "${intendedDb}".`);

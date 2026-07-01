@@ -34,9 +34,9 @@ if (PROD) {
   target = RAW;
   intendedDb = "jonnyrosero_pm";
 } else {
-  target = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-  if (!target.includes("jonnyrosero_pm_sandbox")) { console.error("[set-key] could not resolve a *_sandbox DB and SET_TENANT_KEY_PROD!=1."); process.exit(2); }
-  intendedDb = "jonnyrosero_pm_sandbox";
+  target = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+  if (!target.includes("pm_sandbox")) { console.error("[set-key] could not resolve a *_sandbox DB and SET_TENANT_KEY_PROD!=1."); process.exit(2); }
+  intendedDb = "pm_sandbox";
 }
 process.env.DATABASE_URL = target;
 console.log(`[set-key] target: ${target.replace(/\/\/[^@]+@/, "//<creds>@")}  (intended: ${intendedDb})`);
@@ -63,7 +63,7 @@ async function main() {
   const { sql } = await import("drizzle-orm");
   const { setTenantLlmKey, resolveLlmKey } = await import("@/server/security/llm-keys");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (dbName !== intendedDb) { console.error(`[set-key] ABORT: connected DB is "${dbName}", expected "${intendedDb}".`); process.exit(2); }
   console.log("[set-key] connected DB confirmed:", dbName);

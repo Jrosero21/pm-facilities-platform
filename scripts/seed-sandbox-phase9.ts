@@ -39,8 +39,8 @@ import {
 // ── Sandbox guard (BEFORE dynamically importing db/auth) ──────────────────────────────
 const configured = process.env.DATABASE_URL;
 if (!configured) throw new Error("DATABASE_URL not set");
-const SANDBOX_URL = configured.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!SANDBOX_URL.includes("jonnyrosero_pm_sandbox")) {
+const SANDBOX_URL = configured.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!SANDBOX_URL.includes("pm_sandbox")) {
   throw new Error("seed-sandbox-phase9 refuses to run: resolved URL is not a *_sandbox DB.");
 }
 process.env.DATABASE_URL = SANDBOX_URL; // bind db/auth to sandbox + flow to child env
@@ -66,7 +66,7 @@ function shell(cmd: string, extraEnv: Record<string, string> = {}) {
 // seeded age maps to exactly that dwell regardless of client/server TZ. `secondsAgo` may be negative
 // (= future, for scheduled-start / due dates). Production is unaffected — it uses DB-default
 // CURRENT_TIMESTAMP, never client-supplied historical Dates.
-const agoSql = (secondsAgo: number) => sql`(NOW() - INTERVAL ${Math.round(secondsAgo)} SECOND)`;
+const agoSql = (secondsAgo: number) => sql`(NOW() - (${Math.round(secondsAgo)} * INTERVAL '1 second'))`;
 
 async function main() {
   // ── Stage 1 — schema replay (idempotent) ──
@@ -88,10 +88,9 @@ async function main() {
     // jobs.client_location_id → client_locations, NO ACTION) make InnoDB unable to order a single
     // tenant-cascade's children safely — `DELETE FROM tenants` raises ER_ROW_IS_REFERENCED_2.
     // Gate 1 checked tenant_id FKs only, so it didn't surface this; the 9d.5 populated-reset did.
-    // FOREIGN_KEY_CHECKS=0 makes the explicit deletes order-independent + robust (sandbox-only).
+    // Deletes are ordered child->parent so pg FKs hold with no FK-disable (Neon-safe; sandbox-only).
     // This also deletes audit_logs explicitly (subsumes the SET-NULL pre-delete — no orphans).
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       await tx.delete(vendorCheckIns).where(eq(vendorCheckIns.tenantId, tid));
       await tx.delete(jobVendorAssignments).where(eq(jobVendorAssignments.tenantId, tid));
       await tx.delete(jobStatusHistory).where(eq(jobStatusHistory.tenantId, tid));
@@ -115,7 +114,6 @@ async function main() {
       await tx.delete(userRoles).where(eq(userRoles.tenantId, tid));
       await tx.delete(auditLogs).where(eq(auditLogs.tenantId, tid));
       await tx.delete(tenants).where(eq(tenants.id, tid));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     const after = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.id, tid));
     console.log(`[seed9d] reset: deleted prior seed tenant ${tid} (post-delete tenant rows: ${after.length})`);

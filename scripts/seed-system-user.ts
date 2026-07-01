@@ -12,7 +12,7 @@
  * db is dynamically imported AFTER the URL is in place.
  *
  * Run (sandbox):
- *   export DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.local | cut -d= -f2- | sed -E 's#/jonnyrosero_pm(\?|$)#/jonnyrosero_pm_sandbox\1#')"
+ *   export DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.local | cut -d= -f2- | sed -E 's#/pm(\?|$)#/pm_sandbox\1#')"
  *   npx tsx --env-file=.env.local --conditions=react-server scripts/seed-system-user.ts
  * Run (prod): same without the sandbox override.
  */

@@ -23,8 +23,8 @@ export {};
 // ===== SANDBOX GUARD =====
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[rd-walk] DATABASE_URL not set — refusing."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[rd-walk] refusing: resolved URL is not a *_sandbox DB."); process.exit(2);
 }
 process.env.DATABASE_URL = sandboxUrl;
@@ -54,7 +54,7 @@ async function main() {
   const { activateAgentPolicy } = await import("@/server/agents/config/policies");
   const { conditionsSchema } = await import("@/server/agents/config/conditions");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (!/_sandbox$/.test(dbName)) { console.error(`[rd-walk] ABORT: DB "${dbName}" is not *_sandbox.`); process.exit(2); }
   console.log("[rd-walk] connected DB confirmed:", dbName);
@@ -81,7 +81,6 @@ async function main() {
       .where(and(eq(agentPolicies.tenantId, tenantId), sql`${agentPolicies.clientId} IS NULL`, eq(agentPolicies.agentId, DISPATCH_AGENT_ID)));
     const polCount = polRows.length;
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (runIds.length) { await tx.delete(agentDecisions).where(inArray(agentDecisions.agentRunId, runIds)); await tx.delete(agentRuns).where(inArray(agentRuns.id, runIds)); }
       if (aIds.length) {
         await tx.delete(jobVendorAssignmentStatusHistory).where(inArray(jobVendorAssignmentStatusHistory.assignmentId, aIds));
@@ -102,7 +101,6 @@ async function main() {
       }
       // Remove the walk's autonomy policy — leaves NO enabled autonomous policy on the seed tenant.
       await tx.delete(agentPolicies).where(and(eq(agentPolicies.tenantId, tenantId), eq(agentPolicies.agentId, DISPATCH_AGENT_ID)));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     return { jobs: jIds.length, vendors: vIds.length, assignments: aIds.length, agentRuns: runIds.length, autonomyPolicies: polCount };
   }
@@ -139,7 +137,7 @@ async function main() {
   const a = await createDispatch({ tenantId, jobId: job.id, vendorId: vA, createdByUserId: creatorId, agreedNteAmount: "500.00", dispatchScope: `${MARKER} fix the unit` });
   await sendDispatch({ tenantId, assignmentId: a.id, actorUserId: creatorId });
   // backdate sent_at past the DEFAULT 24h threshold (job has no priority) so CF-19.1a flags it stuck.
-  await db.update(jobVendorAssignments).set({ sentAt: sql`(NOW() - INTERVAL 30 HOUR)` }).where(eq(jobVendorAssignments.id, a.id));
+  await db.update(jobVendorAssignments).set({ sentAt: sql`(NOW() - INTERVAL '30 hour')` }).where(eq(jobVendorAssignments.id, a.id));
 
   console.log(`\n[rd-walk] SEEDED:`);
   console.log(`  job        #${job.jobNumber}  id=${job.id}  (NTE $800)`);

@@ -22,8 +22,8 @@ if (!RAW) {
   console.error("[sent-spread] DATABASE_URL not set — refusing to run.");
   process.exit(2);
 }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[sent-spread] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -58,7 +58,7 @@ async function main() {
   const { isDispatchStuck } = await import("@/server/analytics/dispatch-sla-rules");
 
   // Ground-truth: connected DB must be *_sandbox.
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (!/_sandbox$/.test(dbName)) {
     console.error(`[sent-spread] ABORT: connected DB is "${dbName}", not a *_sandbox DB.`);
@@ -88,7 +88,6 @@ async function main() {
     const aRows = await db.select({ id: jobVendorAssignments.id }).from(jobVendorAssignments).where(inArray(jobVendorAssignments.jobId, jobIds));
     const aIds = aRows.map((r) => r.id);
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (aIds.length) {
         await tx.delete(jobVendorAssignmentStatusHistory).where(inArray(jobVendorAssignmentStatusHistory.assignmentId, aIds));
         await tx.delete(auditLogs).where(inArray(auditLogs.targetId, aIds));
@@ -98,7 +97,6 @@ async function main() {
       await tx.delete(jobStatusHistory).where(inArray(jobStatusHistory.jobId, jobIds));
       await tx.delete(jobEvents).where(inArray(jobEvents.jobId, jobIds));
       await tx.delete(jobs).where(inArray(jobs.id, jobIds));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     console.log(`[sent-spread] teardown: removed ${jobIds.length} jobs + ${aIds.length} assignments (+ history/events/audit) under ${MARKER}.`);
     return jobIds.length;
@@ -163,7 +161,7 @@ async function main() {
       tightestGeoAtDispatch: "national",
       matchedGeoTypesAtDispatch: ["national"],
       complianceStatusAtDispatch: "ok",
-      sentAt: sql.raw(`(NOW() - INTERVAL ${s.hoursAgo} HOUR)`),
+      sentAt: sql.raw(`(NOW() - (${s.hoursAgo} * INTERVAL '1 hour'))`),
     });
     const expectStuck = isDispatchStuck({ statusCode: "SENT", priorityCode: s.priorityCode, dwellSeconds: s.hoursAgo * 3600 });
     created.push({ jobNumber: job.jobNumber, priorityCode: s.priorityCode ?? "(null)", hoursAgo: s.hoursAgo, expectStuck });

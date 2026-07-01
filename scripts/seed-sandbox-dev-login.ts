@@ -24,8 +24,8 @@ if (!RAW) {
   console.error("[dev-login] DATABASE_URL not set — refusing to run.");
   process.exit(2);
 }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[dev-login] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -53,7 +53,7 @@ async function main() {
   const { eq, and, sql } = await import("drizzle-orm");
 
   // Ground-truth: the connected DB must be *_sandbox.
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   const dbName = dbRows[0]?.db ?? "";
   if (!/_sandbox$/.test(dbName)) {
     console.error(`[dev-login] ABORT: connected DB is "${dbName}", not a *_sandbox DB.`);

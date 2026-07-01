@@ -32,8 +32,8 @@ if (!originalUrl) {
   console.error("[check-ai-dispatch] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-ai-dispatch] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -98,7 +98,6 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (createdJobIds.length) {
           const aRows = await tx.select({ id: jobVendorAssignments.id }).from(jobVendorAssignments).where(inArray(jobVendorAssignments.jobId, createdJobIds));
           const aIds = aRows.map((r) => r.id);
@@ -137,7 +136,6 @@ async function main() {
           await tx.delete(tenantAutonomySettings).where(eq(tenantAutonomySettings.tenantId, tAId));
         }
         // NOTE: phase9-seed-tenant is REUSED — never delete the tenant row.
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) { console.error("[check-ai-dispatch] teardown warning:", e); }
   }

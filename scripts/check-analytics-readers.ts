@@ -22,8 +22,8 @@ import * as F from "./seed-sandbox-phase9-fixture";
 
 const configured = process.env.DATABASE_URL;
 if (!configured) throw new Error("[check9d] DATABASE_URL is not set");
-const SANDBOX_URL = configured.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!SANDBOX_URL.includes("jonnyrosero_pm_sandbox")) {
+const SANDBOX_URL = configured.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!SANDBOX_URL.includes("pm_sandbox")) {
   throw new Error("[check9d] refuses to run: resolved DATABASE_URL is not the *_sandbox database");
 }
 process.env.DATABASE_URL = SANDBOX_URL;

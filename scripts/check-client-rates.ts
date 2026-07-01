@@ -21,8 +21,8 @@ if (!originalUrl) {
   console.error("[check-client-rates] DATABASE_URL not set");
   process.exit(2);
 }
-const sandboxUrl = originalUrl.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) {
+const sandboxUrl = originalUrl.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) {
   console.error("[check-client-rates] refusing to run: resolved URL is not a *_sandbox DB.");
   process.exit(2);
 }
@@ -53,14 +53,12 @@ async function main() {
   async function teardown() {
     try {
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (clientA) await tx.delete(clientRates).where(eq(clientRates.clientId, clientA));
         if (tId) {
           await tx.delete(auditLogs).where(eq(auditLogs.tenantId, tId));
           await tx.delete(clients).where(eq(clients.tenantId, tId));
           await tx.delete(tenants).where(eq(tenants.id, tId));
         }
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     } catch (e) { console.error("[check-client-rates] teardown warning:", e); }
   }
@@ -72,12 +70,10 @@ async function main() {
       const pt = prior[0].id;
       const pClients = (await db.select({ id: clients.id }).from(clients).where(eq(clients.tenantId, pt))).map((c) => c.id);
       await db.transaction(async (tx) => {
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
         if (pClients.length) await tx.delete(clientRates).where(inArray(clientRates.clientId, pClients));
         await tx.delete(auditLogs).where(eq(auditLogs.tenantId, pt));
         await tx.delete(clients).where(eq(clients.tenantId, pt));
         await tx.delete(tenants).where(eq(tenants.id, pt));
-        await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
       });
     }
   }

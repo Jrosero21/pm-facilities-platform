@@ -309,7 +309,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
     await tx.execute(sql`
       INSERT INTO tenant_job_sequences (tenant_id, next_number)
       VALUES (${input.tenantId}, 1)
-      ON DUPLICATE KEY UPDATE next_number = next_number
+      ON CONFLICT (tenant_id) DO NOTHING
     `);
 
     // 2. Lock the sequence row and read the number to assign.

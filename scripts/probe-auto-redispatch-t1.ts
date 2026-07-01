@@ -10,8 +10,8 @@ export {};
 
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[t1] DATABASE_URL not set."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) { console.error("[t1] refusing: not *_sandbox."); process.exit(2); }
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) { console.error("[t1] refusing: not *_sandbox."); process.exit(2); }
 process.env.DATABASE_URL = sandboxUrl;
 console.log(`[t1] sandbox target confirmed: ${sandboxUrl.replace(/\/\/[^@]+@/, "//<creds>@")}`);
 
@@ -34,7 +34,7 @@ async function main() {
   const { createDispatch, sendDispatch } = await import("@/server/dispatch");
   const { autoRedispatchForStuckAssignment } = await import("@/server/auto-redispatch");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   if (!/_sandbox$/.test(dbRows[0]?.db ?? "")) { console.error("[t1] ABORT: not *_sandbox."); process.exit(2); }
   console.log("[t1] connected DB confirmed:", dbRows[0]?.db);
 
@@ -108,7 +108,6 @@ async function main() {
     const runRows = jIds.length ? await db.select({ id: agentRuns.id }).from(agentRuns).where(inArray(agentRuns.jobId, jIds)) : [];
     const runIds = runRows.map((r) => r.id);
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (runIds.length) { await tx.delete(agentDecisions).where(inArray(agentDecisions.agentRunId, runIds)); await tx.delete(agentRuns).where(inArray(agentRuns.id, runIds)); }
       if (aIds.length) {
         await tx.delete(jobVendorAssignmentStatusHistory).where(inArray(jobVendorAssignmentStatusHistory.assignmentId, aIds));
@@ -128,7 +127,6 @@ async function main() {
         await tx.delete(jobs).where(inArray(jobs.id, jIds));
       }
       await tx.delete(agentPolicies).where(and(eq(agentPolicies.tenantId, tenantId), eq(agentPolicies.agentId, AGENT_ID)));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
     return { jobs: jIds.length, vendors: vIds.length, assignments: aIds.length };
   }

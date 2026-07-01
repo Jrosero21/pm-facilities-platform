@@ -37,8 +37,8 @@ if (!originalUrl) {
   process.exit(2);
 }
 const sandboxUrl = originalUrl.replace(
-  /\/jonnyrosero_pm(\?|$)/,
-  "/jonnyrosero_pm_sandbox$1",
+  /\/pm(\?|$)/,
+  "/pm_sandbox$1",
 );
 if (sandboxUrl === originalUrl && !originalUrl.includes("_sandbox")) {
   console.error(

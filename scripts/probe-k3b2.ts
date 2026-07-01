@@ -15,8 +15,8 @@ import assert from "node:assert/strict";
 
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[k3b2] DATABASE_URL not set."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) { console.error("[k3b2] refusing: not *_sandbox."); process.exit(2); }
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) { console.error("[k3b2] refusing: not *_sandbox."); process.exit(2); }
 process.env.DATABASE_URL = sandboxUrl;
 console.log(`[k3b2] sandbox target confirmed: ${sandboxUrl.replace(/\/\/[^@]+@/, "//<creds>@")}`);
 
@@ -70,7 +70,7 @@ async function main() {
     jobStatusHistory, jobEvents, auditLogs, agentRuns, agentDecisions, agentPolicies, tenantAutonomySettings, tenantLlmKeys,
   } = await import("@/server/schema");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   if (!/_sandbox$/.test(dbRows[0]?.db ?? "")) { console.error("[k3b2] ABORT: not *_sandbox."); process.exit(2); }
   console.log("[k3b2] connected DB confirmed:", dbRows[0]?.db);
 
@@ -88,7 +88,6 @@ async function main() {
 
   async function teardown() {
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
       if (jobIds.length) {
         const aIds = (await tx.select({ id: jobVendorAssignments.id }).from(jobVendorAssignments).where(inArray(jobVendorAssignments.jobId, jobIds))).map((r) => r.id);
         const runIds = (await tx.select({ id: agentRuns.id }).from(agentRuns).where(inArray(agentRuns.jobId, jobIds))).map((r) => r.id);
@@ -110,7 +109,6 @@ async function main() {
       await tx.delete(agentPolicies).where(and(eq(agentPolicies.tenantId, tenantId), eq(agentPolicies.agentId, AGENT)));
       await tx.delete(tenantAutonomySettings).where(eq(tenantAutonomySettings.tenantId, tenantId));
       await tx.delete(tenantLlmKeys).where(eq(tenantLlmKeys.tenantId, tenantId));
-      await tx.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
     });
   }
   async function seedCloseCall() {

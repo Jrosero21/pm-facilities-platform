@@ -11,8 +11,8 @@ export {};
 // ===== SANDBOX GUARD =====
 const RAW = process.env.DATABASE_URL;
 if (!RAW) { console.error("[k2] DATABASE_URL not set."); process.exit(2); }
-const sandboxUrl = RAW.replace(/\/jonnyrosero_pm(\?|$)/, "/jonnyrosero_pm_sandbox$1");
-if (!sandboxUrl.includes("jonnyrosero_pm_sandbox")) { console.error("[k2] refusing: not *_sandbox."); process.exit(2); }
+const sandboxUrl = RAW.replace(/\/pm(\?|$)/, "/pm_sandbox$1");
+if (!sandboxUrl.includes("pm_sandbox")) { console.error("[k2] refusing: not *_sandbox."); process.exit(2); }
 process.env.DATABASE_URL = sandboxUrl;
 console.log(`[k2] sandbox target confirmed: ${sandboxUrl.replace(/\/\/[^@]+@/, "//<creds>@")}`);
 
@@ -30,7 +30,7 @@ async function main() {
   const { eq, and, sql } = await import("drizzle-orm");
   const { resolveLlmKey, setTenantLlmKey } = await import("@/server/security/llm-keys");
 
-  const [dbRows] = (await db.execute(sql`SELECT DATABASE() AS db`)) as unknown as [{ db: string }[]];
+  const { rows: dbRows } = (await db.execute(sql`SELECT current_database() AS db`)) as unknown as { rows: { db: string }[] };
   if (!/_sandbox$/.test(dbRows[0]?.db ?? "")) { console.error("[k2] ABORT: not *_sandbox."); process.exit(2); }
   console.log("[k2] connected DB confirmed:", dbRows[0]?.db);
 
