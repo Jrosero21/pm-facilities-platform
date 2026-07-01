@@ -222,12 +222,15 @@ async function main() {
     check("D1b: VARIANT time unit ('hrs') → fills 75.00 (flexible case-insensitive recognition), provenance + vendor ref 60",
       aHrs?.unitPrice === "75.00" && aHrs?.markupPercent == null && aHrs?.tradeId === handy.id && aHrs?.vendorUnitPrice === "60.00",
       JSON.stringify({ up: aHrs?.unitPrice, tr: aHrs?.tradeId === handy.id, vr: aHrs?.vendorUnitPrice }));
-    check("Dbare: BARE quantity (qty=4, unit=null, no time unit) → BLANK (quantity alone NEVER fills — the operator's real vendor data case), vendor ref 80",
-      aBare?.unitPrice === "" && aBare?.suggestedUnitPrice == null && aBare?.tradeId == null && aBare?.vendorUnitPrice === "80.00",
+    // CF-27.15: a bare/lump labor line with a rate ON FILE (hours unknown) stays BLANK-priced but
+    // CARRIES agreedRate + tradeId (never suggestedUnitPrice), so the review can offer "enter hours →
+    // agreed rate". So tradeId === handy.id here (NOT null); the blank-price invariant is what matters.
+    check("Dbare: BARE quantity (qty=4, unit=null, no time unit) → BLANK price; CF-27.15 carries tradeId (rate on file), no suggestion, vendor ref 80",
+      aBare?.unitPrice === "" && aBare?.suggestedUnitPrice == null && aBare?.tradeId === handy.id && aBare?.vendorUnitPrice === "80.00",
       JSON.stringify({ up: aBare?.unitPrice, sug: aBare?.suggestedUnitPrice, tr: aBare?.tradeId, vr: aBare?.vendorUnitPrice }));
-    check("D2: rate_sheet lumped labor (qty=1, no time unit) → unit_price BLANK, no suggestion, vendor ref 300",
-      aLump?.unitPrice === "" && aLump?.suggestedUnitPrice == null && aLump?.tradeId == null && aLump?.vendorUnitPrice === "300.00",
-      JSON.stringify({ up: aLump?.unitPrice, sug: aLump?.suggestedUnitPrice, vr: aLump?.vendorUnitPrice }));
+    check("D2: rate_sheet lumped labor (qty=1, no time unit) → unit_price BLANK, no suggestion, CF-27.15 tradeId carried, vendor ref 300",
+      aLump?.unitPrice === "" && aLump?.suggestedUnitPrice == null && aLump?.tradeId === handy.id && aLump?.vendorUnitPrice === "300.00",
+      JSON.stringify({ up: aLump?.unitPrice, sug: aLump?.suggestedUnitPrice, tr: aLump?.tradeId, vr: aLump?.vendorUnitPrice }));
     check("D3: rate_sheet materials → unit_price BLANK, markup null, vendor ref 50",
       aMat?.unitPrice === "" && aMat?.markupPercent == null && aMat?.vendorUnitPrice === "50.00" && aMat?.tradeId == null,
       JSON.stringify({ up: aMat?.unitPrice, mk: aMat?.markupPercent, vr: aMat?.vendorUnitPrice }));
