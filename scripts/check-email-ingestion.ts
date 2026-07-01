@@ -216,16 +216,16 @@ async function main() {
       rC.outcome === "duplicate_flagged" && inCRow?.processingStatus === "duplicate_flagged" && draftsAfterC === draftsBeforeC);
     check("C2: the duplicate inbound row still exists (stored, not hard-deleted)", !!inCRow);
     const dedupIdx = await db.execute(sql`
-      SELECT NON_UNIQUE FROM information_schema.STATISTICS
-      WHERE TABLE_SCHEMA = 'pm_sandbox'
-        AND TABLE_NAME = 'inbound_emails'
-        AND INDEX_NAME = 'inbound_emails_tenant_message_idx'
+      SELECT (NOT i.indisunique) AS non_unique
+      FROM pg_index i
+      JOIN pg_class c ON c.oid = i.indexrelid
+      WHERE c.relname = 'inbound_emails_tenant_message_idx'
       LIMIT 1
     `);
-    // mysql2 execute → [rows, fields]; NON_UNIQUE=1 means non-unique (flag-don't-reject).
-    const dedupRows = (dedupIdx as unknown as [Array<{ NON_UNIQUE: number }>, unknown])[0];
-    check("C3: inbound_emails_tenant_message_idx is NON_UNIQUE=1 (OQ-13.4 regression guard)",
-      dedupRows.length === 1 && Number(dedupRows[0].NON_UNIQUE) === 1);
+    // pg node-postgres → QueryResult.rows; non_unique=true means non-unique (flag-don't-reject).
+    const dedupRows = (dedupIdx as unknown as { rows: Array<{ non_unique: boolean }> }).rows;
+    check("C3: inbound_emails_tenant_message_idx is non-unique (OQ-13.4 regression guard)",
+      dedupRows.length === 1 && dedupRows[0].non_unique === true);
 
     // ════════ D. APPROVE happy-path (HAND-RESOLVED) ════════
     console.log("\n[D] approve happy-path (hand-resolved draft)");
@@ -301,18 +301,20 @@ async function main() {
     // ════════ F. D-7 SCHEMA INVARIANT ════════
     console.log("\n[F] D-7 config-only parser rules");
     const cols = await db.execute(sql`
-      SELECT COLUMN_NAME FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = 'pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'email_parser_rules'
     `);
-    const colRows = (cols as unknown as [Array<{ COLUMN_NAME: string }>, unknown])[0];
-    const colNames = colRows.map((r) => r.COLUMN_NAME.toLowerCase());
+    const colRows = (cols as unknown as { rows: Array<{ column_name: string }> }).rows;
+    const colNames = colRows.map((r) => r.column_name.toLowerCase());
     const fkConstraints = await db.execute(sql`
-      SELECT REFERENCED_TABLE_NAME FROM information_schema.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = 'pm_sandbox' AND TABLE_NAME = 'email_parser_rules'
-        AND REFERENCED_TABLE_NAME IS NOT NULL
+      SELECT ccu.table_name AS referenced_table_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+      WHERE tc.constraint_type = 'FOREIGN KEY'
+        AND tc.table_schema = 'public' AND tc.table_name = 'email_parser_rules'
     `);
-    const fkRows = (fkConstraints as unknown as [Array<{ REFERENCED_TABLE_NAME: string }>, unknown])[0];
-    const refsClients = fkRows.some((r) => r.REFERENCED_TABLE_NAME === "clients");
+    const fkRows = (fkConstraints as unknown as { rows: Array<{ referenced_table_name: string }> }).rows;
+    const refsClients = fkRows.some((r) => r.referenced_table_name === "clients");
     const hasClientCol = colNames.some((c) => c === "client_id" || c.includes("client"));
     check("F1: email_parser_rules is config-only — no client_id column, no FK to clients (D-7)",
       !hasClientCol && !refsClients);

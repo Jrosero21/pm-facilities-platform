@@ -152,13 +152,13 @@ export async function computeVendorPerformanceScores(
   // raw rates per group
   const raw = groupList.map((g) => {
     const completion = g.total > 0 ? g.completed / g.total : 0;
-    const onTime = g.completed > 0 ? g.onTime / g.completed : 0;
-    return { ...g, completion, onTime, n: g.total };
+    const onTimeRate = g.completed > 0 ? g.onTime / g.completed : 0;
+    return { ...g, completion, onTimeRate, onTimeCount: g.onTime, n: g.total };
   });
 
   // ---- population means (over groups) ----
   const popMeanCompletion = raw.length ? raw.reduce((s, r) => s + r.completion, 0) / raw.length : 0;
-  const popMeanOnTime = raw.length ? raw.reduce((s, r) => s + r.onTime, 0) / raw.length : 0;
+  const popMeanOnTime = raw.length ? raw.reduce((s, r) => s + r.onTimeRate, 0) / raw.length : 0;
 
   // ---- PASS 2: shrinkage + composite ----
   const shrink = (rawRate: number, n: number, mean: number) =>
@@ -167,7 +167,7 @@ export async function computeVendorPerformanceScores(
   const now = new Date();
   const toInsert = raw.map((r) => {
     const shrunkCompletion = shrink(r.completion, r.n, popMeanCompletion);
-    const shrunkOnTime = shrink(r.onTime, r.n, popMeanOnTime);
+    const shrunkOnTime = shrink(r.onTimeRate, r.n, popMeanOnTime);
     const composite = W_COMPLETION * shrunkCompletion + W_ON_TIME * shrunkOnTime;
     return {
       tenantId,
@@ -175,9 +175,9 @@ export async function computeVendorPerformanceScores(
       tradeId: r.tradeId,
       totalDispatches: r.total,
       jobsCompleted: r.completed,
-      jobsOnTime: r.onTime,
+      jobsOnTime: r.onTimeCount,
       completionRate: (r.completion * 100).toFixed(2),   // decimal(5,2) as 0..100
-      onTimeRate: (r.onTime * 100).toFixed(2),
+      onTimeRate: (r.onTimeRate * 100).toFixed(2),
       score: (composite * 100).toFixed(2),               // decimal(6,2) as 0..100
       avgRating: null,
       computedAt: now,

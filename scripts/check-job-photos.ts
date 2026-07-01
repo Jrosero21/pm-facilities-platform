@@ -40,6 +40,7 @@ function check(name: string, cond: boolean, detail?: unknown) {
 async function main() {
   const { db } = await import("@/server/db");
   const { jobAttachments } = await import("@/server/schema/job-details");
+  const { tenants, clients, clientLocations, jobs, jobStatuses } = await import("@/server/schema");
   const { listJobPhotos, getJobPhotoUrl } = await import("@/server/job-attachments");
   const { and, eq, inArray } = await import("drizzle-orm");
 
@@ -62,11 +63,27 @@ async function main() {
   const allIds = [pStored, pTitleOnly, pArchived, pOlder, pDoc, pTenantB];
 
   async function teardown() {
-    // children-first; this table is a leaf, but keep the FK_CHECKS=0 discipline
+    // children-first ordered deletes (Neon-safe; pg enforces the attachment->job->... FKs).
     await db.delete(jobAttachments).where(inArray(jobAttachments.id, allIds));
+    await db.delete(jobs).where(inArray(jobs.id, [jobA, jobB]));
+    await db.delete(clientLocations).where(inArray(clientLocations.tenantId, [tA, tB]));
+    await db.delete(clients).where(inArray(clients.tenantId, [tA, tB]));
+    await db.delete(tenants).where(inArray(tenants.id, [tA, tB]));
   }
 
   await teardown(); // pre-clean any prior run
+
+  // Seed the real parent chain so the attachment FKs (tenant_id, job_id) resolve — pg enforces
+  // them (MySQL did not). Each tenant gets one client + location + job under a global job status.
+  const [anyStatus] = await db.select({ id: jobStatuses.id }).from(jobStatuses).limit(1);
+  if (!anyStatus) { console.error("HARNESS SETUP: no global job_statuses — run the base seed first"); process.exit(2); }
+  let jn = 9000;
+  for (const [t, j] of [[tA, jobA], [tB, jobB]] as const) {
+    await db.insert(tenants).values({ id: t, slug: `jp-${t}`, name: `JobPhotos ${t}` });
+    await db.insert(clients).values({ id: `${t}-client`, tenantId: t, name: "JP Client" });
+    await db.insert(clientLocations).values({ id: `${t}-loc`, tenantId: t, clientId: `${t}-client`, name: "Loc", addressLine1: "1 St", city: "X", stateProvince: "NV", postalCode: "89101" });
+    await db.insert(jobs).values({ id: j, tenantId: t, jobNumber: ++jn, clientId: `${t}-client`, clientLocationId: `${t}-loc`, currentStatusId: anyStatus.id, problemDescription: "job-photos harness" });
+  }
 
   const base = {
     attachmentType: "photo" as const,
@@ -79,9 +96,8 @@ async function main() {
   };
 
   const now = Date.now();
-  // Synthetic tenant/job ids are intentional: the readers under test only SELECT from
-  // job_attachments (no joins to tenants/jobs), so the FK relationship is irrelevant here.
-  // Disable FK checks around the insert, mirroring the teardown's discipline.
+  // Attachments reference the real tenant/job rows seeded above (pg enforces the FKs; the readers
+  // under test still only SELECT from job_attachments — the parents just satisfy the constraints).
   await db.insert(jobAttachments).values([
     { id: pStored,    tenantId: tA, jobId: jobA, title: "after",  storageKey: storedKey, createdAt: new Date(now),          ...base },
     { id: pOlder,     tenantId: tA, jobId: jobA, title: "before", storageKey: "tenant/A/job/A/attachment/older.jpg",  createdAt: new Date(now - 60000),  ...base },
