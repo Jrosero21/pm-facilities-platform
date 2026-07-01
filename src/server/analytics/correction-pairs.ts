@@ -154,8 +154,8 @@ export async function scopeCorrectionPairs(tenantId: string): Promise<Correction
     .select({
       draftId: jobScopeDrafts.id,
       agentRunId: jobScopeDrafts.agentRunId,
-      draftContent: sql<string>`CAST(${jobScopeDrafts.proposedSteps} AS CHAR)`,
-      editedContent: sql<string | null>`CAST(${jobScopeReviews.editedSteps} AS CHAR)`,
+      draftContent: sql<string>`CAST(${jobScopeDrafts.proposedSteps} AS text)`,
+      editedContent: sql<string | null>`CAST(${jobScopeReviews.editedSteps} AS text)`,
       decision: jobScopeReviews.decision,
       reviewedAt: jobScopeReviews.reviewedAt,
       createdAt: jobScopeReviews.createdAt,
@@ -181,8 +181,8 @@ export async function invoiceCorrectionPairs(tenantId: string): Promise<Correcti
     .select({
       draftId: invoiceDrafts.id,
       agentRunId: invoiceDrafts.agentRunId,
-      draftContent: sql<string>`CAST(${invoiceDrafts.proposedInvoice} AS CHAR)`,
-      editedContent: sql<string | null>`CAST(${invoiceReviews.editedContent} AS CHAR)`,
+      draftContent: sql<string>`CAST(${invoiceDrafts.proposedInvoice} AS text)`,
+      editedContent: sql<string | null>`CAST(${invoiceReviews.editedContent} AS text)`,
       decision: invoiceReviews.decision,
       reviewedAt: invoiceReviews.reviewedAt,
       createdAt: invoiceReviews.createdAt,
@@ -214,8 +214,8 @@ export async function proposalCorrectionPairs(tenantId: string): Promise<Correct
     .select({
       draftId: proposalDrafts.id, // satisfies latestReviewPerDraft<{ draftId, createdAt }>
       agentRunId: proposalDrafts.agentRunId,
-      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS CHAR)`,
-      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS CHAR)`,
+      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS text)`,
+      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS text)`,
       decision: proposalReviews.decision,
       reviewedAt: proposalReviews.reviewedAt,
       createdAt: proposalReviews.createdAt,

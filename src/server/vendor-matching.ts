@@ -165,7 +165,7 @@ export async function findCandidateVendorsForJobByFacets(
     // Phase 22: preference LEADS (preferred vendors first, lower priority wins);
     // the existing three keys are the unchanged tiebreak tail.
     .orderBy(
-      sql`(preferenceRank IS NULL) ASC, preferenceRank ASC, primaryTradeMatch DESC, tightestGeoRank ASC, ${vendors.name} ASC`,
+      sql`"preferenceRank" ASC NULLS LAST, "primaryTradeMatch" DESC, "tightestGeoRank" ASC, ${vendors.name} ASC`,
     );
 
   return rows.map((r) => {

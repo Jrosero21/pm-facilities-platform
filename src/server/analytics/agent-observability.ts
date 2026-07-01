@@ -47,8 +47,8 @@ export async function agentVolumeByAgent(tenantId: string): Promise<AgentVolumeR
     .select({
       agentId: agentRuns.agentId,
       total: count(),
-      succeeded: sql<number>`SUM(${agentRuns.status} = 'succeeded')`,
-      failed: sql<number>`SUM(${agentRuns.status} = 'failed')`,
+      succeeded: sql<number>`SUM(CASE WHEN ${agentRuns.status} = 'succeeded' THEN 1 ELSE 0 END)`,
+      failed: sql<number>`SUM(CASE WHEN ${agentRuns.status} = 'failed' THEN 1 ELSE 0 END)`,
       inputTokens: sql<number>`COALESCE(SUM(COALESCE(${agentRuns.inputTokens}, 0)), 0)`,
       outputTokens: sql<number>`COALESCE(SUM(COALESCE(${agentRuns.outputTokens}, 0)), 0)`,
     })
@@ -79,9 +79,9 @@ export async function agentDispositionBreakdown(tenantId: string): Promise<Agent
   const rows = await db
     .select({
       agentId: agentRuns.agentId,
-      queuedForReview: sql<number>`SUM(${agentDecisions.disposition} = 'queued_for_review')`,
-      autoExecuted: sql<number>`SUM(${agentDecisions.disposition} = 'auto_executed')`,
-      policyBlocked: sql<number>`SUM(${agentDecisions.disposition} = 'policy_blocked')`,
+      queuedForReview: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'queued_for_review' THEN 1 ELSE 0 END)`,
+      autoExecuted: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'auto_executed' THEN 1 ELSE 0 END)`,
+      policyBlocked: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'policy_blocked' THEN 1 ELSE 0 END)`,
     })
     .from(agentDecisions)
     .innerJoin(agentRuns, eq(agentDecisions.agentRunId, agentRuns.id))
@@ -107,9 +107,9 @@ export type DispatchAutonomyBreakdown = {
 export async function dispatchAutonomyBreakdown(tenantId: string): Promise<DispatchAutonomyBreakdown> {
   const rows = await db
     .select({
-      autoExecuted: sql<number>`SUM(${agentDecisions.disposition} = 'auto_executed')`,
-      policyBlocked: sql<number>`SUM(${agentDecisions.disposition} = 'policy_blocked')`,
-      queuedForReview: sql<number>`SUM(${agentDecisions.disposition} = 'queued_for_review')`,
+      autoExecuted: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'auto_executed' THEN 1 ELSE 0 END)`,
+      policyBlocked: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'policy_blocked' THEN 1 ELSE 0 END)`,
+      queuedForReview: sql<number>`SUM(CASE WHEN ${agentDecisions.disposition} = 'queued_for_review' THEN 1 ELSE 0 END)`,
     })
     .from(agentDecisions)
     .innerJoin(agentRuns, eq(agentDecisions.agentRunId, agentRuns.id))
@@ -206,8 +206,8 @@ export async function proposalApproveAsIs(tenantId: string): Promise<ApproveAsIs
     .select({
       draftId: proposalReviews.proposalDraftId,
       decision: proposalReviews.decision,
-      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS CHAR)`,
-      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS CHAR)`,
+      draftContent: sql<string>`CAST(${proposalDrafts.proposedProposal} AS text)`,
+      editedContent: sql<string | null>`CAST(${proposalReviews.editedContent} AS text)`,
       createdAt: proposalReviews.createdAt,
     })
     .from(proposalDrafts)
