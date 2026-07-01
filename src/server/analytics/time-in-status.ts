@@ -41,7 +41,7 @@ export async function timeInStatusDistribution(tenantId: string): Promise<TimeIn
       statusId: jobStatusHistory.fromStatusId,
       dwellS: sql<
         number | null
-      >`TIMESTAMPDIFF(SECOND, LAG(${jobStatusHistory.createdAt}) OVER (PARTITION BY ${jobStatusHistory.jobId} ORDER BY ${jobStatusHistory.createdAt}, ${jobStatusHistory.id}), ${jobStatusHistory.createdAt})`,
+      >`EXTRACT(EPOCH FROM (${jobStatusHistory.createdAt} - LAG(${jobStatusHistory.createdAt}) OVER (PARTITION BY ${jobStatusHistory.jobId} ORDER BY ${jobStatusHistory.createdAt}, ${jobStatusHistory.id})))::int`,
     })
     .from(jobStatusHistory)
     .where(eq(jobStatusHistory.tenantId, tenantId));

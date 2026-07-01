@@ -51,7 +51,7 @@ export async function tenantTokensLast24h(tenantId: string): Promise<number> {
     .where(
       and(
         eq(agentRuns.tenantId, tenantId),
-        sql`${agentRuns.createdAt} >= NOW() - INTERVAL 1 DAY`,
+        sql`${agentRuns.createdAt} >= NOW() - INTERVAL '1 day'`,
       ),
     );
   return Number(r[0]?.total ?? 0);
@@ -158,7 +158,7 @@ async function autonomyCommittedJobIds(tenantId: string, window: "day" | "all"):
         isNotNull(jobVendorAssignments.sentAt), // SENT — the commit moment
         notInArray(dispatchAssignmentStatuses.code, ["DECLINED", "CANCELLED", "GHOSTED"]), // exclude terminal-failed (incl. GHOSTED); WORK_COMPLETE counts
         window === "day"
-          ? sql`${jobVendorAssignments.sentAt} >= NOW() - INTERVAL 1 DAY`
+          ? sql`${jobVendorAssignments.sentAt} >= NOW() - INTERVAL '1 day'`
           : undefined,
       ),
     );

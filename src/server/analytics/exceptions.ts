@@ -71,7 +71,7 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
       assignmentId: jobVendorAssignments.id,
       vendorName: vendors.name,
       sentAt: jobVendorAssignments.sentAt,
-      ageSeconds: sql<number>`TIMESTAMPDIFF(SECOND, COALESCE(${jobVendorAssignments.sentAt}, ${jobVendorAssignments.createdAt}), NOW())`,
+      ageSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - COALESCE(${jobVendorAssignments.sentAt}, ${jobVendorAssignments.createdAt})))::int`,
       priorityCode: priorities.code,
     })
     .from(jobVendorAssignments)

@@ -326,7 +326,7 @@ export async function agentLatencyDistribution(
 ): Promise<ReturnType<typeof summarizeSeconds>> {
   const rows = await db
     .select({
-      seconds: sql<number | null>`TIMESTAMPDIFF(SECOND, ${agentRuns.startedAt}, ${agentRuns.completedAt})`,
+      seconds: sql<number | null>`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt}))::int`,
     })
     .from(agentRuns)
     .where(and(eq(agentRuns.tenantId, tenantId), isNotNull(agentRuns.completedAt)));

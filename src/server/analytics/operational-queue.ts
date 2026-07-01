@@ -68,7 +68,7 @@ export async function operationalQueue(tenantId: string, limit = 20): Promise<Qu
       dueAt: jobs.dueAt,
       createdAt: jobs.createdAt,
       currentStatusEnteredAt: sql<string | Date>`${enteredAtExpr}`,
-      ageInCurrentStatusSeconds: sql<number>`TIMESTAMPDIFF(SECOND, ${enteredAtExpr}, NOW())`,
+      ageInCurrentStatusSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - ${enteredAtExpr}))::int`,
       assignmentCount: sql<number>`(SELECT COUNT(*) FROM job_vendor_assignments a WHERE a.job_id = ${jobs.id})`,
       checkInCount: sql<number>`(SELECT COUNT(*) FROM vendor_check_ins v JOIN job_vendor_assignments a ON v.assignment_id = a.id WHERE a.job_id = ${jobs.id})`,
       jobScheduledStartAt: jobs.scheduledStartAt,

@@ -34,7 +34,7 @@ export async function countStalledJobs(
       statusCode: jobStatuses.code,
       // current dwell in seconds — DB-computed (TZ-safe). Fallback to jobs.created_at if (somehow)
       // a job has no status-history rows.
-      dwellSeconds: sql<number>`TIMESTAMPDIFF(SECOND, COALESCE((SELECT MAX(h.created_at) FROM job_status_history h WHERE h.job_id = ${jobs.id}), ${jobs.createdAt}), NOW())`,
+      dwellSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - COALESCE((SELECT MAX(h.created_at) FROM job_status_history h WHERE h.job_id = ${jobs.id}), ${jobs.createdAt})))::int`,
       jobScheduledStartAt: jobs.scheduledStartAt,
       minAssignmentScheduledStartAt: sql<
         string | null
@@ -102,7 +102,7 @@ export async function isJobStalled(
       statusCode: jobStatuses.code,
       isTerminal: jobStatuses.isTerminal,
       // dwell + scheduled-start + check-in subqueries are VERBATIM from countStalledJobs (no drift).
-      dwellSeconds: sql<number>`TIMESTAMPDIFF(SECOND, COALESCE((SELECT MAX(h.created_at) FROM job_status_history h WHERE h.job_id = ${jobs.id}), ${jobs.createdAt}), NOW())`,
+      dwellSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - COALESCE((SELECT MAX(h.created_at) FROM job_status_history h WHERE h.job_id = ${jobs.id}), ${jobs.createdAt})))::int`,
       jobScheduledStartAt: jobs.scheduledStartAt,
       minAssignmentScheduledStartAt: sql<
         string | null

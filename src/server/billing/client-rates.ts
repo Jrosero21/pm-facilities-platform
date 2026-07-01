@@ -246,8 +246,8 @@ export async function resolveClientLaborRate(input: {
   rateType?: RateType;
 }): Promise<string | null> {
   const rateType = input.rateType ?? "hourly";
-  const dateValid = sql`(${clientRates.effectiveDate} is null or ${clientRates.effectiveDate} <= curdate())
-    and (${clientRates.expiryDate} is null or ${clientRates.expiryDate} >= curdate())`;
+  const dateValid = sql`(${clientRates.effectiveDate} is null or ${clientRates.effectiveDate} <= current_date)
+    and (${clientRates.expiryDate} is null or ${clientRates.expiryDate} >= current_date)`;
 
   const tryRung = async (tradeMatch: SQL): Promise<string | null> => {
     const rows = await db

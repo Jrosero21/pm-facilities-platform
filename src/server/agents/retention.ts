@@ -17,7 +17,7 @@ import { agentToolCalls, agentDecisions } from "@/server/schema";
 export const RETENTION_DAYS = 180;
 
 const olderThan = (createdAt: typeof agentToolCalls.createdAt | typeof agentDecisions.createdAt) =>
-  sql`${createdAt} < NOW() - INTERVAL ${sql.raw(String(RETENTION_DAYS))} DAY`;
+  sql`${createdAt} < NOW() - (${sql.raw(String(RETENTION_DAYS))} * INTERVAL '1 day')`;
 
 /** agent_tool_calls aged past the window AND still carrying a tool_input or tool_output payload. */
 export const toolCallsEligible = and(

@@ -29,7 +29,7 @@ export async function timeToDispatchDistribution(tenantId: string): Promise<Disp
       jobId: jobs.id,
       seconds: sql<
         number | null
-      >`TIMESTAMPDIFF(SECOND, ${jobs.createdAt}, MIN(${jobVendorAssignments.createdAt}))`,
+      >`EXTRACT(EPOCH FROM (MIN(${jobVendorAssignments.createdAt}) - ${jobs.createdAt}))::int`,
     })
     .from(jobs)
     .innerJoin(jobVendorAssignments, eq(jobVendorAssignments.jobId, jobs.id))
