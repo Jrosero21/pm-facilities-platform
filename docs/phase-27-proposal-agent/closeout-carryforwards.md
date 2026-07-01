@@ -1266,10 +1266,9 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–4b-3 COMPLETE (branch postgres-migration; …b4b-2 62c61fa, b4b-3 fc2034f). main on MariaDB,
-untouched. ALL CODE-LAYER CONVERSION DONE + app-query layer provably pg-clean (silent CAST truncation fixed,
-proven by result). tsc=0. Remaining: batch 5 (cold full-harness proof) + 6 (infra Neon+Vercel). Batch 5 is now
-UNBLOCKED.
+STATE: batches 0–4b-3 COMPLETE; BATCH 5 RUN: 29/36 harnesses green on Postgres, 7 classified failures (NO
+teardown-ordering issues — all 43 ordered-delete teardowns held; K3b probes pass; tsc=0). main on MariaDB,
+untouched. Remaining: batch 5.1/5.2 (fix the 7) → re-run batch 5 green → batch 6 (infra Neon+Vercel).
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1376,3 +1375,26 @@ still threw 42703; corrected at the execution proof). All proven: CAST by result
 clean). The 4b-3A audit's safe-by-consumption calls held — Number(x)>0 coercions defuse EXISTS-as-number and
 bigint→string; no silent members beyond the 8 CASTs. vendor-matching (5 cumulative fixes across b2/b3) now runs
 end-to-end.
+
+BATCH 5 RUN (not committed — not fully green) — cold full-harness suite on pg: 29/36 PASS. HEADLINE: pg strictness
+is surfacing LATENT bugs MySQL masked (coercion + lax FK) — these are pre-existing defects the engine exposed, not
+migration regressions. Zero teardown-ordering FK violations (the deferred 43 ordered-delete teardowns all held at
+scale — the batch-5 risk did not materialize). K3b probes pass on pg (tenant-key wiring survives). tsc=0.
+The 7 failures classified:
+  REAL APP BUG (1): check-vendor-performance — app writes a fraction (0.857) into integer column jobs_on_time;
+    MySQL silently coerced to 0, pg rejects (22P02). Corrupts vendor scoring (the data that feeds AI dispatch).
+    NEEDS OPERATOR DECISION: is jobs_on_time a COUNT (int, fix the write) or a RATE (should be numeric, fix the column)?
+  HARNESS GAP (2): check-job-photos (inserts attachment w/o seeding parent tenant/job — pg enforces FK, MySQL didn't);
+    check-email-ingestion (uses MySQL information_schema.STATISTICS/.COLUMNS/KEY_COLUMN_USAGE — port to pg_indexes/pg_catalog).
+  LOGIC/TRIAGE (4): check-invoice-rate-sheet, check-job-edit, check-phase-22 (10c preferenceRank audit metadata),
+    check-phase-23 — no SQL errors, assertions on values. LIKELY ROOT CAUSE: pg-driver numeric-as-string (pg returns
+    numeric cols as strings where mysql2 gave numbers) → string-vs-number comparison failures. To confirm as one
+    systematic cause in batch 5.2, not 4 separate bugs.
+Fix plan: 5.1 = the 3 clear-cut (vendor-perf once decided, job-photos parent-seed, email-ingestion pg introspection);
+5.2 = the 4 logic failures (confirm numeric-as-string root cause, likely one fix pattern). Then re-run batch 5 for green.
+
+SETUP NOTES for the batch-5 re-run (cold sandbox recipe): drop/recreate pm_sandbox → drizzle-kit migrate baseline
+→ seed base fixture (seed-sandbox-phase9 provides operator@phase9seed.test + trades incl HANDY + global job/dispatch
+statuses; the check-* harnesses reuse these) → seed-system-user WITH DATABASE_URL overridden to pm_sandbox (it targets
+DATABASE_URL directly, no sandbox derivation — a bare run hits prod pm) → seed-b16-4/run.ts (vendor-performance oracle).
+Then run check-* with --conditions=react-server. Note: macOS has no `timeout` (would exit 127) — run tsx directly.
