@@ -1266,9 +1266,10 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–3 COMPLETE (branch postgres-migration; …b2.5 ce1ffc7, b3 d1c04d8). main on MariaDB,
-untouched. SCHEMA PHYSICALLY BUILT ON POSTGRES (pm + pm_sandbox: 124 tables, 68 enums, 377 FKs, clean
-1-migration ledger, identical). Batches 4–6 pending. tsc = 21 (all TS7053 driver-shape tuple-casts → b4).
+STATE: batches 0–4b-2 COMPLETE (branch postgres-migration; …b4b-1 e14f074, b4b-2 62c61fa). main on MariaDB,
+untouched. App executes on pg (date-math); harness layer pg-ported (sandbox guard proven safe on pg, ordered-
+delete teardowns proven on a populated graph). tsc=0. BLOCKER before batch 5: batch 4b-3 (systematic app-query
+MySQL-ism audit) — 4b-INSPECT's raw-SQL sweep was INCOMPLETE. Then 5 (cold harness proof) + 6 (infra).
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1325,3 +1326,41 @@ clean baseline db/migrations/0000_lush_rockslide.sql (2507 lines: 68 CREATE TYPE
 PG ledger — the historical unreliability was MySQL-ledger-specific) to pm AND pm_sandbox, both exit 0, both
 124 tables / 68 enums / 377 FKs / 1-migration ledger, identical. Batch-2's enum-name uniqueness guard
 validated here — 68 CREATE TYPE applied with zero collision. tsc unchanged at 21 (DB-only batch).
+
+BATCH 4a DONE (8a12112) — tsc 21→0, whole codebase type-checks on Postgres. The 21 TS7053 were NOT
+select-read [rows,fields] sites (the plan's assumption) — they were WRITE-result sites accessing
+result[0].affectedRows (mysql2 [ResultSetHeader] tuple). Correct pg equivalent = result.rowCount (NOT
+.rows — .rows would have silently broken the affected-row logic). 13 files. rowCount is number|null (vs
+mysql2's always-number affectedRows) → 4 sites feeding a >1 comparison got ?? 0 to preserve semantics;
+WHERE-clauses verified driver-invariant (rows-matched==rows-changed) so rowCount is the exact equivalent.
+LESSON: the driver-shape fix was rowCount for writes, not rows for reads — read the actual error/shape,
+not the assumed pattern.
+
+BATCH 4b-1 DONE (e14f074) — MILESTONE: first real execution of app code on Postgres. Converted 12 date-math
+fragments across 9 src/ files (tsc-invisible, inside sql`` casts): 7 TIMESTAMPDIFF(SECOND,a,b)→EXTRACT(EPOCH
+FROM (b-a))::int (sign verified b-a at every site, incl. LAG/MIN window-wrapped ones), 2 curdate()→current_date,
+3 NOW()-INTERVAL n UNIT→NOW()-INTERVAL '1 unit' (retention's parameterized form → NOW()-(n * INTERVAL '1 day')).
+GATE was EXECUTION not tsc: a throwaway probe ran one reader per fragment against local pg (schema-only) — 11/11
+executed clean, empty results, zero dialect errors (a leftover MySQL fragment would have thrown). Probe deleted
+post-verify (ephemeral convention). The batch-1 $onUpdate raw-SQL caveat is effectively RETIRED: only 1 genuinely
+raw UPDATE exists (a one-off prod label-rename not touching updated_at); all 116 app updates go through Drizzle
+where $onUpdate fires. Harness INTERVAL backdating deferred to 4b-2.
+
+BATCH 4b-2 DONE (62c61fa) — harness layer pg-ported, Neon-safe. Sandbox regex 59 sites + db/seeds/ (missed by
+4b-INSPECT, caught at runtime); 6 prod-gated scripts fixed regex-only, prod paths preserved; SELECT DATABASE()→
+current_database() ×22 with abort logic intact; guard tuple-casts→.rows; 108 FOREIGN_KEY_CHECKS wrapper lines
+removed across 46 teardowns → pure ORDERED DELETES (no session_replication_role — Neon-safe); INTERVAL ×5.
+SAFETY GATE proven FIRST: guard aborts on pm, proceeds on pm_sandbox (GUARD_EXIT=0) before any teardown ran.
+Teardowns proven on a POPULATED graph (seed-sandbox-phase9: 35 jobs/23 invoices seeded then ordered-deleted to
+0 rows, zero FK violations) + id-set + largest (30 deletes) — all clean.
+
+CRITICAL FINDING → new BATCH 4b-3 (blocker before batch 5): 4b-INSPECT's raw-SQL sweep scanned only date-math +
+DATABASE(); it MISSED a whole class of app-query MySQL-isms in src/ sql`` fragments. Fixed 4 in 62c61fa
+(ON DUPLICATE KEY UPDATE→ON CONFLICT DO NOTHING in jobs.ts job-number allocation; GROUP_CONCAT→string_agg,
+backtick-quoting→double-quote, MAX(bool)→MAX((.)::int) in vendor-matching.ts). STILL BROKEN: vendor-matching
+"column preferencerank does not exist" (pg lowercases unquoted camelCase aliases; MySQL is case-insensitive).
+The class: (1) identifier case-sensitivity on unquoted camelCase aliases/columns, (2) boolean-vs-int semantics,
+(3) EXISTS-as-sql<number> returning pg boolean not 0/1 — #3 is SILENT (won't error, returns wrong shape). Cannot
+be found by run-and-fix (silent members don't throw) — requires a SYSTEMATIC sweep of every src/ sql`` fragment.
+Batch 4b-3 does this BEFORE batch 5, because batch 5's harness run would pass while silent MySQL-isms return
+wrong results.
