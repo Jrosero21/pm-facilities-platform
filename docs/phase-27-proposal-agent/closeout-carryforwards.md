@@ -1266,9 +1266,9 @@ BATCH SEQUENCE (each: author → prove on local Postgres → halt → report):
   Gate: runs on Neon, deploys to Vercel. Only batch needing accounts.
 - Then: merge postgres-migration → main (EXPLICIT GATE), only after green on the new stack.
 
-STATE: batches 0–4b-3 COMPLETE; BATCH 5 RUN: 29/36 harnesses green on Postgres, 7 classified failures (NO
-teardown-ordering issues — all 43 ordered-delete teardowns held; K3b probes pass; tsc=0). main on MariaDB,
-untouched. Remaining: batch 5.1/5.2 (fix the 7) → re-run batch 5 green → batch 6 (infra Neon+Vercel).
+STATE: batches 0–5.1 COMPLETE (branch postgres-migration; …b5.1 ecaf4f0). main on MariaDB, untouched. Batch 5
+was 29/36; 5.1 fixed 3 (→ 32/36 expected). Remaining: batch 5.2 (4 logic failures — confirm numeric-as-string
+root cause, then fix) → green batch-5 re-run → batch 6 (infra). tsc=0.
 
 BATCH 0 DONE (e039e81, on branch): postgres-migration cut from clean main; pm + pm_sandbox created
 locally (PG 18.4); db.ts mysql2→node-postgres (Pool, no mode); drizzle.config dialect→postgresql
@@ -1398,3 +1398,14 @@ SETUP NOTES for the batch-5 re-run (cold sandbox recipe): drop/recreate pm_sandb
 statuses; the check-* harnesses reuse these) → seed-system-user WITH DATABASE_URL overridden to pm_sandbox (it targets
 DATABASE_URL directly, no sandbox derivation — a bare run hits prod pm) → seed-b16-4/run.ts (vendor-performance oracle).
 Then run check-* with --conditions=react-server. Note: macOS has no `timeout` (would exit 127) — run tsx directly.
+
+BATCH 5.1 DONE (ecaf4f0) — 3 clear-cut batch-5 fixes. FIX 1 (real app bug MySQL masked): vendor-performance.ts
+onTime name-collision — raw.map computed a RATE into a local named `onTime`, {...g, onTime} clobbered the count,
+so jobsOnTime got the rate (0.857 → coerced to 0 on MySQL, always-wrong the whole time). Renamed rate→onTimeRate,
+preserved count as onTimeCount, wrote the count to jobsOnTime. Composite score UNCHANGED (still reads the rate).
+Proven by result: sample jobs_on_time all int, all <= jobs_completed, on_time_rate matches (e.g. 23/27=85.19%),
+zero invariant violations. FIX 2 (harness): check-job-photos now seeds real parent chain (tenants→clients→
+locations→jobs) before attachments (MySQL FK-disable → pg enforces), teardown extended. FIX 3 (harness):
+check-email-ingestion MySQL information_schema.STATISTICS/.COLUMNS/KEY_COLUMN_USAGE → pg pg_index/information_schema
+.columns/table_constraints+constraint_column_usage; tuple-casts→.rows; TABLE_SCHEMA='pm_sandbox'→schema 'public';
+assertions preserved. All 3 pass (tsc=0).
