@@ -1515,3 +1515,32 @@ CARRY-FORWARD (deferred, non-blocking):
 
 Also carry: Neon still at 0000 (needs 0001 quality-floor migration + intake_parser seeds applied before any cloud
 deploy uses these paths). Not urgent — no cloud deploy yet.
+
+---
+
+## vendor_followup_v1 — soft rung-0 chase agent built
+
+New agent (branch phase-vendor-followup, 5d4a3cf, not pushed). Scope/intake-shaped. Fills a real gap in the dispatch
+ladder: the SOFT RUNG-0 chase ("still coming?") that runs BEFORE the existing redispatch rung-1 (ghost→replace) —
+nudges the assigned vendor to save the assignment before burning it. Reuses isDispatchStuck (from
+analytics/dispatch-sla-rules, NOT reimplemented; dwell computed in JS from system sent_at per the datetime rule) to
+confirm the assignment is genuinely stuck-SENT — not-stuck → no draft. Record-don't-apply: writes a
+vendor_followup_drafts row @ pending_review, NEVER sends (0 dispatch_messages writes) and NEVER ghosts/replaces the
+vendor (assignment status stays SENT — that's the operator's separate rung-1). Number-free (no dates/time commitments
+— a nudge, not a reschedule authorization). Tier1. Proven 8/8, tsc=0.
+
+Schema: NEW table vendor_followup_drafts (migration 0002_youthful_tarantula, CREATE TABLE only, applied pm +
+pm_sandbox). Vendor-facing review lane, SEPARATE from client-facing update_rewrite_drafts (untouched) — per the
+vendor≠client-visibility invariant. Has sent_dispatch_message_id (nullable, the send-link analog for when the
+operator-approved chase actually goes out). Files: schema/agents-vendor-followup.ts +
+agents/vendor-followup/{llm,drafts,tools,index}.ts + registry.ts + tiers.ts + agent-config seeds.
+
+DEFERRED (banked, non-blocking):
+- The SEND: operator approves the draft → the chase goes out via dispatch_messages outbound. Host-gated, rides with
+  Vercel. The agent only drafts.
+- The AUTONOMOUS trigger: auto-chase-on-stuck (draft a chase automatically when isDispatchStuck fires) rides with
+  LLM-agent autonomy enablement — same deferred package as quality-bar enforcement. This batch = operator-invoked.
+- No intake/followup correction-pairs source yet → no few-shot for this agent.
+
+Also carry (unchanged): Neon still at 0000 — now needs 0001 (quality floors) AND 0002 (vendor_followup_drafts) +
+the intake_parser & vendor_followup seeds applied before any cloud deploy uses these paths.
