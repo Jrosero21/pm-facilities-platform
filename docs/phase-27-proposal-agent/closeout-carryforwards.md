@@ -1544,3 +1544,32 @@ DEFERRED (banked, non-blocking):
 
 Also carry (unchanged): Neon still at 0000 — now needs 0001 (quality floors) AND 0002 (vendor_followup_drafts) +
 the intake_parser & vendor_followup seeds applied before any cloud deploy uses these paths.
+
+---
+
+## Exception-triage — weighted ranking + recommended-rung annotation (enhancement, no agent)
+
+Enhancement to the EXISTING getExceptions view (branch phase-exception-triage, c1a6e0b, not pushed). NOT an agent,
+NO schema change, NO LLM — the inspection found getExceptions already aggregates 4 exception readers into a ranked
+list live at /notifications (exception-queue.tsx). Two files: analytics/exceptions.ts + exception-queue.tsx.
+
+(a) WEIGHTED TRIAGE SCORE — replaces pure-age sort with triageScore = ageSeconds + stuckBump + priorityBump +
+urgencyBump (DESC). Named/legible bump constants (not inline): STUCK_SORT_BUMP 365d (existing, top band);
+PRIORITY_BUMP_MAX 7d, priorityBumpFromRank = MAX/rank (rank-agnostic: rank1→7d, null→0, from priorities.rank);
+URGENCY_BUMP by tier (stalled 5d / overdue 3d / aged 0). AUDITABLE: each row carries triageComponents
+{ageSeconds,stuckBump,priorityBump,urgencyBump} — ranking is explainable. Base preserved (kinds w/o priority/urgency
+score age+stuck exactly as before). Proven: rank-1 @48h outranks rank-5 @96h (priority overrides age); equal
+priority → older first (age base preserved).
+
+(b) RECOMMENDED-RUNG ANNOTATION — deterministic literal map (no LLM/side-effect) reflecting SHIPPED rungs:
+vendor_not_accepted→chase (rung-0 vendor_followup, then redispatch); nte_increase_requested→nte_review;
+operational→assign_expedite; follow_up_overdue→follow_up. Rendered as a hint CHIP per row (not a button — operator
+still clicks the existing rung controls). It labels the next step; it does NOT fire anything.
+
+Pure read: computing triage creates/modifies nothing (proven — assignments/change_orders unchanged). tsc=0, probe 6/6.
+
+DEFERRED — (c) CLIENT-IMPORTANCE weighting: blocked on a net-new clients.tier column AND an undefined client-tier
+product model (what tiers? who sets them?). Building the column on a guessed model would violate inspect-before-build.
+Revisit when a real client-tier concept is defined.
+
+Sub-thread of the existing exception/notifications surface — bank record, not a phase closeout (no new phase built).
