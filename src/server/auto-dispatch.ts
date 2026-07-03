@@ -8,7 +8,7 @@ import { createDispatch, sendDispatch } from "@/server/dispatch";
 import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { openRun, closeRun, logDecision } from "@/server/agents/runner";
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
-import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config/guardrails";
+import { withinTokenCeilings, withinSpendCeilings, meetsQualityBar } from "@/server/agents/config/guardrails";
 import { parseConditions, evaluatePolicyConditions, type PolicyActionContext } from "@/server/agents/config/conditions";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { getPriority } from "@/server/job-reference";
@@ -273,7 +273,14 @@ export async function autoDispatchDraftForJob(
     conditionsResult = evaluatePolicyConditions(conditions, actionContext);
   }
 
-  const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass;
+  // Quality bar (§2.4 accuracy floor) — the LAST narrowing AND-term. dispatch_router_v1 is
+  // DETERMINISTIC, so this resolves applicable:false / ok:true (N/A — a rule-based pick has no
+  // model confidence; its correctness is the eligibility floor's). Wired for composition parity
+  // with the LLM-agent gates; the router advance is never quality-blocked. No run confidence
+  // exists for the router decision, so confidence is null (unread on the deterministic path).
+  const quality = await meetsQualityBar({ agentId: DISPATCH_AGENT_ID, tenantId, confidence: null, qualityThreshold: resolved.qualityThreshold });
+
+  const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok;
 
   const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
   const decisionMeta = {
@@ -281,6 +288,7 @@ export async function autoDispatchDraftForJob(
     tokenOk: token.ok,
     spend,
     conditions: conditionsResult,
+    quality: { applicable: quality.applicable, effectiveFloor: quality.effectiveFloor },
     vendorId: top.vendorId,
     preferenceRank: top.preferenceRank,
     trackRecordScore: top.trackRecordScore,
@@ -303,7 +311,9 @@ export async function autoDispatchDraftForJob(
               ? "spend_ceiling"
               : !conditionsResult.pass
                 ? `policy_condition:${conditionsResult.failedOn}`
-                : "unknown";
+                : !quality.ok
+                  ? "quality_floor"
+                  : "unknown";
 
     // FIRST-EVER policy_blocked write. This is the EXPECTED gated path (§2.7), not an error:
     // the run SUCCEEDED in reaching a decision; the draft stays for operator review.

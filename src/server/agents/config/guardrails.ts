@@ -4,6 +4,7 @@ import Big from "big.js";
 import { and, eq, isNull, isNotNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
+  agentQualityFloors,
   agentRuns,
   dispatchAssignmentStatuses,
   jobVendorAssignments,
@@ -11,6 +12,7 @@ import {
 } from "@/server/schema";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { roundHalfUp } from "@/server/billing/totals";
+import { isDeterministicAgent, tierForAgent } from "@/server/agents/quality/tiers";
 
 // ── Phase 23 batch 23e — GUARDRAIL METERING (the §2.4 spend-breaker, token half) ──────
 // COMPUTE-ON-READ: no accumulator table. We sum what already happened straight from the
@@ -273,5 +275,84 @@ export async function withinSpendCeilings(
       candidateUnmeasurable: true,
       ok: false,
     };
+  }
+}
+
+// ── Quality-bar — PLATFORM ACCURACY FLOOR (the §2.4 non-overridable quality half) ──────
+// Composed the SAME way as the ceiling predicates at the enforcement site:
+//   permitted = ... && (await meetsQualityBar(...)).ok
+// COMPUTE-ON-READ (reads the platform floor row live) + FAIL-TOWARD-GATED (§2.1/§2.4):
+// any uncertainty — missing confidence, unreadable/absent floor, unmapped agent, a thrown
+// query — returns NOT ok. The floor is platform-wide (agent_quality_floors, one row per tier);
+// the tenant's policy qualityThreshold may only TIGHTEN it (clamped below).
+export type QualityBarResult = {
+  ok: boolean;
+  applicable: boolean; // false ONLY for deterministic agents (the bar does not apply)
+  effectiveFloor: "low" | "medium" | "high" | null;
+  blockedBy?: "quality_floor";
+};
+
+// Confidence ordering: low < medium < high.
+const CONFIDENCE_RANK: Record<string, number> = { low: 0, medium: 1, high: 2 };
+const CONFIDENCE_BY_RANK = ["low", "medium", "high"] as const;
+
+/**
+ * The accuracy floor for an agent run. Deterministic agents are N/A (never blocked — their
+ * correctness is the eligibility floor's job). Otherwise the effective floor is the STRICTER of
+ * the tier's platform floor and the tenant's qualityThreshold dial (the dial may only raise it),
+ * and the run's confidence must clear it. tenantId is accepted for API symmetry with the
+ * within*Ceilings guards; the floor is platform-wide, so it is not read today (the tenant's
+ * contribution arrives via qualityThreshold, already resolved from its policy).
+ */
+export async function meetsQualityBar(input: {
+  agentId: string;
+  tenantId: string;
+  confidence: string | null | undefined;
+  qualityThreshold?: "low" | "medium" | "high";
+}): Promise<QualityBarResult> {
+  const { agentId, confidence, qualityThreshold } = input;
+
+  // Deterministic (rule-based) agents: the quality bar does not apply — never blocked.
+  if (isDeterministicAgent(agentId)) {
+    return { ok: true, applicable: false, effectiveFloor: null };
+  }
+
+  try {
+    const tier = tierForAgent(agentId);
+    if (tier === null) {
+      // Non-deterministic agent with no tier mapping — unknown stakes → gated (§2.4).
+      return { ok: false, applicable: true, effectiveFloor: null, blockedBy: "quality_floor" };
+    }
+
+    const row = (
+      await db
+        .select({ minConfidence: agentQualityFloors.minConfidence })
+        .from(agentQualityFloors)
+        .where(eq(agentQualityFloors.tier, tier))
+        .limit(1)
+    )[0];
+    const platformFloor = row?.minConfidence ?? null;
+    if (platformFloor === null) {
+      // No floor seeded for this tier — can't evaluate the bar → gated (§2.4).
+      return { ok: false, applicable: true, effectiveFloor: null, blockedBy: "quality_floor" };
+    }
+
+    // STRICTER-of: the tenant dial may only RAISE the floor (max rank), never lower it.
+    const platformRank = CONFIDENCE_RANK[platformFloor];
+    const dialRank = qualityThreshold !== undefined ? CONFIDENCE_RANK[qualityThreshold] : -1;
+    const effectiveRank = Math.max(platformRank, dialRank);
+    const effectiveFloor = CONFIDENCE_BY_RANK[effectiveRank];
+
+    // The run's confidence must clear the effective floor. Missing/unreadable → gated.
+    const confRank = confidence != null ? CONFIDENCE_RANK[confidence] : undefined;
+    if (confRank === undefined) {
+      return { ok: false, applicable: true, effectiveFloor, blockedBy: "quality_floor" };
+    }
+    return confRank >= effectiveRank
+      ? { ok: true, applicable: true, effectiveFloor }
+      : { ok: false, applicable: true, effectiveFloor, blockedBy: "quality_floor" };
+  } catch {
+    // Any read/eval failure → gated: uncertainty must never raise autonomy (§2.1/§2.4).
+    return { ok: false, applicable: true, effectiveFloor: null, blockedBy: "quality_floor" };
   }
 }

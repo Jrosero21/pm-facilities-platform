@@ -27,7 +27,7 @@
 //   pnpm db:seed:agent-config
 
 import { and, eq } from "drizzle-orm";
-import { aiPromptTemplateDefaults, agentPolicyDefaults } from "@/server/schema";
+import { aiPromptTemplateDefaults, agentPolicyDefaults, agentQualityFloors } from "@/server/schema";
 
 // ── PROD-WRITE GUARD (BEFORE any @/server/db import) ──────────────────────────────────
 // @/server/db opens the pool from DATABASE_URL at import time, so the env swap must precede
@@ -257,6 +257,27 @@ async function main() {
           .set({ policy: next })
           .where(eq(agentPolicyDefaults.agentId, "dispatch_router_v1"));
         console.log(`[seed:agent-config] dispatch_router_v1 tiebreakerMode — set: ${JSON.stringify(current)} -> ${JSON.stringify(next)}`);
+      }
+    }
+  }
+
+  // ── PLATFORM QUALITY FLOORS (the §2.4 non-overridable accuracy layer) ──
+  // One row per tier, insert-if-absent. tier1 (low-stakes, e.g. update_rewriter) → medium;
+  // tier3/tier4 (high-stakes: scope/invoice/proposal, dispatch_tiebreaker) → high. A tenant's
+  // policy qualityThreshold may only TIGHTEN these; meetsQualityBar clamps to this floor.
+  {
+    const FLOORS = [
+      { tier: "tier1" as const, minConfidence: "medium" as const },
+      { tier: "tier3" as const, minConfidence: "high" as const },
+      { tier: "tier4" as const, minConfidence: "high" as const },
+    ];
+    for (const f of FLOORS) {
+      const ex = await db.select({ id: agentQualityFloors.id }).from(agentQualityFloors).where(eq(agentQualityFloors.tier, f.tier)).limit(1);
+      if (ex.length === 0) {
+        await db.insert(agentQualityFloors).values({ tier: f.tier, minConfidence: f.minConfidence });
+        console.log(`[seed:agent-config] quality floor ${f.tier} → ${f.minConfidence} (inserted)`);
+      } else {
+        console.log(`[seed:agent-config] quality floor ${f.tier} — already present`);
       }
     }
   }

@@ -13,6 +13,7 @@ export const agentsRewriterSourceType = pgEnum("agents_rewriter_source_type", ["
 export const agentsSubstrateConfidence = pgEnum("agents_substrate_confidence", ["high", "medium", "low"]);
 export const agentsSubstrateDisposition = pgEnum("agents_substrate_disposition", ["queued_for_review", "auto_executed", "policy_blocked"]);
 export const agentsSubstrateToolKind = pgEnum("agents_substrate_tool_kind", ["read", "write"]);
+export const agentQualityTier = pgEnum("agent_quality_tier", ["tier1", "tier3", "tier4"]);
 export const approvalDecision = pgEnum("approval_decision", ["accepted", "declined"]);
 export const billingModel = pgEnum("billing_model", ["rate_sheet", "cost_plus", "flat"]);
 export const changeOrderStatus = pgEnum("change_order_status", ["draft", "submitted", "approved", "declined", "withdrawn"]);

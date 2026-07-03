@@ -19,6 +19,12 @@ export type ResolvedPolicy = {
   // agent may auto-execute, and no enforcement branch reads it (disposition stays
   // queued_for_review this batch).
   autonomyEnabled: boolean;
+  // The tenant DIAL for the quality bar (min run-confidence the tenant demands). A tenant may
+  // only TIGHTEN the platform accuracy floor — meetsQualityBar clamps effectiveFloor >= platform
+  // floor, so a value below the floor is ignored. Absent → undefined (the platform floor governs
+  // alone). NOT enforced here; enforcement is meetsQualityBar. Fail-safe: only the literals
+  // low|medium|high are accepted; anything else parses to undefined.
+  qualityThreshold?: "low" | "medium" | "high";
   raw: unknown;
   source: "kill_switch" | "tenant_client" | "tenant" | "default" | "fallback";
 };
@@ -41,7 +47,13 @@ function toResolved(rawPolicy: unknown, source: ResolvedPolicy["source"]): Resol
   // fail-safe discipline (anything other than literal `true` keeps autonomy OFF). No ceiling
   // check here (later batch). Phase 23 23d seeds nothing that sets this, so it resolves false.
   const autonomyEnabled = (parsed as { autonomyEnabled?: unknown } | null)?.autonomyEnabled === true;
-  return { requiresReview, autonomyEnabled, raw: parsed, source };
+  // Quality DIAL — the tenant's min-confidence demand. Fail-safe: accept only the literal
+  // low|medium|high; any other value (or absent) → undefined (platform floor governs alone).
+  // Never enforced here; meetsQualityBar clamps it so it can only tighten, never lower.
+  const qtRaw = (parsed as { qualityThreshold?: unknown } | null)?.qualityThreshold;
+  const qualityThreshold =
+    qtRaw === "low" || qtRaw === "medium" || qtRaw === "high" ? qtRaw : undefined;
+  return { requiresReview, autonomyEnabled, qualityThreshold, raw: parsed, source };
 }
 
 /**

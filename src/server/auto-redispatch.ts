@@ -13,7 +13,7 @@ import "server-only";
 // repeated call (the T2 scan) a clean skip. No trigger here (T2).
 
 import { resolveAgentPolicy } from "@/server/agents/config/policies";
-import { withinTokenCeilings, withinSpendCeilings } from "@/server/agents/config/guardrails";
+import { withinTokenCeilings, withinSpendCeilings, meetsQualityBar } from "@/server/agents/config/guardrails";
 import { parseConditions, evaluatePolicyConditions, type PolicyActionContext } from "@/server/agents/config/conditions";
 import { getEffectiveNte } from "@/server/billing/change-orders";
 import { getPriority } from "@/server/job-reference";
@@ -100,7 +100,11 @@ export async function autoRedispatchForStuckAssignment(input: {
       conditionsResult = evaluatePolicyConditions(conditions, actionContext);
     }
 
-    const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass;
+    // Quality bar (§2.4) — LAST narrowing term, IDENTICAL to auto-dispatch. dispatch_router_v1 is
+    // deterministic → applicable:false / ok:true (N/A; no run confidence, so confidence is null).
+    const quality = await meetsQualityBar({ agentId: DISPATCH_AGENT_ID, tenantId, confidence: null, qualityThreshold: resolved.qualityThreshold });
+
+    const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok;
     const blockedBy = resolved.source === "kill_switch"
       ? "kill_switch"
       : !resolved.autonomyEnabled
@@ -113,10 +117,12 @@ export async function autoRedispatchForStuckAssignment(input: {
               ? "spend_ceiling"
               : !conditionsResult.pass
                 ? `policy_condition:${conditionsResult.failedOn}`
-                : "unknown";
+                : !quality.ok
+                  ? "quality_floor"
+                  : "unknown";
 
     const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
-    const decisionMeta = { source: resolved.source, tokenOk: token.ok, spend, conditions: conditionsResult, draftAssignmentId, stuckAssignmentId };
+    const decisionMeta = { source: resolved.source, tokenOk: token.ok, spend, conditions: conditionsResult, quality: { applicable: quality.applicable, effectiveFloor: quality.effectiveFloor }, draftAssignmentId, stuckAssignmentId };
 
     // 5) DECIDE.
     if (!permitted) {

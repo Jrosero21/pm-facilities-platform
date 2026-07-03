@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { v7 as uuidv7 } from "uuid";
 import { tenants } from "./tenants";
+import { agentQualityTier, agentsSubstrateConfidence } from "./enums";
 
 // ── Phase 23 batch 23b — TENANT AUTONOMY SETTINGS (the §2.4 non-overridable layer) ────
 // ONE row per tenant. This is the guardrail home that sits ABOVE the policy resolver:
@@ -52,5 +53,29 @@ export const tenantAutonomySettings = pgTable(
     foreignKey({ columns: [t.tenantId], foreignColumns: [tenants.id], name: "tas_tenant_fk" }).onDelete("cascade"),
     // One row per tenant — the §2.4 layer is tenant-singular.
     uniqueIndex("tas_tenant_unique").on(t.tenantId),
+  ],
+);
+
+// ── Quality-bar — PLATFORM ACCURACY FLOOR (the §2.4 non-overridable quality layer) ────
+// One row per tier. Unlike tenant_autonomy_settings (tenant-set caps), this is a PLATFORM
+// constant: NOT tenant-scoped, seeded by the platform bootstrap (db/seeds/agent-config.ts),
+// and NOT tenant-editable. It is the hard minimum-confidence an agent's run must clear before
+// any autonomous action may fire. A tenant's policy qualityThreshold may only TIGHTEN (raise)
+// this floor, never lower it (clamped in meetsQualityBar). Agents map to tiers via
+// src/server/agents/quality/tiers.ts; deterministic (rule-based) agents have no tier and are
+// N/A (their correctness is the eligibility floor's job, not a confidence bar).
+export const agentQualityFloors = pgTable(
+  "agent_quality_floors",
+  {
+    id: varchar("id", { length: 36 }).primaryKey().$defaultFn(() => uuidv7()),
+    tier: agentQualityTier("tier").notNull(),
+    // The hard minimum run-confidence (agents_substrate_confidence: low < medium < high).
+    minConfidence: agentsSubstrateConfidence("min_confidence").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (t) => [
+    // One floor per tier — platform-singular.
+    uniqueIndex("aqf_tier_unique").on(t.tier),
   ],
 );
