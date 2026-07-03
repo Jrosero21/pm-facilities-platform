@@ -37,6 +37,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "job_scope_draft",
     testOnly: false,
   },
+  intake_parser_v1: {
+    id: "intake_parser_v1",
+    name: "Intake Parser",
+    description:
+      "Extracts a structured, reviewable work-order draft from an inbound email (problem + client/trade/priority codes), resolving codes via the existing external mappers. Writes a partial email_work_order_draft @ pending_review; the operator reviews before a job is created (§2.9, record-don't-apply).",
+    inputSourceTypes: ["email_ingestion", "forwarded_email"],
+    outputType: "email_work_order_draft",
+    testOnly: false,
+  },
   invoice_creator_v1: {
     id: "invoice_creator_v1",
     name: "Invoice Creator",

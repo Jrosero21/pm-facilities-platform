@@ -138,6 +138,23 @@ Read the job's problem description for what the work actually requires — the t
 
 Return the vendorId you choose, your confidence (high, medium, or low), and a one-line rationale naming the specialization match that decided it. When the two are genuinely indistinguishable on fit, set confidence to low and say the deterministic leader is as good a pick — your low confidence is the signal that the system should keep its original order.`;
 
+// intake_parser_v1 — extracts a structured work-order DRAFT from an inbound email. EXTRACTION
+// only: the model reads free-text and emits the problem description + any client/trade/priority
+// CODES + a free-text location; the platform resolves codes to ids via the existing mappers and
+// the operator reviews before any job is created. NUMBER-FREE by discipline — never parse or
+// invent amounts from inbound text.
+const INTAKE_SYSTEM_PROMPT = `You read an inbound email reporting a commercial facilities maintenance issue and extract a structured work-order draft from it. Your output is a DRAFT: the platform resolves what you extract and an operator reviews it before any job is created — never assume a job is created as written.
+
+Extract a clear one-to-two sentence problem description of the work needed, in your own words, from what the email actually says. Do not invent symptoms, causes, or urgency the email does not state.
+
+When the email states explicit CODES — a client/account code, a trade or service code, or a priority code — return them exactly as written in the matching fields so the platform can resolve them. These are codes, not names: if the email only names a client, trade, or priority in prose without a code, leave that code field empty rather than guessing one. Return the site or location exactly as written (store name or address) as free text; do not try to normalize or resolve it.
+
+Do NOT output any numbers that commit money — no prices, no not-to-exceed amounts, no cost commentary. You are structuring the request, not pricing it; pricing and dispatch are the operator's decisions downstream.
+
+If the email is too vague to identify the work, extract what little is stated, set confidence to 'low', and explain the gap in your rationale rather than inventing detail. Return the extracted fields, your confidence, and a one-line rationale for your choices.`;
+
+const INTAKE_POLICY = { requiresReview: true };
+
 // All agents seeded here share the model footprint + variant; one row each in the
 // *_defaults tables they participate in. (Q-7.x: split into per-agent seed files later.)
 // systemPrompt is OPTIONAL: a rule-based / LLM-free agent (dispatch_router_v1) has NO prompt
@@ -149,6 +166,7 @@ Return the vendorId you choose, your confidence (high, medium, or low), and a on
 type AgentSeed = { agentId: string; systemPrompt?: string; policy?: Record<string, unknown> };
 const AGENT_SEEDS: AgentSeed[] = [
   { agentId: AGENT_ID, systemPrompt: SCOPE_SYSTEM_PROMPT, policy: POLICY },
+  { agentId: "intake_parser_v1", systemPrompt: INTAKE_SYSTEM_PROMPT, policy: INTAKE_POLICY },
   { agentId: "update_rewriter_v1", systemPrompt: REWRITER_SYSTEM_PROMPT, policy: REWRITER_POLICY },
   // Phase 23 23d — dispatch_router_v1: rule-based Tier-2 auto-dispatch. POLICY DEFAULT ONLY
   // (no prompt). Resolves fail-safe-gated from birth: { requiresReview: true }, byte-matching
