@@ -1482,3 +1482,36 @@ gates + quality-bar enforcement going live + the tenant dial, landing together.
 
 QUALITY-BAR UNIT STATUS: backend built+proven (f599bed) · confidence display already live · dial deferred-with-
 enforcement. Ready to merge phase-quality-bar → main (backend + bank records).
+
+---
+
+## intake_parser_v1 — extraction agent built (front-door intake, suggestive)
+
+New agent (branch phase-intake-parser, b834ccd, not pushed). Scope-generator-shaped extraction agent that LLM-parses
+an inbound blob → writes a PARTIAL email_work_order_drafts row @ pending_review. Record-don't-apply: NEVER creates a
+job (operator confirms → existing approveEmailDraft → createJob). Number-free. Tier1 (suggestive, pre-job, human-
+gated). Reuses the existing draft table, runner, review queue (renders the ConfidenceBadge), policy/key/few-shot
+substrate. Proven 8/8 (jobs-count-0, partial-draft-valid, confidence→badge, number-free, resolvers-reused). tsc=0.
+Files: src/server/agents/intake-parser/{llm,drafts,tools,index}.ts + registry.ts + tiers.ts + agent-config seeds
+(prompt + policy, seeded pm + pm_sandbox).
+
+TWO HONEST RECONCILIATIONS (live-text beat the spec):
+1. inbound_email_id is NOT NULL → no free-floating rawText path (spec asked for one). Agent takes an inboundEmailId,
+   reads the stored row body as the blob — matches ingest-email's model. Faithful, not forced.
+2. ★ CODE-RESOLUTION IS DORMANT (CF-13.5): accountExternalSystemId is hardcoded null today (no external_system_id
+   column). So with TODAY's callers every resolve is SKIPPED → drafts come out FULLY PARTIAL (operator completes all
+   fields). The resolve path (resolveTrade/resolvePriority/client-mapping, reused verbatim) is wired + proven via a
+   probe that supplies a seeded external_system_id — but it does NOTHING in production until CF-13.5 lands the
+   external_system_id column/wiring. Do not read "resolvers reused ✓" as "resolution works end-to-end today" — it's
+   ready-but-dormant.
+
+CARRY-FORWARD (deferred, non-blocking):
+- Live email INGESTION (the inbound pipe): host-gated, rides with Vercel. Agent takes a persisted inbound_emails row,
+  not a live inbox.
+- CF-13.5 (external_system_id): until it lands, intake_parser produces fully-partial drafts (extraction works; code
+  resolution is skipped). Real resolution activates when CF-13.5 does.
+- No intake correction-pairs source yet (no few-shot for this agent) — add when a review/correction loop exists.
+- locationDetail has no draft column → captured in logDecision metadata for review legibility.
+
+Also carry: Neon still at 0000 (needs 0001 quality-floor migration + intake_parser seeds applied before any cloud
+deploy uses these paths). Not urgent — no cloud deploy yet.
