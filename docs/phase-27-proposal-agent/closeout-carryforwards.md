@@ -1433,3 +1433,29 @@ node-postgres sslmode=require→verify-full deprecation warning (non-blocking; o
 
 CARRY-FORWARD (post-migration polish, non-blocking): tighten Neon SSL mode (sslmode=verify-full or
 uselibpqcompat=true) before real production traffic — cosmetic deprecation warning today, not a correctness issue.
+
+---
+
+## Per-agent quality bar — backend built (Option A), enforcement no-op until LLM-agent autonomy
+
+Built on branch phase-quality-bar (f599bed, not pushed). The structure (final shape) + interim confidence signal:
+- agent_quality_floors table (platform-wide, NON-tenant-scoped): tier → min_confidence. Seeded tier1→medium,
+  tier3→high, tier4→high (via agent-config.ts). Migration 0001, applied pm + pm_sandbox.
+- tiers.ts: update_rewriter_v1→tier1; scope/invoice/proposal_generator_v1→tier3; dispatch_tiebreaker_v1→tier4;
+  dispatch_router_v1 DETERMINISTIC (quality bar N/A).
+- qualityThreshold dial on ResolvedPolicy (tenant may only TIGHTEN, fail-safe absent→undefined).
+- meetsQualityBar (in agents/config/guardrails.ts — reconciled from src/server/guardrails.ts; that's where the real
+  ceiling predicates live). effectiveFloor = stricter-of(platform floor, tenant dial), clamped non-overridable;
+  fail-toward-gated; deterministic → {ok:true, applicable:false} N/A. Proven 9/9 incl. (e) dial-below-floor clamped
+  up = §2.4 non-overridable, (d) dial tightens, (g) missing-confidence blocks.
+- Wired as 5th AND-term at auto-dispatch.ts:276 + auto-redispatch.ts:103 (byte-identical), blockedBy "quality_floor".
+
+KEY REALITY (Option A tradeoff, chosen deliberately): both gate sites run dispatch_router_v1 (deterministic) → the
+quality term is a NO-OP there today (N/A, never blocks). The machinery is built + proven in final shape, but has
+nothing to ENFORCE until LLM-agent autonomy gates are wired (a later-phase item — LLM agents currently hardcode
+disposition:"queued_for_review", no autonomy gate). The predicate/floor/dial are reusable and slot in with zero
+rework when that lands. Enforcement logic proven now via direct probe (tier1/3/4 + real confidence).
+
+Interim signal = agent self-reported confidence; final = approve-as-is accuracy (calibration-blocked on production
+data; the accuracy readers already exist in correction-pairs.ts/agent-observability.ts). Batch 3 (UI: surface
+confidence on review + tenant dial control) pending.
