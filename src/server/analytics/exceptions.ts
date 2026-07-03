@@ -34,6 +34,35 @@ import type { FollowUpCategory } from "@/lib/follow-up";
 // a large constant to its sortKey. Within each band (stuck / non-stuck) true age still orders.
 const STUCK_SORT_BUMP_SECONDS = 365 * 24 * 3600;
 
+// ── TRIAGE WEIGHTING (the tier bumps the sortKey comment invited) ──────────────────────
+// The triage score is age + the SAME stuck bump + a priority bump + an urgency bump — all in
+// SECONDS-EQUIVALENT units so they combine on one auditable scale. Named + tunable (never magic
+// numbers inline). All bumps sit BELOW the stuck bump (365d), so a stuck row still bands above a
+// non-stuck one; they are large enough to reorder WITHIN a band (a high-priority young row can
+// overtake an older low-priority one). Kinds carrying no priority/urgency signal get 0 for that
+// bump — their triage score == age + stuck (base behavior preserved).
+const DAY_SECONDS = 24 * 3600;
+// Priority: lower priorities.rank = more urgent (rank 1 = top). Range-agnostic (MAX / rank), so it
+// works regardless of a tenant's rank ceiling: rank 1 → 7d, 2 → 3.5d, 3 → ~2.3d, …; null → 0.
+const PRIORITY_BUMP_MAX_SECONDS = 7 * DAY_SECONDS;
+function priorityBumpFromRank(rank: number | null): number {
+  return rank != null && rank >= 1 ? Math.round(PRIORITY_BUMP_MAX_SECONDS / rank) : 0;
+}
+// Urgency tiers (operational rows) by URGENCY_TIER_ORDER — stalled most urgent; aged = 0 (aged is
+// informational, not blocking, and is already filtered out of the exception feed).
+const URGENCY_BUMP_SECONDS: Record<UrgencyTier, number> = {
+  stalled: 5 * DAY_SECONDS,
+  overdue: 3 * DAY_SECONDS,
+  "unassigned-high-priority": 3 * DAY_SECONDS,
+  aged: 0,
+};
+
+// ── RECOMMENDED-RUNG ANNOTATION (deterministic exception-kind → shipped capability) ────
+// A pure computed hint mapping each exception kind to the next operator step, reflecting the
+// rungs already on main (vendor_followup chase = rung-0, redispatch = rung-1, NTE review). NO
+// LLM, NO side effect — it LABELS the recommended action; the operator still clicks through.
+export type RecommendedAction = { rung: string; label: string; then?: string };
+
 // ── Reader rows ───────────────────────────────────────────────────────────────────────
 
 export type VendorNotAcceptedRow = {
@@ -45,6 +74,7 @@ export type VendorNotAcceptedRow = {
   sentAt: Date | null;
   ageSeconds: number;
   priorityCode: string | null;
+  priorityRank: number | null; // priorities.rank (1 = most urgent) — feeds the triage priority bump
   isStuck: boolean;
   thresholdSeconds: number | null;
   // CF-19.1a re-dispatch surface (Phase 28). attemptCount = SENT assignments on the job (any vendor
@@ -73,6 +103,7 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
       sentAt: jobVendorAssignments.sentAt,
       ageSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - COALESCE(${jobVendorAssignments.sentAt}, ${jobVendorAssignments.createdAt})))::int`,
       priorityCode: priorities.code,
+      priorityRank: priorities.rank,
     })
     .from(jobVendorAssignments)
     .innerJoin(
@@ -257,13 +288,15 @@ type ExceptionBase = {
   jobId: string;
   jobNumber: number;
   clientName: string;
-  // Sort key — ELAPSED SECONDS for every kind, so all three sort comparably DESC (oldest/most
-  // urgent first). No tier-weight is mixed into the raw scale; if an operational floor is ever
-  // wanted, add a fixed seconds-equivalent bump per tier — for now it is pure elapsed seconds.
+  // sortKey — the ORIGINAL elapsed-seconds key (+ stuck bump for vendor rows). KEPT unchanged so
+  // the component's true-age fallback (kinds without an age field) is unaffected. Ranking is now
+  // driven by triageScore (below); sortKey stays as the raw age signal for display/back-compat.
   sortKey: number;
 };
 
-export type Exception = ExceptionBase &
+// The pre-triage exception union (what the readers assemble). getExceptions layers the triage
+// fields on top → Exception.
+type ExceptionCore = ExceptionBase &
   (
     | {
         kind: "vendor_not_accepted";
@@ -272,6 +305,7 @@ export type Exception = ExceptionBase &
         sentAt: Date | null;
         ageSeconds: number;
         priorityCode: string | null;
+        priorityRank: number | null;
         isStuck: boolean;
         thresholdSeconds: number | null;
         attemptCount: number;
@@ -300,6 +334,22 @@ export type Exception = ExceptionBase &
       }
   );
 
+// The triage layer — a weighted score (auditable component breakdown) + the recommended-rung hint.
+export type TriageFields = {
+  triageScore: number; // the ranking key: ageSeconds + stuckBump + priorityBump + urgencyBump
+  triageComponents: { ageSeconds: number; stuckBump: number; priorityBump: number; urgencyBump: number };
+  recommendedAction: RecommendedAction;
+};
+
+export type Exception = ExceptionCore & TriageFields;
+
+const RECOMMENDED_ACTION_BY_KIND: Record<ExceptionCore["kind"], RecommendedAction> = {
+  vendor_not_accepted: { rung: "chase", label: "Chase vendor", then: "redispatch" },
+  nte_increase_requested: { rung: "nte_review", label: "Review NTE" },
+  operational: { rung: "assign_expedite", label: "Assign / expedite" },
+  follow_up_overdue: { rung: "follow_up", label: "Follow up" },
+};
+
 /**
  * The tenant-wide exception queue — composes the two net-new readers with a FILTERED
  * operationalQueue, into one list sorted by sortKey (elapsed seconds) DESC. Pure 'aged'
@@ -314,10 +364,10 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
   ]);
 
   const nowMs = Date.now();
-  const exceptions: Exception[] = [];
+  const raws: ExceptionCore[] = [];
 
   for (const r of notAccepted) {
-    exceptions.push({
+    raws.push({
       kind: "vendor_not_accepted",
       jobId: r.jobId,
       jobNumber: r.jobNumber,
@@ -327,6 +377,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       sentAt: r.sentAt,
       ageSeconds: r.ageSeconds,
       priorityCode: r.priorityCode,
+      priorityRank: r.priorityRank,
       isStuck: r.isStuck,
       thresholdSeconds: r.thresholdSeconds,
       attemptCount: r.attemptCount,
@@ -339,7 +390,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
 
   for (const r of nteRequested) {
     const ageSeconds = Math.max(0, Math.floor((nowMs - new Date(r.pendingSince).getTime()) / 1000));
-    exceptions.push({
+    raws.push({
       kind: "nte_increase_requested",
       jobId: r.jobId,
       jobNumber: r.jobNumber,
@@ -355,7 +406,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
   // FILTER: only genuine exceptions — exclude pure 'aged' (informational, not blocking).
   for (const q of queue) {
     if (!(q.isOverdue || q.isStalled || q.isUnassignedHighPriority)) continue;
-    exceptions.push({
+    raws.push({
       kind: "operational",
       jobId: q.jobId,
       jobNumber: q.jobNumber,
@@ -370,7 +421,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
   }
 
   for (const r of followUps) {
-    exceptions.push({
+    raws.push({
       kind: "follow_up_overdue",
       jobId: r.jobId,
       jobNumber: r.jobNumber,
@@ -381,5 +432,26 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
     });
   }
 
-  return exceptions.sort((a, b) => b.sortKey - a.sortKey);
+  // TRIAGE LAYER — fold the tier bumps into an auditable score, annotate the recommended rung.
+  // ageSeconds = the kind's TRUE age (kinds without an age field use sortKey, which == their age).
+  // Pure computation — no writes, no side effects.
+  const triaged: Exception[] = raws.map((e) => {
+    const ageSeconds =
+      e.kind === "vendor_not_accepted" ? e.ageSeconds
+      : e.kind === "operational" ? e.ageInCurrentStatusSeconds
+      : e.sortKey;
+    const stuckBump = e.kind === "vendor_not_accepted" && e.isStuck ? STUCK_SORT_BUMP_SECONDS : 0;
+    const priorityBump = e.kind === "vendor_not_accepted" ? priorityBumpFromRank(e.priorityRank) : 0;
+    const urgencyBump = e.kind === "operational" ? URGENCY_BUMP_SECONDS[e.urgencyTier] : 0;
+    const triageScore = ageSeconds + stuckBump + priorityBump + urgencyBump;
+    return {
+      ...e,
+      triageScore,
+      triageComponents: { ageSeconds, stuckBump, priorityBump, urgencyBump },
+      recommendedAction: RECOMMENDED_ACTION_BY_KIND[e.kind],
+    };
+  });
+
+  // Rank by the weighted triage score DESC (was: raw sortKey). sortKey is retained on each row.
+  return triaged.sort((a, b) => b.triageScore - a.triageScore);
 }

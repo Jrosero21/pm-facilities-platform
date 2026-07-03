@@ -83,6 +83,10 @@ function ExceptionRow({ item }: { item: Exception }) {
           #{item.jobNumber} · {item.clientName}
         </Link>
         <span className="text-xs text-neutral-500">{humanizeAge(trueAgeSeconds(item))}</span>
+        {/* Recommended next step — a deterministic hint (not a button); the operator clicks through below. */}
+        <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+          → {item.recommendedAction.label}
+        </span>
       </div>
       <Detail item={item} />
       {item.kind === "vendor_not_accepted" && item.redispatchState != null && (
