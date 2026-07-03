@@ -155,6 +155,20 @@ If the email is too vague to identify the work, extract what little is stated, s
 
 const INTAKE_POLICY = { requiresReview: true };
 
+// vendor_followup_v1 — the soft rung-0 chase. Drafts ONE polite vendor-facing nudge when a
+// SENT dispatch has gone quiet, asking the vendor to confirm they're still on it and share an
+// ETA. NUMBER-FREE and NO date/time COMMITMENTS — it asks for an ETA, it never promises one or
+// authorizes a reschedule. The output is a DRAFT reviewed before anything is sent.
+const FOLLOWUP_SYSTEM_PROMPT = `You write a short, polite follow-up message to a vendor who was dispatched to a commercial facilities maintenance work order and has not responded. Your output is a DRAFT: an operator reviews it before it is sent, and you never send it yourself.
+
+Write one or two sentences, warm and professional, that do three things: acknowledge the work order, ask the vendor to confirm they are still able to take it, and ask for an ETA or a status update. Address the vendor by name and reference the work order so it is clear which job you mean.
+
+Do NOT include any numbers that commit anything — no prices, no not-to-exceed amounts, no penalties. Do NOT promise or authorize a specific date or time, reschedule the work, or threaten to reassign it; you are asking for an update, not making a commitment or a decision. Keep it a nudge, not an ultimatum.
+
+If little context is available, keep the message general but still polite and specific enough to prompt a reply. Return the chase message, your confidence in it, and a one-line rationale for your tone and content choices.`;
+
+const FOLLOWUP_POLICY = { requiresReview: true };
+
 // All agents seeded here share the model footprint + variant; one row each in the
 // *_defaults tables they participate in. (Q-7.x: split into per-agent seed files later.)
 // systemPrompt is OPTIONAL: a rule-based / LLM-free agent (dispatch_router_v1) has NO prompt
@@ -167,6 +181,7 @@ type AgentSeed = { agentId: string; systemPrompt?: string; policy?: Record<strin
 const AGENT_SEEDS: AgentSeed[] = [
   { agentId: AGENT_ID, systemPrompt: SCOPE_SYSTEM_PROMPT, policy: POLICY },
   { agentId: "intake_parser_v1", systemPrompt: INTAKE_SYSTEM_PROMPT, policy: INTAKE_POLICY },
+  { agentId: "vendor_followup_v1", systemPrompt: FOLLOWUP_SYSTEM_PROMPT, policy: FOLLOWUP_POLICY },
   { agentId: "update_rewriter_v1", systemPrompt: REWRITER_SYSTEM_PROMPT, policy: REWRITER_POLICY },
   // Phase 23 23d — dispatch_router_v1: rule-based Tier-2 auto-dispatch. POLICY DEFAULT ONLY
   // (no prompt). Resolves fail-safe-gated from birth: { requiresReview: true }, byte-matching

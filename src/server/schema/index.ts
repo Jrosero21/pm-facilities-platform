@@ -22,6 +22,7 @@ export * from "./communications";
 export * from "./portal-updates";
 export * from "./agents-substrate";
 export * from "./agents-rewriter";
+export * from "./agents-vendor-followup";
 export * from "./client-updates";
 export * from "./agents-config";
 export * from "./scope-templates";

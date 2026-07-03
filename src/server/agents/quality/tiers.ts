@@ -13,6 +13,7 @@ export type QualityTier = "tier1" | "tier3" | "tier4";
 const TIER_BY_AGENT: Readonly<Record<string, QualityTier>> = {
   update_rewriter_v1: "tier1",
   intake_parser_v1: "tier1", // suggestive, pre-job, human-gated — a mis-parse is caught at review before any job exists
+  vendor_followup_v1: "tier1", // suggestive, pre-send, human-gated — a chase message is cheap and reversible
   scope_generator_v1: "tier3",
   invoice_creator_v1: "tier3",
   proposal_generator_v1: "tier3",

@@ -46,6 +46,15 @@ export const AGENT_REGISTRY: Record<string, AgentRegistryEntry> = {
     outputType: "email_work_order_draft",
     testOnly: false,
   },
+  vendor_followup_v1: {
+    id: "vendor_followup_v1",
+    name: "Vendor Follow-up",
+    description:
+      "Drafts a polite chase message to a vendor that has gone quiet on a SENT dispatch (confirmed via isDispatchStuck). The soft rung-0 before redispatch: writes a vendor_followup_draft @ pending_review for operator review; never sends and never replaces the vendor (§2.9, record-don't-apply).",
+    inputSourceTypes: ["dispatch_assignment"],
+    outputType: "vendor_followup_draft",
+    testOnly: false,
+  },
   invoice_creator_v1: {
     id: "invoice_creator_v1",
     name: "Invoice Creator",
