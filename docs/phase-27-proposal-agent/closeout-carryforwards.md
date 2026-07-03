@@ -1459,3 +1459,26 @@ rework when that lands. Enforcement logic proven now via direct probe (tier1/3/4
 Interim signal = agent self-reported confidence; final = approve-as-is accuracy (calibration-blocked on production
 data; the accuracy readers already exist in correction-pairs.ts/agent-observability.ts). Batch 3 (UI: surface
 confidence on review + tenant dial control) pending.
+
+---
+
+## Quality bar — confidence display already live; tenant dial (3b) deferred
+
+Batch 3a (surface confidence on job-page draft sections) = NOTHING TO BUILD. Reconcile-before-edit found all 4
+job-page draft sections ALREADY render ConfidenceBadge from draft.confidence: proposal+invoice via shared
+AgentDraftsSection→PendingRow wrapper (agent-drafts-section.tsx:121), scope direct (line 79), update direct (line 94)
+— same import + call shape as the live review queue (review-queue-section.tsx:89). The prep's "ProposalDraftsSection
+doesn't render confidence" was a false negative (grep hit the file, but it delegates to the shared wrapper where the
+badge lives — adding one would DUPLICATE). Every *Detailed type already carries confidence:string|null; no plumbing.
+So confidence display is complete app-wide (job-page sections + review queue). No edits, no commit.
+
+DEFERRED — Batch 3b (tenant quality dial control): rides with LLM-agent autonomy enablement. Two reasons: (1) it's
+INERT until enforcement is live — the quality bar is a no-op at the dispatch sites until LLM-agent autonomy gates
+exist, so a tenant-set qualityThreshold does nothing yet (shipping it now = a knob wired to nothing, confusing). (2)
+It's net-new capability — the FIRST tenant policy-write path (a UI control + a new mutation writing qualityThreshold
+into agent_policies.policy JSON, tenant-may-only-tighten enforced on the write). Belongs with a deliberate tenant-
+settings surface + the enforcement it governs, not as an ad-hoc dial. Bank as one future package: LLM-agent autonomy
+gates + quality-bar enforcement going live + the tenant dial, landing together.
+
+QUALITY-BAR UNIT STATUS: backend built+proven (f599bed) · confidence display already live · dial deferred-with-
+enforcement. Ready to merge phase-quality-bar → main (backend + bank records).
