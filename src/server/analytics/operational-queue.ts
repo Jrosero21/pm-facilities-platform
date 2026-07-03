@@ -30,6 +30,7 @@ export type QueueEntry = {
   jobId: string;
   jobNumber: number;
   clientName: string;
+  isPriority: boolean; // clients.is_priority — carried for the exceptions client-priority triage bump
   clientLocationName: string | null;
   statusCode: string;
   statusLabel: string;
@@ -60,6 +61,7 @@ export async function operationalQueue(tenantId: string, limit = 20): Promise<Qu
       jobId: jobs.id,
       jobNumber: jobs.jobNumber,
       clientName: clients.name,
+      isPriority: clients.isPriority,
       clientLocationName: clientLocations.name,
       statusCode: jobStatuses.code,
       statusLabel: jobStatuses.name,
@@ -122,6 +124,7 @@ export async function operationalQueue(tenantId: string, limit = 20): Promise<Qu
       jobId: r.jobId,
       jobNumber: r.jobNumber,
       clientName: r.clientName,
+      isPriority: r.isPriority,
       clientLocationName: r.clientLocationName,
       statusCode: r.statusCode,
       statusLabel: r.statusLabel,

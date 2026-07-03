@@ -21,6 +21,7 @@ import {
   jobVendorAssignments,
   jobs,
   priorities,
+  tenants,
   vendors,
 } from "@/server/schema";
 import { operationalQueue } from "@/server/analytics/operational-queue";
@@ -56,6 +57,11 @@ const URGENCY_BUMP_SECONDS: Record<UrgencyTier, number> = {
   "unassigned-high-priority": 3 * DAY_SECONDS,
   aged: 0,
 };
+// Client-priority: applied ONLY when the tenant switch (tenants.priority_client_weighting_enabled)
+// is ON and the client is flagged (clients.is_priority). A NUDGE, not an override — 2d is
+// comparable to a mid priority step (rank-3 ≈ 2.3d) and sits well below the urgency tiers and the
+// 365d stuck band, so an older/urgent normal-client job still outranks a slightly-late priority one.
+const CLIENT_PRIORITY_BUMP_SECONDS = 2 * DAY_SECONDS;
 
 // ── RECOMMENDED-RUNG ANNOTATION (deterministic exception-kind → shipped capability) ────
 // A pure computed hint mapping each exception kind to the next operator step, reflecting the
@@ -75,6 +81,7 @@ export type VendorNotAcceptedRow = {
   ageSeconds: number;
   priorityCode: string | null;
   priorityRank: number | null; // priorities.rank (1 = most urgent) — feeds the triage priority bump
+  isPriority: boolean; // clients.is_priority — feeds the (tenant-switch-gated) client-priority bump
   isStuck: boolean;
   thresholdSeconds: number | null;
   // CF-19.1a re-dispatch surface (Phase 28). attemptCount = SENT assignments on the job (any vendor
@@ -104,6 +111,7 @@ export async function listVendorNotAccepted(tenantId: string): Promise<VendorNot
       ageSeconds: sql<number>`EXTRACT(EPOCH FROM (NOW() - COALESCE(${jobVendorAssignments.sentAt}, ${jobVendorAssignments.createdAt})))::int`,
       priorityCode: priorities.code,
       priorityRank: priorities.rank,
+      isPriority: clients.isPriority,
     })
     .from(jobVendorAssignments)
     .innerJoin(
@@ -201,6 +209,7 @@ export type NteIncreaseRow = {
   jobId: string;
   jobNumber: number;
   clientName: string;
+  isPriority: boolean;
   changeOrderId: string;
   total: string;
   reason: string | null;
@@ -218,6 +227,7 @@ export async function listNteIncreaseRequested(tenantId: string): Promise<NteInc
       jobId: changeOrders.jobId,
       jobNumber: jobs.jobNumber,
       clientName: clients.name,
+      isPriority: clients.isPriority,
       changeOrderId: changeOrders.id,
       total: changeOrders.total,
       reason: changeOrders.reason,
@@ -233,6 +243,7 @@ export type FollowUpOverdueRow = {
   jobId: string;
   jobNumber: number;
   clientName: string;
+  isPriority: boolean;
   followUpAt: Date;
   category: FollowUpCategory | null;
   ageSeconds: number;
@@ -257,6 +268,7 @@ export async function listFollowUpOverdue(tenantId: string): Promise<FollowUpOve
       jobId: jobs.id,
       jobNumber: jobs.jobNumber,
       clientName: clients.name,
+      isPriority: clients.isPriority,
       followUpAt: jobs.followUpAt,
       category: jobs.followUpCategory,
     })
@@ -277,7 +289,7 @@ export async function listFollowUpOverdue(tenantId: string): Promise<FollowUpOve
     const at = r.followUpAt as Date; // isNotNull-filtered above
     const ageSeconds = Math.floor((nowMs - at.getTime()) / 1000);
     if (ageSeconds <= 0) continue; // future-dated → not yet due, skip
-    out.push({ jobId: r.jobId, jobNumber: r.jobNumber, clientName: r.clientName, followUpAt: at, category: r.category, ageSeconds });
+    out.push({ jobId: r.jobId, jobNumber: r.jobNumber, clientName: r.clientName, isPriority: r.isPriority, followUpAt: at, category: r.category, ageSeconds });
   }
   return out;
 }
@@ -288,6 +300,7 @@ type ExceptionBase = {
   jobId: string;
   jobNumber: number;
   clientName: string;
+  isPriority: boolean; // clients.is_priority — feeds the tenant-switch-gated client-priority bump
   // sortKey — the ORIGINAL elapsed-seconds key (+ stuck bump for vendor rows). KEPT unchanged so
   // the component's true-age fallback (kinds without an age field) is unaffected. Ranking is now
   // driven by triageScore (below); sortKey stays as the raw age signal for display/back-compat.
@@ -336,8 +349,8 @@ type ExceptionCore = ExceptionBase &
 
 // The triage layer — a weighted score (auditable component breakdown) + the recommended-rung hint.
 export type TriageFields = {
-  triageScore: number; // the ranking key: ageSeconds + stuckBump + priorityBump + urgencyBump
-  triageComponents: { ageSeconds: number; stuckBump: number; priorityBump: number; urgencyBump: number };
+  triageScore: number; // ageSeconds + stuckBump + priorityBump + urgencyBump + clientPriorityBump
+  triageComponents: { ageSeconds: number; stuckBump: number; priorityBump: number; urgencyBump: number; clientPriorityBump: number };
   recommendedAction: RecommendedAction;
 };
 
@@ -356,12 +369,16 @@ const RECOMMENDED_ACTION_BY_KIND: Record<ExceptionCore["kind"], RecommendedActio
  * operational rows are EXCLUDED (only overdue/stalled/unassigned-high-priority qualify).
  */
 export async function getExceptions(tenantId: string): Promise<Exception[]> {
-  const [notAccepted, nteRequested, queue, followUps] = await Promise.all([
+  const [notAccepted, nteRequested, queue, followUps, switchRow] = await Promise.all([
     listVendorNotAccepted(tenantId),
     listNteIncreaseRequested(tenantId),
     operationalQueue(tenantId, Number.MAX_SAFE_INTEGER),
     listFollowUpOverdue(tenantId),
+    // The per-tenant client-priority switch — ONE lookup (single-row on the PK). OFF by default; a
+    // missing row (defensive) also reads OFF, so the client-priority bump stays 0 → byte-identical ranking.
+    db.select({ on: tenants.priorityClientWeightingEnabled }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
   ]);
+  const weightingEnabled = switchRow[0]?.on === true;
 
   const nowMs = Date.now();
   const raws: ExceptionCore[] = [];
@@ -372,6 +389,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       jobId: r.jobId,
       jobNumber: r.jobNumber,
       clientName: r.clientName,
+      isPriority: r.isPriority,
       assignmentId: r.assignmentId,
       vendorName: r.vendorName,
       sentAt: r.sentAt,
@@ -395,6 +413,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       jobId: r.jobId,
       jobNumber: r.jobNumber,
       clientName: r.clientName,
+      isPriority: r.isPriority,
       changeOrderId: r.changeOrderId,
       total: r.total,
       reason: r.reason,
@@ -411,6 +430,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       jobId: q.jobId,
       jobNumber: q.jobNumber,
       clientName: q.clientName,
+      isPriority: q.isPriority,
       urgencyTier: q.urgencyTier,
       ageInCurrentStatusSeconds: q.ageInCurrentStatusSeconds,
       isOverdue: q.isOverdue,
@@ -426,6 +446,7 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
       jobId: r.jobId,
       jobNumber: r.jobNumber,
       clientName: r.clientName,
+      isPriority: r.isPriority,
       followUpAt: r.followUpAt,
       category: r.category,
       sortKey: r.ageSeconds,
@@ -443,11 +464,14 @@ export async function getExceptions(tenantId: string): Promise<Exception[]> {
     const stuckBump = e.kind === "vendor_not_accepted" && e.isStuck ? STUCK_SORT_BUMP_SECONDS : 0;
     const priorityBump = e.kind === "vendor_not_accepted" ? priorityBumpFromRank(e.priorityRank) : 0;
     const urgencyBump = e.kind === "operational" ? URGENCY_BUMP_SECONDS[e.urgencyTier] : 0;
-    const triageScore = ageSeconds + stuckBump + priorityBump + urgencyBump;
+    // Gated on the tenant switch AND the client flag. weightingEnabled=false → always 0 → the score
+    // is byte-identical to pre-batch (age + stuck + priority + urgency). A nudge, never an override.
+    const clientPriorityBump = weightingEnabled && e.isPriority ? CLIENT_PRIORITY_BUMP_SECONDS : 0;
+    const triageScore = ageSeconds + stuckBump + priorityBump + urgencyBump + clientPriorityBump;
     return {
       ...e,
       triageScore,
-      triageComponents: { ageSeconds, stuckBump, priorityBump, urgencyBump },
+      triageComponents: { ageSeconds, stuckBump, priorityBump, urgencyBump, clientPriorityBump },
       recommendedAction: RECOMMENDED_ACTION_BY_KIND[e.kind],
     };
   });
