@@ -1,0 +1,2 @@
+ALTER TABLE "clients" ADD COLUMN "is_priority" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "tenants" ADD COLUMN "priority_client_weighting_enabled" boolean DEFAULT false NOT NULL;

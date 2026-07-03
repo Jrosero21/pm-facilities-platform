@@ -41,6 +41,10 @@ export const clients = pgTable(
     requireVendorInvoiceForCostPlus: boolean("require_vendor_invoice_for_cost_plus")
       .notNull()
       .default(false),
+    // Client-priority — when the TENANT switch (tenants.priority_client_weighting_enabled) is ON, this
+    // client's jobs get a triage bump in the exceptions list. Default OFF is behavior-preserving (no
+    // backfill; ignored entirely while the tenant switch is off). A per-client flag, tenant-controlled.
+    isPriority: boolean("is_priority").notNull().default(false),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

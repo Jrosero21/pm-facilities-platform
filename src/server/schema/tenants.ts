@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   pgTable,
   timestamp,
@@ -21,6 +22,10 @@ export const tenants = pgTable("tenants", {
   status: tenantStatus("status")
     .notNull()
     .default("active"),
+  // Client-priority weighting — the per-tenant ON/OFF switch. OFF by default (behavior-preserving:
+  // no client-priority bump enters the exceptions triage until a tenant opts in). Governs whether
+  // clients.is_priority has any effect.
+  priorityClientWeightingEnabled: boolean("priority_client_weighting_enabled").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });
