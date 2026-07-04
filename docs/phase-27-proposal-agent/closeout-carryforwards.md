@@ -1624,3 +1624,36 @@ operator/no-role denied). tsc=0.
 
 FEATURE COMPLETE: client-priority is end-to-end — schema (A) → conditional weighting (B, off-by-default byte-
 identical) → settable+auditable+authz'd (C). Per-tenant opt-in. Ready to merge (carries migration 0003).
+
+---
+
+## Live-verify (production go-live) — portal usability findings (noted, not yet fixed)
+
+Surfaced by driving real data through the deployed app (pm-facilities-platform.vercel.app, Rose Analytics tenant).
+Not urgent — banked so they're not lost. Fix pattern for each already scoped via inspection.
+
+REAL GAPS (missing capability):
+- LOCATION editing is create-only. createLocation exists, no updateLocation (same gap clients had pre-Batch-C). A
+  location view + create page exist; no edit form/action. FIX = mirror updateClient/Batch-C: updateLocation
+  (tenant-scoped + audit) + a small edit form.
+- VENDOR HQ address not capturable on create. vendor-form takes name/type/vendorCode/legalName only; HQ address is a
+  vendor_location added post-create via /vendors/[id]/locations/new — a 2-step onboarding = data-integrity risk. FIX
+  = optional HQ-address fields on the vendor create form (write the first vendor_location inline).
+
+UX / FLOW (softer — primitives exist):
+- Multi-step create flows have NO guided wizard. Breadcrumb nav + cancel/back links DO exist on every vendor sub-page
+  (nav isn't broken) — the felt gap is chained create→HQ→coverage step guidance. DECISION DEFERRED: build a wizard vs
+  leave breadcrumbs (leaning leave; the inline-HQ fix removes the worst friction).
+
+CLARITY (not a bug — eligibility works correctly, the CONCEPT trips people):
+- "Service area scope: vendor-wide" is misread as "everywhere." It actually = vendor_location_id IS NULL → applies to
+  ALL BRANCHES of the vendor (branch scope), NOT geographic reach.
+- ★ Dispatch eligibility requires BOTH a trade AND a service area (+ compliance + not-blocklisted), per §2.5 floor.
+  Handyman coverage alone — even vendor-wide — does NOT make a vendor dispatchable to CA; they ALSO need a service
+  area covering CA (national=everywhere, or state=CA, or a CA city/postal). This is correct behavior; the UI just
+  doesn't explain it. FIX = copy/inline-help ("vendor-wide = all branches, not everywhere"; "needs a trade AND a
+  service area to be dispatchable") + a "no service area set → not dispatchable" warning.
+- area_type county + radius are INERT (stored, never matched — no client-location coords, no county column).
+  Effective matching = national/state/city/postal_code. FIX-or-HIDE decision deferred.
+
+Note: post-go-live, main-push = production deploy (Vercel↔GitHub connected). These fixes, when done, go live on merge.
