@@ -88,6 +88,41 @@ export function VendorForm() {
         </label>
       </div>
 
+      <fieldset className="rounded-md border border-neutral-200 p-3">
+        <legend className="px-1 text-sm font-medium text-neutral-800">
+          HQ address <span className="font-normal text-neutral-500">(optional)</span>
+        </legend>
+        <p className="mb-2 text-xs text-neutral-500">
+          Fill this to save the vendor&apos;s headquarters now, or leave blank and add locations later.
+        </p>
+        <label className="block">
+          <span className="text-sm text-neutral-700">Address line 1</span>
+          <input name="addressLine1" autoComplete="off" className={inputClass} />
+        </label>
+        <label className="mt-2 block">
+          <span className="text-sm text-neutral-700">Address line 2</span>
+          <input name="addressLine2" autoComplete="off" className={inputClass} />
+        </label>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm text-neutral-700">City</span>
+            <input name="city" autoComplete="off" className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="text-sm text-neutral-700">State / province</span>
+            <input name="stateProvince" autoComplete="off" className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="text-sm text-neutral-700">Postal code</span>
+            <input name="postalCode" autoComplete="off" className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="text-sm text-neutral-700">Country</span>
+            <input name="country" defaultValue="US" maxLength={2} autoComplete="off" className={inputClass} />
+          </label>
+        </div>
+      </fieldset>
+
       <label className="block">
         <span className="text-sm font-medium text-neutral-800">
           Notes <span className="font-normal text-neutral-500">(optional)</span>

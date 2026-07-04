@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { createVendor, type VendorType } from "@/server/vendors";
+import { createVendorLocation } from "@/server/vendor-locations";
 
 export type CreateVendorState = { error: string } | null;
 
@@ -47,6 +48,18 @@ export async function createVendorAction(
   const trimOrNull = (key: string) =>
     String(formData.get(key) ?? "").trim() || null;
 
+  // Optional inline HQ address. All-or-nothing, validated BEFORE creating the vendor so a partial
+  // address fails fast (no orphan vendor). If provided → we create a "Headquarters" vendor_location
+  // after the vendor via the EXISTING createVendorLocation writer.
+  const hqLine1 = String(formData.get("addressLine1") ?? "").trim();
+  const hqCity = String(formData.get("city") ?? "").trim();
+  const hqState = String(formData.get("stateProvince") ?? "").trim();
+  const hqPostal = String(formData.get("postalCode") ?? "").trim();
+  const hqProvided = Boolean(hqLine1 || hqCity || hqState || hqPostal);
+  if (hqProvided && !(hqLine1 && hqCity && hqState && hqPostal)) {
+    return { error: "HQ address is incomplete — fill address line 1, city, state/province, and postal code, or leave them all blank." };
+  }
+
   let newId: string;
   try {
     const created = await createVendor({
@@ -68,6 +81,22 @@ export async function createVendorAction(
       return { error: "A vendor with that code already exists in this tenant." };
     }
     throw err;
+  }
+
+  // Inline HQ (optional) — reuse the existing createVendorLocation writer (audits vendor_location.created).
+  if (hqProvided) {
+    await createVendorLocation({
+      tenantId: ctx.activeTenant.tenantId,
+      vendorId: newId,
+      name: "Headquarters",
+      addressLine1: hqLine1,
+      addressLine2: String(formData.get("addressLine2") ?? "").trim() || null,
+      city: hqCity,
+      stateProvince: hqState,
+      postalCode: hqPostal,
+      country: String(formData.get("country") ?? "").trim() || "US",
+      createdByUserId: ctx.user.id,
+    });
   }
 
   revalidatePath("/vendors");

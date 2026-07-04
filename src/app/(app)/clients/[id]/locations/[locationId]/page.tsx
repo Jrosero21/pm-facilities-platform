@@ -11,6 +11,8 @@ import {
   listLocationPreferredVendors,
 } from "@/server/dispatch-routing";
 import { createLocationContactAction } from "@/app/(app)/clients/contact-actions";
+import { updateLocationAction } from "@/app/(app)/clients/location-actions";
+import { LocationForm } from "@/components/location-form";
 import {
   addBlockedVendorAction,
   addPreferredVendorAction,
@@ -38,6 +40,7 @@ export default async function LocationDetailPage({
 
   const contacts = await listLocationContacts(ctx.activeTenant.tenantId, locationId);
   const addContact = createLocationContactAction.bind(null, id, locationId);
+  const editLocation = updateLocationAction.bind(null, id, locationId);
 
   const [preferred, blocked, vendorRows, tradeRows] = await Promise.all([
     listLocationPreferredVendors(ctx.activeTenant.tenantId, locationId),
@@ -86,6 +89,27 @@ export default async function LocationDetailPage({
           </dd>
         </div>
       </dl>
+
+      <div className="mt-8">
+        <h2 className="text-sm font-semibold text-neutral-900">Edit location</h2>
+        <div className="mt-3 rounded-lg border border-neutral-200 bg-white p-4">
+          <LocationForm
+            action={editLocation}
+            cancelHref={`/clients/${id}/locations/${locationId}`}
+            submitLabel="Save changes"
+            defaults={{
+              name: location.name,
+              locationCode: location.locationCode,
+              addressLine1: location.addressLine1,
+              addressLine2: location.addressLine2,
+              city: location.city,
+              stateProvince: location.stateProvince,
+              postalCode: location.postalCode,
+              country: location.country,
+            }}
+          />
+        </div>
+      </div>
 
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Location contacts</h2>

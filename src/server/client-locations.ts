@@ -132,3 +132,61 @@ export async function createLocation(
   if (!row) throw new Error("Location insert succeeded but row could not be reloaded.");
   return row;
 }
+
+export type UpdateLocationPatch = {
+  name?: string;
+  locationCode?: string | null;
+  addressLine1?: string;
+  addressLine2?: string | null;
+  city?: string;
+  stateProvince?: string;
+  postalCode?: string;
+  country?: string;
+};
+
+/**
+ * Edit a location (the first location-edit path — createLocation was create-only). Tenant-scoped;
+ * only the fields present in `patch` are written. Writes a client_location.updated audit row
+ * (before→after of the changed fields). Clones updateClient's shape. Throws CLIENT_LOCATION_NOT_FOUND
+ * for a missing/cross-tenant id (getLocation's cross-tenant guard).
+ */
+export async function updateLocation(input: {
+  tenantId: string;
+  id: string;
+  actorUserId: string;
+  patch: UpdateLocationPatch;
+}): Promise<ClientLocationRow> {
+  const before = await getLocation(input.tenantId, input.id);
+  if (!before) throw new Error("CLIENT_LOCATION_NOT_FOUND");
+
+  const set: Partial<typeof clientLocations.$inferInsert> = {};
+  if (input.patch.name !== undefined) set.name = input.patch.name;
+  if (input.patch.locationCode !== undefined) set.locationCode = input.patch.locationCode?.trim().toUpperCase() || null;
+  if (input.patch.addressLine1 !== undefined) set.addressLine1 = input.patch.addressLine1;
+  if (input.patch.addressLine2 !== undefined) set.addressLine2 = input.patch.addressLine2 ?? null;
+  if (input.patch.city !== undefined) set.city = input.patch.city;
+  if (input.patch.stateProvince !== undefined) set.stateProvince = input.patch.stateProvince;
+  if (input.patch.postalCode !== undefined) set.postalCode = input.patch.postalCode;
+  if (input.patch.country !== undefined) set.country = input.patch.country.trim().toUpperCase() || "US";
+
+  const changed: string[] = [];
+  if (Object.keys(set).length > 0) {
+    await db.update(clientLocations).set(set).where(and(eq(clientLocations.tenantId, input.tenantId), eq(clientLocations.id, input.id)));
+    for (const k of Object.keys(set)) changed.push(k);
+  }
+
+  if (changed.length > 0) {
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "client_location.updated",
+      targetType: "client_location",
+      targetId: input.id,
+      metadata: { clientId: before.clientId, changed },
+    });
+  }
+
+  const row = await getLocation(input.tenantId, input.id);
+  if (!row) throw new Error("Location update succeeded but row could not be reloaded.");
+  return row;
+}
