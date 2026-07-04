@@ -1601,3 +1601,26 @@ per-client is_priority toggle. Deferred within C: the FULL tenant-settings scree
 banked operator-portal-settings-UI gap) — C ships minimal settable controls, not a form redesign.
 
 Also carry (unchanged): Neon at 0000 — now needs 0001+0002+0003 + agent seeds before any cloud deploy.
+
+---
+
+## Client-priority — Batch C (setters) done; feature complete end-to-end
+
+Batch C (7f1e26e — NOTE: this commit also bundled the A+B bank doc, swept by git add -A; content correct, left as-is
+since the whole unit merges linear anyway). The setters that make client-priority settable:
+- updateClient (clients.ts) — the FIRST client-edit path (was create-only). Tenant-scoped, patches only given fields,
+  writes client.priority_flag_changed audit (before→after) ONLY on actual change (no-op = no audit). CLIENT_NOT_FOUND
+  cross-tenant.
+- tenant-settings.ts (new): setPriorityClientWeighting (+ tenant.priority_weighting_toggled audit),
+  getPriorityClientWeighting, canManageTenantSettings(roleKeys, isSuperAdmin) — pure authz predicate (tenant_admin/
+  super_admin), mirroring enforceAccountingGate, headless-testable.
+- Actions: setClientPriorityAction (requireTenant, per-record) + setTenantPriorityWeightingAction (requireTenant +
+  canManageTenantSettings → /forbidden; tenant-wide config = tenant_admin).
+- Minimal UI (no form redesign): PriorityClientToggle on clients/[id] (mirrors RequireVendorInvoiceToggle);
+  PriorityWeightingToggle in /notifications header. Full tenant-settings/client-edit form stays DEFERRED (banked
+  operator-portal-settings-UI gap).
+Proven 9/9: audit-fires-on-change-only, switch-audits, end-to-end (toggle→bump), authz (tenant_admin/super_admin vs
+operator/no-role denied). tsc=0.
+
+FEATURE COMPLETE: client-priority is end-to-end — schema (A) → conditional weighting (B, off-by-default byte-
+identical) → settable+auditable+authz'd (C). Per-tenant opt-in. Ready to merge (carries migration 0003).
