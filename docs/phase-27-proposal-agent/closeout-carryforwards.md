@@ -1657,3 +1657,30 @@ CLARITY (not a bug — eligibility works correctly, the CONCEPT trips people):
   Effective matching = national/state/city/postal_code. FIX-or-HIDE decision deferred.
 
 Note: post-go-live, main-push = production deploy (Vercel↔GitHub connected). These fixes, when done, go live on merge.
+
+---
+
+## Portal fixes — location edit + vendor HQ inline (2 of the live-verify gaps, DONE)
+
+Branch phase-portal-fixes (f46904d, not pushed — merge = live deploy). Fixes 2 of the banked live-verify findings;
+both mirror/reuse proven shapes.
+
+#1 LOCATION EDIT (clones updateClient/Batch-C): updateLocation({tenantId,id,actorUserId,patch}) in
+client-locations.ts — getLocation guard (CLIENT_LOCATION_NOT_FOUND cross-tenant), patch-only, audits
+client_location.updated (before→after), reload. + updateLocationAction (requireTenant). + UI: extended the existing
+LocationForm to serve BOTH create and edit (optional defaults + submitLabel — one form, no duplicate) + an edit card
+on clients/[id]/locations/[locationId]/page.tsx.
+
+#2 VENDOR HQ INLINE (composes existing writers, no new data-layer fn): optional HQ fieldset on vendor-form.tsx;
+createVendorAction chains the EXISTING createVendorLocation({vendorId,name:"Headquarters",...}) after createVendor
+when HQ provided. Reuses createVendorLocation (vendor_location.created audit preserved). ★ Partial HQ = FAIL-FAST
+before vendor creation (no orphan vendor, no half-filled HQ — serves the data-integrity intent of the finding);
+fully-blank skips cleanly (vendor created without a location, as today).
+
+Proven 7/7 (patch+audit, cross-tenant guard, unpatched-untouched, HQ-chain, reuses-existing-writer, optional-skip).
+tsc=0.
+
+STILL OPEN from the live-verify bank (untouched, whenever): #3 vendor-onboarding wizard (deferred — breadcrumbs
+work); #4 clarity/copy (vendor-wide ≠ everywhere; trade+service-area both required; county/radius inert).
+
+Note: post-go-live, merge to main = production deploy.
