@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
-import { createClient } from "@/server/clients";
+import { createClient, updateClient } from "@/server/clients";
 
 export type CreateClientState = { error: string } | null;
 
@@ -45,4 +45,27 @@ export async function createClientAction(
 
   revalidatePath("/clients");
   redirect(`/clients/${newId}`);
+}
+
+export type ClientPriorityState = { error: string } | null;
+
+/**
+ * Toggle a client's is_priority flag (checkbox form, mirrors setRequireVendorInvoiceForCostPlusAction).
+ * A per-record edit → requireTenant (tenant membership), like createClient. updateClient audits the change.
+ */
+export async function setClientPriorityAction(
+  clientId: string,
+  _prev: ClientPriorityState,
+  formData: FormData,
+): Promise<ClientPriorityState> {
+  const ctx = await requireTenant();
+  const isPriority = formData.get("value") === "true";
+  await updateClient({
+    tenantId: ctx.activeTenant.tenantId,
+    id: clientId,
+    actorUserId: ctx.user.id,
+    patch: { isPriority },
+  });
+  revalidatePath(`/clients/${clientId}`);
+  return null;
 }

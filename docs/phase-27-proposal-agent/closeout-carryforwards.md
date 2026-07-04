@@ -1573,3 +1573,31 @@ product model (what tiers? who sets them?). Building the column on a guessed mod
 Revisit when a real client-tier concept is defined.
 
 Sub-thread of the existing exception/notifications surface — bank record, not a phase closeout (no new phase built).
+
+---
+
+## Client-priority weighting — per-tenant opt-in, off by default (schema + weighting done; setters next)
+
+Sub-thread of the exceptions/notifications surface (branch phase-client-priority; A 3a51018, B 682b2af; not pushed).
+Model (operator decision): weighting whether "priority" clients rank higher in the needs-attention list is a
+per-tenant CHOICE — off by default (rank by the job itself, today's behavior), a tenant opts in and marks clients.
+Explicit switch (not switch-less) per the operator's "tenant's choice" stance. Nudge, not override.
+
+BATCH A (0003_thin_tarot): clients.is_priority + tenants.priority_client_weighting_enabled — both boolean NOT NULL
+default false (every existing row valid, no backfill, behavior-safe). Applied pm + pm_sandbox.
+
+BATCH B (exceptions.ts + operational-queue.ts — all 4 exception kinds): conditional clientPriorityBump folded into
+triageScore. weightingEnabled = tenants.priority_client_weighting_enabled (read once in getExceptions);
+clientPriorityBump = (weightingEnabled && isPriority) ? CLIENT_PRIORITY_BUMP_SECONDS : 0. CLIENT_PRIORITY_BUMP =
+2 days (172800s) — a NUDGE: ~mid priority-step, below urgency tiers (3-5d), far below the 365d stuck band, so a
+materially older/urgent normal-client job still outranks a slightly-late priority one. Auditable
+(triageComponents.clientPriorityBump). ★ OFF-PATH BYTE-IDENTICAL: switch off → bump always 0 → triageScore = the
+exact pre-batch composition (proven). Proven 6/6: off-safe, on-lifts, nudge-not-override, auditable, only-flagged-
+lift, no-side-effects. tsc=0.
+
+REMAINING — Batch C (the setters, not yet built): the first updateClient server action (client editing is create-
+only today — createClient only) + audit event client.priority_flag_changed; minimal tenant-switch toggle + minimal
+per-client is_priority toggle. Deferred within C: the FULL tenant-settings screen + full client-edit form (the
+banked operator-portal-settings-UI gap) — C ships minimal settable controls, not a form redesign.
+
+Also carry (unchanged): Neon at 0000 — now needs 0001+0002+0003 + agent seeds before any cloud deploy.

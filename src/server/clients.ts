@@ -70,3 +70,50 @@ export async function createClient(input: CreateClientInput): Promise<ClientRow>
   if (!row) throw new Error("Client insert succeeded but row could not be reloaded.");
   return row;
 }
+
+export type UpdateClientPatch = {
+  name?: string;
+  clientCode?: string | null;
+  isPriority?: boolean;
+};
+
+/**
+ * The first client-edit path (createClient was create-only). Tenant-scoped; only the fields present
+ * in `patch` are written. AUDITABILITY: a change to is_priority — an operational change that affects
+ * the exceptions ranking — writes a client.priority_flag_changed audit row (before→after). Throws
+ * CLIENT_NOT_FOUND for a missing/cross-tenant id (mirrors getClient's cross-tenant guard).
+ */
+export async function updateClient(input: {
+  tenantId: string;
+  id: string;
+  actorUserId: string;
+  patch: UpdateClientPatch;
+}): Promise<ClientRow> {
+  const before = await getClient(input.tenantId, input.id);
+  if (!before) throw new Error("CLIENT_NOT_FOUND");
+
+  const set: Partial<typeof clients.$inferInsert> = {};
+  if (input.patch.name !== undefined) set.name = input.patch.name;
+  if (input.patch.clientCode !== undefined) set.clientCode = input.patch.clientCode?.trim().toUpperCase() || null;
+  if (input.patch.isPriority !== undefined) set.isPriority = input.patch.isPriority;
+
+  if (Object.keys(set).length > 0) {
+    await db.update(clients).set(set).where(and(eq(clients.tenantId, input.tenantId), eq(clients.id, input.id)));
+  }
+
+  // Audit the priority-flag change specifically (only when it actually changes).
+  if (input.patch.isPriority !== undefined && input.patch.isPriority !== before.isPriority) {
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "client.priority_flag_changed",
+      targetType: "client",
+      targetId: input.id,
+      metadata: { from: before.isPriority, to: input.patch.isPriority },
+    });
+  }
+
+  const row = await getClient(input.tenantId, input.id);
+  if (!row) throw new Error("Client update succeeded but row could not be reloaded.");
+  return row;
+}

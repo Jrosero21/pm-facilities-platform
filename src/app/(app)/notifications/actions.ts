@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { autoRedispatchForStuckAssignment, type AutoRedispatchResult } from "@/server/auto-redispatch";
 import { getExceptions } from "@/server/analytics/exceptions";
+import { canManageTenantSettings, setPriorityClientWeighting } from "@/server/tenant-settings";
 
 // Phase 28 / T2a — the per-job autonomous re-dispatch entry. Fires the gate-governed T1 core on
 // ONE stuck assignment (the operator's "Auto-retry now" on a can_suggest exception row). Per-tenant.
@@ -98,4 +100,26 @@ export async function autoRedispatchSweepAction(): Promise<AutoRedispatchSweepSt
 
   revalidatePath("/notifications");
   return { ok: true, summary: { swept, autoSent, heldForReview, skipped, byReason } };
+}
+
+export type TenantWeightingState = { error: string } | null;
+
+/**
+ * Toggle the tenant's client-priority weighting switch (checkbox form). A tenant-WIDE config change →
+ * gated on tenant_admin (super_admin passes) via the pure canManageTenantSettings, mirroring the
+ * accounting gate. setPriorityClientWeighting audits it.
+ */
+export async function setTenantPriorityWeightingAction(
+  _prev: TenantWeightingState,
+  formData: FormData,
+): Promise<TenantWeightingState> {
+  const ctx = await requireTenant();
+  if (!canManageTenantSettings(ctx.roleKeys, ctx.isSuperAdmin)) redirect("/forbidden");
+  await setPriorityClientWeighting({
+    tenantId: ctx.activeTenant.tenantId,
+    enabled: formData.get("value") === "true",
+    actorUserId: ctx.user.id,
+  });
+  revalidatePath("/notifications");
+  return null;
 }

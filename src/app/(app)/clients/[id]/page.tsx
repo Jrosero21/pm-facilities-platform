@@ -9,6 +9,7 @@ import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
 import { BillingModelSelector } from "@/components/billing-model-selector";
 import { RequireVendorInvoiceToggle } from "@/components/require-vendor-invoice-toggle";
+import { PriorityClientToggle } from "@/components/priority-client-toggle";
 
 export default async function ClientDetailPage({
   params,
@@ -51,6 +52,9 @@ export default async function ClientDetailPage({
 
       {/* Phase (iii) Part 2 — advisory: require the vendor invoice doc for cost-plus billing */}
       <RequireVendorInvoiceToggle clientId={id} current={client.requireVendorInvoiceForCostPlus} />
+
+      {/* Client-priority — the per-client flag (effective only when the tenant switch is on) */}
+      <PriorityClientToggle clientId={id} current={client.isPriority} />
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-4">

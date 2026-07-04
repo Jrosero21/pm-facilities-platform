@@ -1,7 +1,9 @@
 import { requireTenant } from "@/server/auth-context";
 import { getExceptions } from "@/server/analytics/exceptions";
+import { getPriorityClientWeighting } from "@/server/tenant-settings";
 import { ExceptionQueue } from "@/components/exception-queue";
 import { AutoRedispatchSweepButton } from "@/components/auto-redispatch-sweep-button";
+import { PriorityWeightingToggle } from "@/components/priority-weighting-toggle";
 
 // Phase 19e — the notification center / exception queue. PULL surface (operator navigates
 // here; no realtime/push/badge — design §5). Today it hosts the exception queue over
@@ -11,6 +13,7 @@ export default async function NotificationsPage() {
   const ctx = await requireTenant();
   const tenantId = ctx.activeTenant.tenantId;
   const items = await getExceptions(tenantId);
+  const weightingOn = await getPriorityClientWeighting(tenantId);
 
   // The sweep is meaningful only when something is auto-retryable — render it exactly when there is
   // at least one can_suggest stuck row (it disappears after a successful sweep on revalidate).
@@ -22,7 +25,10 @@ export default async function NotificationsPage() {
     <div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-        {hasSweepable && <AutoRedispatchSweepButton />}
+        <div className="flex items-center gap-3">
+          <PriorityWeightingToggle current={weightingOn} />
+          {hasSweepable && <AutoRedispatchSweepButton />}
+        </div>
       </div>
 
       {items.length === 0 ? (
