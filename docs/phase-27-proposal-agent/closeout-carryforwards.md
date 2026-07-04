@@ -1684,3 +1684,35 @@ STILL OPEN from the live-verify bank (untouched, whenever): #3 vendor-onboarding
 work); #4 clarity/copy (vendor-wide ≠ everywhere; trade+service-area both required; county/radius inert).
 
 Note: post-go-live, merge to main = production deploy.
+
+---
+
+## Dispatch geo — manual = search-aid, autonomy = HARD FLOOR (operator model correction)
+
+Branch phase-dispatch-geo (ed8fa44, not pushed — merge = live deploy + Neon needs migration 0004). Fixes the
+live-verify #4 finding, corrected by operator insight: service area does NOT gate manual dispatch (a CA vendor
+travels to a TX project — you can dispatch anyone), BUT autonomy must NOT auto-dispatch out of area.
+
+★ MODEL CORRECTION to §2.5: the roadmap listed geographic coverage as a hard eligibility floor. Operator reality:
+geography = HARD FLOOR for AUTONOMY only; SEARCH-AID (never blocks) for MANUAL dispatch. Compliance + blocklist stay
+hard floors in BOTH modes; trade stays the search default (fuzzy-trade override banked for a separate conversation).
+The deferred auto-dispatch/autonomy phase INHERITS this: geo stays a hard floor for auto — never auto-dispatch out of
+area.
+
+IMPLEMENTATION: findCandidateVendorsForJob(..., { geoMode = "enforce" }) — default "enforce" (fail-safe toward the
+floor; any caller passing nothing keeps geo hard). "search" drops geo from the WHERE, surfaces out-of-area vendors
+labeled (inServiceArea field, in-area sorted first); trade/compliance/blocklist stay HARD in both modes.
+createDispatch takes geoMode (default enforce) — manual "search" lets an out-of-area pick clear
+VENDOR_NO_LONGER_CANDIDATE; writes dispatch.geo_override audit (§). auto-dispatch.ts:198 + redispatch-suggestion.ts:164
+call createDispatch with NO geoMode → enforce → autonomy floor intact. Manual UI (dispatch/new) passes "search",
+amber "Outside service area" badge, in-area first.
+
+★ SCHEMA: migration 0004_absurd_silver_sable — job_vendor_assignments.tightest_geo_at_dispatch made NULLABLE (an
+out-of-area dispatch has no tightest-geo; NULL is the honest snapshot, not a sentinel enum). Applied pm + pm_sandbox.
+MUST be applied to Neon BEFORE/at deploy (Phase-1 pattern) or a prod out-of-area dispatch crashes on NOT NULL.
+
+Proven 6/6: (a) search surfaces out-of-area labeled, (b) manual override dispatches + audit, ★(c) enforce EXCLUDES
+(autonomy floor), ★(d) enforce createDispatch REJECTS (write-gate floor), (e) compliance+blocklist stay hard in
+search. tsc=0.
+
+Neon carry-forward now: 0001+0002+0003 already applied at go-live; 0004 needs applying before this deploys.
