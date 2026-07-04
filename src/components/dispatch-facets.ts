@@ -26,7 +26,8 @@ const GEO_LABELS: Record<GeoMatchType, string> = {
   national: "National service area",
 };
 
-export function geoMatchLabel(tightestGeo: string): string {
+export function geoMatchLabel(tightestGeo: string | null): string {
+  if (tightestGeo == null) return "Outside service area";
   return GEO_LABELS[tightestGeo as GeoMatchType] ?? tightestGeo;
 }
 
@@ -45,12 +46,16 @@ export function complianceLabel(status: string): string {
 export function facetLine(args: {
   tradeName: string;
   primaryTradeMatch: boolean;
-  tightestGeo: string;
+  // null = out-of-area (no geo match) — the geo segment is dropped; the "Outside service area" badge
+  // carries that signal in the picker.
+  tightestGeo: string | null;
   compliance: string;
 }): string {
   return [
     tradeMatchLabel(args.tradeName, args.primaryTradeMatch),
-    geoMatchLabel(args.tightestGeo),
+    args.tightestGeo ? geoMatchLabel(args.tightestGeo) : null,
     complianceLabel(args.compliance),
-  ].join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }

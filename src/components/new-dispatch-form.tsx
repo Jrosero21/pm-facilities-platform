@@ -16,11 +16,20 @@ export type DispatchCandidate = {
   vendorName: string;
   vendorType: string;
   primaryTradeMatch: boolean;
-  tightestGeoMatch: string;
+  tightestGeoMatch: string | null;
+  // false = no service area covers this job's location. Shown as a label; still selectable (manual
+  // override). In-area candidates are ranked first upstream.
+  inServiceArea: boolean;
   complianceStatus: string;
   locations: { id: string; name: string }[];
   contacts: { id: string; name: string; isPrimary: boolean }[];
 };
+
+const OUT_OF_AREA_BADGE = (
+  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+    Outside service area
+  </span>
+);
 
 export function NewDispatchForm({
   jobId,
@@ -72,8 +81,9 @@ export function NewDispatchForm({
             <input type="hidden" name="vendorId" value={selectedVendorId} />
             <div className="mt-1 rounded-md border border-neutral-300 bg-neutral-50 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-neutral-900">
+                <span className="flex items-center gap-2 text-sm font-medium text-neutral-900">
                   {candidates[0].vendorName}
+                  {!candidates[0].inServiceArea && OUT_OF_AREA_BADGE}
                 </span>
                 <span className="text-xs uppercase tracking-wide text-neutral-500">
                   {candidates[0].vendorType}
@@ -116,6 +126,7 @@ export function NewDispatchForm({
                     <span className="text-xs uppercase tracking-wide text-neutral-500">
                       {c.vendorType}
                     </span>
+                    {!c.inServiceArea && OUT_OF_AREA_BADGE}
                   </span>
                   <span className="mt-0.5 block text-xs text-neutral-600">
                     {facetLine({

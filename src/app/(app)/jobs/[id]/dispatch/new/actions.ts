@@ -46,6 +46,10 @@ export async function createDispatchAction(
       scheduledEndAt,
       dispatchScope,
       createdByUserId: ctx.user.id,
+      // Manual dispatch = the operator may pick an out-of-area vendor (the form shows them). Pass
+      // "search" so the write-gate doesn't reject it; an out-of-area pick is audited (dispatch.geo_override).
+      // trade/compliance/blocklist stay hard. The autonomy path never routes through here.
+      geoMode: "search",
     });
     newId = assignment.id;
   } catch (err) {

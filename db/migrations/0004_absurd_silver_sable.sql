@@ -1,0 +1,1 @@
+ALTER TABLE "job_vendor_assignments" ALTER COLUMN "tightest_geo_at_dispatch" DROP NOT NULL;

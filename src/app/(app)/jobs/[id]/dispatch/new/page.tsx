@@ -52,7 +52,9 @@ export default async function NewDispatchPage({
     );
   }
 
-  const candidates = await findCandidateVendorsForJob(tenantId, id);
+  // MANUAL dispatch = geo is a search-aid, not a hard filter: out-of-area vendors appear (labeled),
+  // in-area first. The autonomy floor is untouched (auto-dispatch passes no geoMode → enforce).
+  const candidates = await findCandidateVendorsForJob(tenantId, id, { geoMode: "search" });
 
   if (candidates.length === 0) {
     return (
@@ -63,8 +65,9 @@ export default async function NewDispatchPage({
           <p className="text-sm font-medium text-neutral-900">No vendors match this job.</p>
           <p className="mt-2 text-sm text-neutral-600">
             To dispatch, a vendor needs active{" "}
-            <span className="font-medium">{job.tradeName}</span> coverage and a service
-            area covering this job&apos;s location ({job.locationName}). Add coverage on a
+            <span className="font-medium">{job.tradeName}</span> coverage and must not be
+            blocked for this client. Out-of-area vendors are shown (labeled) and can still be
+            dispatched — so an empty list means no vendor has this trade. Add coverage on a
             vendor, or change the job&apos;s trade.
           </p>
           <div className="mt-4">
@@ -94,6 +97,7 @@ export default async function NewDispatchPage({
         vendorType: c.vendorType,
         primaryTradeMatch: c.primaryTradeMatch,
         tightestGeoMatch: c.tightestGeoMatch,
+        inServiceArea: c.inServiceArea,
         complianceStatus: c.complianceStatus,
         locations: locations.map((l) => ({ id: l.id, name: l.name })),
         contacts: contacts.map((ct) => ({

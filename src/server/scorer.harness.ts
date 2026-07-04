@@ -23,6 +23,7 @@ function mk(o: Partial<ScoredCandidate> = {}): ScoredCandidate {
     tradeScope: o.tradeScope ?? "vendor_wide",
     geoMatchTypes: o.geoMatchTypes ?? [geo],
     tightestGeoMatch: geo,
+    inServiceArea: o.inServiceArea ?? true,
     complianceStatus: o.complianceStatus ?? "ok",
     preferenceRank: o.preferenceRank ?? null,
     trackRecordScore: o.trackRecordScore ?? TRACK_RECORD_PRIOR,

@@ -34,7 +34,11 @@ export type VendorCandidate = {
   primaryTradeMatch: boolean;
   tradeScope: TradeScope;
   geoMatchTypes: GeoMatchType[];
-  tightestGeoMatch: GeoMatchType;
+  // null when out-of-area (no geo match) — only possible in geoMode "search".
+  tightestGeoMatch: GeoMatchType | null;
+  // true = the vendor has a service area covering the job's location; false = "outside service area"
+  // (only ever false in geoMode "search" — enforce mode excludes out-of-area vendors entirely).
+  inServiceArea: boolean;
   complianceStatus: ComplianceMatchStatus;
   // Phase 22 (additive): the location's preferred rank for this vendor+trade —
   // lower = stronger preference; null = not on the location's preferred list.
@@ -55,6 +59,13 @@ export type MatchFacets = {
   postal: string;
 };
 
+// geoMode governs ONLY the geo hard-filter. "enforce" (DEFAULT) keeps the geo WHERE clause — the
+// autonomy hard floor, unchanged. "search" DROPS geo from the WHERE so out-of-area vendors appear
+// (labeled via inServiceArea, sorted last by tightestGeoRank NULLS LAST) for the MANUAL operator to
+// choose. trade / compliance / blocklist stay HARD in BOTH modes. Default is enforce so any caller
+// that passes nothing (auto-dispatch, redispatch) keeps the floor — fail-safe toward the floor.
+export type MatchOptions = { geoMode?: "enforce" | "search" };
+
 const GEO_RANK_TO_TYPE: Record<number, GeoMatchType> = {
   1: "postal_code",
   2: "city",
@@ -68,7 +79,9 @@ const GEO_RANK_TO_TYPE: Record<number, GeoMatchType> = {
  */
 export async function findCandidateVendorsForJobByFacets(
   facets: MatchFacets,
+  options: MatchOptions = {},
 ): Promise<VendorCandidate[]> {
+  const geoMode = options.geoMode ?? "enforce";
   const { tenantId, clientId, clientLocationId, tradeId, city, state, postal } =
     facets;
   const stateUpper = state.trim().toUpperCase();
@@ -140,8 +153,12 @@ export async function findCandidateVendorsForJobByFacets(
           SELECT 1 FROM vendor_trade_coverage c
           WHERE c.vendor_id = ${vid} AND c.trade_id = ${tradeId} AND c.status = 'active' AND ${tradeBranchActive}
         )`,
-        // geo-eligible
-        sql`EXISTS (
+        // geo-eligible — HARD in "enforce" (the autonomy floor); DROPPED in "search" (manual only,
+        // so out-of-area vendors surface). undefined is ignored by drizzle's and(). trade/compliance/
+        // blocklist below stay hard regardless of geoMode.
+        geoMode === "search"
+          ? undefined
+          : sql`EXISTS (
           SELECT 1 FROM vendor_service_areas a
           WHERE a.vendor_id = ${vid} AND a.status = 'active' AND ${areaBranchActive} AND ${geoPredicate}
         )`,
@@ -183,7 +200,10 @@ export async function findCandidateVendorsForJobByFacets(
       primaryTradeMatch: Number(r.primaryTradeMatch) > 0,
       tradeScope,
       geoMatchTypes,
-      tightestGeoMatch: GEO_RANK_TO_TYPE[Number(r.tightestGeoRank)],
+      tightestGeoMatch: GEO_RANK_TO_TYPE[Number(r.tightestGeoRank)] ?? null,
+      // Empty geoMatchTypes = no service area covers this location → "outside service area".
+      // Always true in enforce mode (out-of-area excluded); may be false in search mode.
+      inServiceArea: geoMatchTypes.length > 0,
       complianceStatus: r.complianceStatus as ComplianceMatchStatus,
       preferenceRank: r.preferenceRank == null ? null : Number(r.preferenceRank),
     };
@@ -197,6 +217,7 @@ export async function findCandidateVendorsForJobByFacets(
 export async function findCandidateVendorsForJob(
   tenantId: string,
   jobId: string,
+  options: MatchOptions = {},
 ): Promise<VendorCandidate[]> {
   const job = await getJob(tenantId, jobId);
   if (!job || !job.primaryTradeId) return [];
@@ -210,5 +231,5 @@ export async function findCandidateVendorsForJob(
     city: location.city,
     state: location.stateProvince,
     postal: location.postalCode,
-  });
+  }, options);
 }

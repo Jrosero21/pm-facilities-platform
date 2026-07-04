@@ -200,6 +200,11 @@ export type CreateDispatchInput = {
   // string for a human operator; null for a system actor (Phase 22 auto-dispatch).
   // All three write targets (assignment / status-history / audit) are nullable.
   createdByUserId: string | null;
+  // geoMode for the write-gate re-derivation. DEFAULT "enforce" → geo stays a hard floor (the auto/
+  // redispatch path passes nothing → floor intact). "search" = a MANUAL operator override: an
+  // out-of-area vendor is NOT rejected (trade/compliance/blocklist STILL hard), and the out-of-area
+  // dispatch is audited (dispatch.geo_override). Only a human actor should ever pass "search".
+  geoMode?: "enforce" | "search";
 };
 
 /**
@@ -237,11 +242,16 @@ export async function createDispatch(
   const draftStatus = await getDispatchAssignmentStatusByCode("DRAFT");
   if (!draftStatus) throw new Error("STATUS_NOT_FOUND");
 
-  // Facet snapshot — re-derive the matcher server-side (the UI's run was
-  // display-only). Reject if the chosen vendor is no longer a candidate.
-  const candidates = await findCandidateVendorsForJob(input.tenantId, input.jobId);
+  // Facet snapshot — re-derive the matcher server-side (the UI's run was display-only). Reject if
+  // the chosen vendor is no longer a candidate. geoMode defaults to "enforce" (auto/redispatch pass
+  // nothing → geo stays a hard floor at the write-gate); "search" is a manual operator override that
+  // lets an out-of-area vendor through (trade/compliance/blocklist still hard — they're never dropped).
+  const geoMode = input.geoMode ?? "enforce";
+  const candidates = await findCandidateVendorsForJob(input.tenantId, input.jobId, { geoMode });
   const candidate = candidates.find((c) => c.vendorId === input.vendorId);
   if (!candidate) throw new Error("VENDOR_NO_LONGER_CANDIDATE");
+  // A deliberate out-of-area dispatch (only possible via a manual "search" override) — audited below.
+  const isGeoOverride = geoMode === "search" && !candidate.inServiceArea;
 
   // chosen_branch_covered_trade: only meaningful when a branch was picked.
   const chosenBranchCoveredTrade = input.vendorLocationId
@@ -303,6 +313,24 @@ export async function createDispatch(
         status: "DRAFT",
       },
     });
+
+    // Manual geo-override — an out-of-area vendor deliberately dispatched by an operator. Recorded
+    // as its own audit event so an out-of-area dispatch is legible (§ auditability). Never fires on
+    // the autonomy path (geoMode enforce there, and inServiceArea is always true when enforced).
+    if (isGeoOverride) {
+      await tx.insert(auditLogs).values({
+        tenantId: input.tenantId,
+        userId: input.createdByUserId,
+        action: "dispatch.geo_override",
+        targetType: "job_vendor_assignment",
+        targetId: assignmentId,
+        metadata: {
+          jobId: input.jobId,
+          vendorId: input.vendorId,
+          reason: "out_of_service_area",
+        },
+      });
+    }
   });
 
   const row = await getAssignment(input.tenantId, assignmentId);

@@ -80,7 +80,10 @@ export const jobVendorAssignments = pgTable(
     // thereafter (defensive against future trade-change workflows).
     matchedTradeId: varchar("matched_trade_id", { length: 36 }).notNull(),
     matchedTradeWasPrimary: boolean("matched_trade_was_primary").notNull(),
-    tightestGeoAtDispatch: geoMatchType("tightest_geo_at_dispatch").notNull(),
+    // NULLABLE: a manual out-of-area dispatch (geoMode "search") has NO geo match, so there is no
+    // tightest-geo to snapshot. NULL is the honest "outside service area" record. In-area/auto
+    // dispatches always set it (enforce mode only returns geo-matched candidates).
+    tightestGeoAtDispatch: geoMatchType("tightest_geo_at_dispatch"),
     matchedGeoTypesAtDispatch: json("matched_geo_types_at_dispatch").notNull(),
     complianceStatusAtDispatch: complianceStatus("compliance_status_at_dispatch").notNull(),
     // Nullable: only meaningful when a branch was chosen (vendor_location_id set).
