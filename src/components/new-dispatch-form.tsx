@@ -37,6 +37,7 @@ export function NewDispatchForm({
   candidates,
   defaultScope,
   scopeFromProblem,
+  noApprovedScope,
   defaultScheduledStart,
 }: {
   jobId: string;
@@ -44,6 +45,7 @@ export function NewDispatchForm({
   candidates: DispatchCandidate[];
   defaultScope: string;
   scopeFromProblem: boolean;
+  noApprovedScope: boolean;
   defaultScheduledStart: string;
 }) {
   const action = createDispatchAction.bind(null, jobId);
@@ -243,6 +245,12 @@ export function NewDispatchForm({
               : "(pre-filled from the job — edit as needed)"}
           </span>
         </span>
+        {noApprovedScope && (
+          <span className="mt-1.5 block rounded border border-amber-200 bg-amber-100 px-2 py-1.5 text-xs text-amber-800">
+            No approved scope — the vendor will receive the original job request, not a generated
+            scope. You can proceed, or generate a scope first.
+          </span>
+        )}
         <textarea
           name="dispatchScope"
           rows={4}

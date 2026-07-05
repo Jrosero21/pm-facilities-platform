@@ -116,6 +116,9 @@ export default async function NewDispatchPage({
   const scopeSnapshot = job.approvedScopeOfWork ?? job.scopeOfWork ?? null;
   const scopeFromProblem = scopeSnapshot === null;
   const defaultScope = scopeSnapshot ?? job.problemDescription ?? "";
+  // Distinct from scopeFromProblem: the vendor gets no human-approved scope even when a
+  // raw scopeOfWork exists. Advisory only — dispatch is never gated on approved scope.
+  const noApprovedScope = job.approvedScopeOfWork == null;
 
   return (
     <div>
@@ -131,6 +134,7 @@ export default async function NewDispatchPage({
           candidates={enriched}
           defaultScope={defaultScope}
           scopeFromProblem={scopeFromProblem}
+          noApprovedScope={noApprovedScope}
           defaultScheduledStart={tomorrowAt9()}
         />
       </div>

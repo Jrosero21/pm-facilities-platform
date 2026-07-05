@@ -266,6 +266,22 @@ export default async function JobDetailPage({
               ))}
             </ol>
             <p className="mt-2 text-xs text-neutral-500">Scope published. Re-scope is not yet supported.</p>
+            {assignments.length === 0 &&
+              (job.primaryTradeId ? (
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="text-sm text-neutral-600">Scope approved. Next, dispatch a vendor.</span>
+                  <Link
+                    href={`/jobs/${job.id}/dispatch/new`}
+                    className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+                  >
+                    Dispatch a vendor
+                  </Link>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-600">
+                  Assign a trade to this job before dispatching a vendor.
+                </p>
+              ))}
           </div>
         )}
         {scopeDrafts.length > 0 ? (
