@@ -1716,3 +1716,29 @@ Proven 6/6: (a) search surfaces out-of-area labeled, (b) manual override dispatc
 search. tsc=0.
 
 Neon carry-forward now: 0001+0002+0003 already applied at go-live; 0004 needs applying before this deploys.
+---
+
+## Scope→dispatch workflow guidance — next-step affordance + soft scope-first warning
+
+Branch phase-scope-dispatch-ux (not pushed — merge = live deploy, NO migration). Closes the live-verify workflow
+finding: after approving a generated scope, the dispatch next-step wasn't guided (the "Dispatch a vendor" control
+sits in a SEPARATE section). NOTE: the core loop is INTACT — publish.ts writes both job_scope_steps AND
+jobs.approved_scope_of_work in one tx; createDispatch reads approvedScopeOfWork; the vendor gets the operator-approved
+scope (edited_steps ?? proposedSteps). This was DISCOVERABILITY, not a broken loop (confirmed via recon, no bug).
+
+PART 1 — next-step affordance (jobs/[id]/page.tsx, inside hasPublishedScope block): kept the existing "re-scope not
+supported" note, added below it — when assignments.length===0: if primaryTradeId → "Scope approved. Next, dispatch a
+vendor." + Dispatch CTA (existing button class, links /dispatch/new); if no trade → nudge to assign a trade first.
+Suppressed once dispatched. Permanent Dispatch-section button untouched.
+
+PART 2 — soft no-approved-scope warning (option c: soft-guide + warn, never block — matches the geo philosophy AND
+the codebase's never-block doctrine): dispatch/new derives noApprovedScope = job.approvedScopeOfWork == null (a
+DISTINCT signal — fires even when a raw scopeOfWork exists, unlike scopeFromProblem), passes it to new-dispatch-form,
+which renders an amber inline block note above the scope textarea ("No approved scope — the vendor will receive the
+original job request... proceed, or generate a scope first"). Amber-100/800 (matches the shipped Outside-service-area
+badge). ADVISORY ONLY — render-only span, no disabled/submit-guard; operator can always dispatch.
+
+Scope-first DECISION (operator): scope is soft-guided, NOT enforced — dispatch stays reachable without an approved
+scope (only primaryTradeId hard-gates it). Consistent with the geo model (guide+warn+override) and never-block-billing.
+
+Purely additive UI — 3 files (2 pages + form), 1 derived boolean, NO backend/schema/data-layer/migration. tsc=0.
