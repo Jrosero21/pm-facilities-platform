@@ -1807,3 +1807,23 @@ decision, not here.)
 
 Deploy note: real Resend key is live in prod → merging makes dispatch-send actually EMAIL the vendor. Prod-verify:
 dispatch a real vendor-with-email, confirm they receive it.
+
+---
+
+## Dispatch-notify — PROD-VERIFIED live (real email delivered) + real-vendor domain gap
+
+Verified live in production (Chrome-agent-assisted, real inbox): a manual "Send dispatch" delivered a real email via
+Resend. Subject "New work order dispatched — #3 at Test Location - CA"; body carried the APPROVED 11-step scope
+(numbered, NOT problem_description); only $ = the NTE ($200, no cost leakage). communication_logs shows a `sent` row
+with a real provider_message_id (752c54ad...). ★ Also confirmed the never-block+retry path: an earlier test-mode 403
+logged a `failed` row, the dispatch STILL stood, and a fresh dispatch re-resolved the recipient and delivered. Full
+loop PROVEN live: ambiguous request → AI scope → approve → publish → dispatch → real vendor email w/ approved scope.
+
+★ PRODUCTION-READINESS GAP (config, not code) — REAL-VENDOR SENDING: delivered only because the recipient is the
+Resend account owner (test-mode's allowed recipient). To email ACTUAL vendors at their own addresses: (1) verify a
+sending domain at resend.com/domains, (2) set RESEND_FROM in Vercel to an address on that verified domain. Until
+then, real-vendor sends 403 (never-blocking — dispatch stands, failure logged + retry). The one step between
+"notification proven" and "notification reaches real vendors." Owner action (DNS/Resend), not code.
+
+Test artifacts (left as-is per operator): test vendor main_email = jonny@roseaandd.com; job #3 has two Sent
+dispatches (one failed, one delivered). Known test data on the prod tenant — harmless (real sends domain-gated).
