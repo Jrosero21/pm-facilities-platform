@@ -1742,3 +1742,39 @@ Scope-first DECISION (operator): scope is soft-guided, NOT enforced — dispatch
 scope (only primaryTradeId hard-gates it). Consistent with the geo model (guide+warn+override) and never-block-billing.
 
 Purely additive UI — 3 files (2 pages + form), 1 derived boolean, NO backend/schema/data-layer/migration. tsc=0.
+
+---
+
+## Chrome-agent walkthrough + scope→dispatch verification (live + data-layer proof)
+
+VERIFIED LIVE (Chrome agent, real job built end-to-end: Acme Retail Co → SF store → Bay Area HVAC → HVAC job →
+generated 18-step scope → approved → published):
+- ✅ Scope→dispatch affordance: post-publish the job page shows "Scope approved. Next, dispatch a vendor" + button
+  (gated hasPublishedScope && assignments===0 && primaryTradeId); existing note preserved.
+- ✅ No-approved-scope amber warning: shown pre-publish (approved_scope_of_work NULL), GONE post-publish.
+- ✅ ★ Approved scope reaches dispatch — DATA-LAYER PROOF: dispatch scope field = the 18-step approved scope, NOT
+  problem_description. scope_of_work=NULL confirms prefill comes ONLY from approvedScopeOfWork (no raw fallback
+  masking it). publish.ts writes approved_scope_of_work + 18 job_scope_steps in one tx. The core value loop
+  (ambiguous request → AI-generated → operator-approved → vendor gets approved scope) is PROVEN working.
+- ✅ geo behavior, vendor trade-matching, Notifications proactively surfacing the stuck dispatch (Suggest
+  replacement / Auto-retry) — all confirmed.
+
+FINDINGS (bank, fix whenever — portal-polish):
+- ⚠️ CONTRADICTORY BADGES: "Outside service area" (geo-match for THIS job) + "LOCAL" (vendor's service-area TYPE)
+  side-by-side reads contradictory though they measure different things. FIX = clarify/suppress-on-conflict.
+- ⚠️ REDUNDANT-DISPATCH: a job with a "Sent" dispatch still offers "Dispatch a vendor" (new) with no on-page
+  "already active" indication. FIX = surface active-dispatch near the button.
+- ⚠️ VENDOR-LINK CTA silently disables ("no contact email") with only a passive note. FIX = actionable CTA.
+- ❌ /ai-agents 404 (nav link is /agents). Low priority. FIX = redirect/remove.
+- 📄 STALE DOC: CLAUDE.md says "MySQL via SSH tunnel" — wrong post-migration (Postgres: local pm / Neon). FIX =
+  correct CLAUDE.md.
+
+★ STRUCTURAL SIGNAL (the deferred live-send gap, seen concretely): a "Sent" dispatch is RECORDED as sent but the
+vendor is NEVER notified — no auto email/SMS; the vendor self-update "Vendor link" is blocked without a vendor email;
+operator hand-tracks status via a manual Set-status dropdown. "Sent" = recorded, not transmitted. This is the banked
+live-send/host-gated piece (§ vendor updates captured; live send deferred), now CONFIRMED as the highest-leverage
+structural gap in the operator loop — the next major build.
+
+BASELINES (future-optimization anchors — capture on every review, not just pass/fail):
+- Scope-generator output: 18 steps for one HVAC job (Jul 5 2026, early version). Hypothesis: too many — target
+  trimming to a tighter core sequence. Anchor for measuring later scope-gen tuning.
