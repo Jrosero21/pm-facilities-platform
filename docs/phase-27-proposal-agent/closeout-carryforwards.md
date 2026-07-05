@@ -1778,3 +1778,32 @@ structural gap in the operator loop — the next major build.
 BASELINES (future-optimization anchors — capture on every review, not just pass/fail):
 - Scope-generator output: 18 steps for one HVAC job (Jul 5 2026, early version). Hypothesis: too many — target
   trimming to a tighter core sequence. Anchor for measuring later scope-gen tuning.
+
+---
+
+## Dispatch notification — outbound vendor email on manual send (wires Phase 19 seam) — DONE
+
+Branch phase-dispatch-notify (not pushed — merge = live deploy, NO migration). Closes the walkthrough's structural
+signal: "Sent" was recorded, not transmitted. Sub-thread (NOT a phase — the send infra was already built in Phase 19;
+this is a content builder + a wiring call).
+
+WHAT: after sendDispatch() commits in sendDispatchAction, notifyVendorOfDispatch runs as a post-commit side effect
+(own try/catch — never affects the committed dispatch). Resolves vendor email (vendor-contact email ?? vendors.
+main_email) → buildDispatchNotification (new pure builder, src/server/dispatch-notify.ts: subject + location/trade/
+priority/scheduled-start/agreed-NTE/scope) → sendCommunication → getSendProvider (Capture default / Resend when
+keyed) → communication_logs (delivery_status/provider_message_id/sent_at) + communication.sent audit. Reuses the
+entire Phase 19 seam; records via communication_logs (the delivery-tracking event table), NOT dispatch_messages.
+
+INVARIANTS held (proven 22/22, SEND_CAPTURE=1, tsc=0): content = APPROVED dispatchScope (not problem_description);
+NO vendor-cost leakage (cost isn't an input; exactly one $ = the deterministic NTE); NEVER-BLOCK (no email → dispatch
+stands + dispatch.notification_skipped event, notified:false); state machine untouched (sendDispatch pure);
+idempotent (re-send → ASSIGNMENT_NOT_DRAFT before notify). Also fixed stale dispatch.ts:520 comment.
+
+★ SCOPE BOUNDARY / banked decision: the AUTONOMOUS paths (auto-dispatch.ts, redispatch-suggestion.ts) call
+sendDispatch() DIRECTLY, not sendDispatchAction — so they do NOT send this notification. Correct for now (manual send
+notifies; auto-dispatch doesn't). OPEN QUESTION for the deferred autonomy-enablement package: should auto-dispatch
+auto-notify the vendor? (An autonomous system emailing vendors unattended is higher-stakes — belongs with the autonomy
+decision, not here.)
+
+Deploy note: real Resend key is live in prod → merging makes dispatch-send actually EMAIL the vendor. Prod-verify:
+dispatch a real vendor-with-email, confirm they receive it.
