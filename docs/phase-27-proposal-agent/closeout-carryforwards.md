@@ -1827,3 +1827,28 @@ then, real-vendor sends 403 (never-blocking — dispatch stands, failure logged 
 
 Test artifacts (left as-is per operator): test vendor main_email = jonny@roseaandd.com; job #3 has two Sent
 dispatches (one failed, one delivered). Known test data on the prod tenant — harmless (real sends domain-gated).
+
+---
+
+## Sender identity + inbound reply routing — real future concern (comms/email-ingestion arc, NOT Phase 28)
+
+Operator-raised (real, not urgent — bites once real vendors/clients are on the system): recipients need to (1) SEE
+who emailed them (identifiable person/company, not a faceless dispatch@ address) and (2) REPLY back to that
+individual, with the reply routing into the system attributed to the right dispatch/operator.
+
+TWO DISTINCT PROBLEMS:
+1. SENDER IDENTITY ("who emailed them"):
+   - Cheap/now: friendly display name ("Jonny Rosero — Rose Analytics <dispatch@roseaandd.com>") + operator
+     attribution + aggregator contact IN the email content. Small enhancement to the dispatch-notify content builder
+     (src/server/dispatch-notify.ts). No inbound infra needed.
+   - Structural/later: per-operator sender identity (the email reflects the specific operator who dispatched).
+2. INBOUND REPLY ROUTING ("reply back to that individual") — STRUCTURAL, LATER:
+   - Vendor/client replies must route back INTO the system, tied to the right job/dispatch, captured as vendor
+     updates (per §"vendor updates captured first, then reviewed/mapped"). Needs: an inbound email receiver,
+     reply-address routing (e.g. reply+<dispatch-token>@domain), and the capture-then-review pipeline.
+   - ROADMAP HOME: this is Phase 13 (email ingestion) territory + the comms layer (Phase 6/19), NOT Phase 28
+     (auto-response/autonomy). Flagged as scope creep to keep OUT of Phase 28.
+
+RECOMMENDATION: bank now (this record). The cheap partial (display name + operator attribution in content) is a
+possible quick follow-up to dispatch-notify. The full inbound-reply infra is a dedicated later thread (email-ingestion
+arc). Do NOT fold into Phase 28.
