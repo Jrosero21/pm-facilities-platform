@@ -517,8 +517,9 @@ export async function sendDispatch(
 // vendor path's { actor:'vendor', via:... }.
 //
 // DRAFT / SENT are NOT settable here: DRAFT is the create-time state and DRAFT→SENT must go through
-// sendDispatch (which also stamps sent_at, dispatches the job, and fires the magic-link send). The
-// picker excludes them too; this is the server backstop.
+// sendDispatch (the pure state machine — stamps sent_at + dispatches the job). The outbound vendor
+// email is a separate POST-COMMIT side effect of sendDispatchAction (notifyVendorOfDispatch), not of
+// sendDispatch itself. The picker excludes DRAFT/SENT too; this is the server backstop.
 export async function setAssignmentStatus(input: {
   tenantId: string;
   assignmentId: string;

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
 import { sendDispatch, setAssignmentStatus } from "@/server/dispatch";
+import { notifyVendorOfDispatch } from "@/server/dispatch-notify";
 import { approveRedispatch } from "@/server/redispatch-suggestion";
 import { sendAssignmentLink } from "@/server/magic-links/send-link";
 import { revokeToken } from "@/server/magic-links/token-core";
@@ -66,6 +67,21 @@ export async function sendDispatchAction(
       assignmentId,
       actorUserId: ctx.user.id,
     });
+
+    // POST-COMMIT side effect: notify the vendor by email (Phase 19 send seam). The dispatch
+    // is already committed SENT — a notification failure (or a missing vendor email) must NEVER
+    // fail the dispatch, so this is fully isolated. The no-email case warns via a timeline event
+    // inside notifyVendorOfDispatch (warn-not-block); any unexpected error is swallowed here.
+    try {
+      await notifyVendorOfDispatch({
+        tenantId: ctx.activeTenant.tenantId,
+        assignmentId,
+        actorUserId: ctx.user.id,
+      });
+    } catch (notifyErr) {
+      console.error("[dispatch-notify] send failed post-commit (dispatch stands):", notifyErr);
+    }
+
     // Re-render the assignment workspace (now SENT) + the parent job (status may
     // have advanced to DISPATCHED). No redirect — stay on the workspace.
     revalidatePath(`/jobs/${result.assignment.jobId}/dispatch/${assignmentId}`);
