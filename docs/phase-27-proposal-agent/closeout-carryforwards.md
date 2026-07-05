@@ -1852,3 +1852,28 @@ TWO DISTINCT PROBLEMS:
 RECOMMENDATION: bank now (this record). The cheap partial (display name + operator attribution in content) is a
 possible quick follow-up to dispatch-notify. The full inbound-reply infra is a dedicated later thread (email-ingestion
 arc). Do NOT fold into Phase 28.
+
+---
+
+## Phase 28 — client-autonomy-consent flag (Batch 1, the net-new close-piece) DONE
+
+Branch phase-28-autonomy-consent (not pushed — merge = live deploy + Neon needs 0005). The one genuinely-net-new
+Phase-28 deliverable; the rest of Phase 28 (policy-conditions, re-dispatch escalation, idempotency, guardrails)
+shipped in post-27 iteration.
+
+BUILD: migration 0005 — clients.autonomy_allowed + clients.must_notify_client (both boolean NOT NULL default FALSE,
+additive/zero-downtime, mirrors is_priority/0003). autonomy_allowed = OPT-IN (default false, fail-safe per §2.1 —
+consent is affirmative; every existing client gated until consented). clientAutonomyConsent(tenantId,clientId) helper
+fail-safes null/unresolvable → allowed:false. Gate: && consent.allowed appended HOLD-ONLY at BOTH shared autonomous
+sites (auto-dispatch.ts:283, auto-redispatch.ts:9); clientAutonomyAllowed in decisionMeta + client_autonomy_not_
+consented in blockedBy. Setter: updateClient patch + client.autonomy_consent_changed change-only audit (mirrors
+priority). Minimal AutonomyConsentToggle on clients/[id] (mirrors PriorityClientToggle) + setClientAutonomyConsentAction.
+Proven 14/14: default-gates, consent-permits, HOLD-only (consent+kill-switch→still gated), fail-safe (null client→
+gated), audit change-only, off-safe (existing clients unchanged). tsc=0.
+
+★ must_notify_client: COLUMN built (both DBs, schema, setter) — SEND NOT WIRED (deferred). Fires only on an
+autonomous action, which needs the scheduled trigger (a known-limitation). Documented in schema comment + toggle copy.
+
+DEPLOY: code + migration 0005 → Neon needs 0005 applied before/at deploy (schema-first, like 0004). Behavior-safe
+(opt-in default false → every existing client behaves as today). Bundled into the Phase-28 CLOSEOUT sequence (docs →
+Neon-0005 → merge/push → v3.0.0-phase-28 tag).
