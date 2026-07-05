@@ -75,6 +75,8 @@ export type UpdateClientPatch = {
   name?: string;
   clientCode?: string | null;
   isPriority?: boolean;
+  autonomyAllowed?: boolean;
+  mustNotifyClient?: boolean;
 };
 
 /**
@@ -96,6 +98,8 @@ export async function updateClient(input: {
   if (input.patch.name !== undefined) set.name = input.patch.name;
   if (input.patch.clientCode !== undefined) set.clientCode = input.patch.clientCode?.trim().toUpperCase() || null;
   if (input.patch.isPriority !== undefined) set.isPriority = input.patch.isPriority;
+  if (input.patch.autonomyAllowed !== undefined) set.autonomyAllowed = input.patch.autonomyAllowed;
+  if (input.patch.mustNotifyClient !== undefined) set.mustNotifyClient = input.patch.mustNotifyClient;
 
   if (Object.keys(set).length > 0) {
     await db.update(clients).set(set).where(and(eq(clients.tenantId, input.tenantId), eq(clients.id, input.id)));
@@ -113,7 +117,37 @@ export async function updateClient(input: {
     });
   }
 
+  // Phase 28 — audit the autonomy-consent change (change-only, mirrors priority_flag_changed). A
+  // per-client autonomy gate change is a governance-relevant operational change.
+  if (input.patch.autonomyAllowed !== undefined && input.patch.autonomyAllowed !== before.autonomyAllowed) {
+    await writeAuditLog({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "client.autonomy_consent_changed",
+      targetType: "client",
+      targetId: input.id,
+      metadata: { from: before.autonomyAllowed, to: input.patch.autonomyAllowed },
+    });
+  }
+
   const row = await getClient(input.tenantId, input.id);
   if (!row) throw new Error("Client update succeeded but row could not be reloaded.");
   return row;
+}
+
+/**
+ * Phase 28 — the per-client autonomy-consent read for the autonomous gate. FAIL-SAFE toward gated
+ * (§2.1): a null clientId (job with no client) or an unresolvable/cross-tenant client resolves to
+ * { allowed: false } — autonomy is HELD unless a real, consented client row says otherwise. Never
+ * throws. `allowed` is one more HOLD-only conjunct in the permitted chain; it can only make
+ * `permitted` false, never widen. `mustNotify` is surfaced but not yet acted on (send deferred).
+ */
+export async function clientAutonomyConsent(
+  tenantId: string,
+  clientId: string | null,
+): Promise<{ allowed: boolean; mustNotify: boolean }> {
+  if (!clientId) return { allowed: false, mustNotify: false };
+  const c = await getClient(tenantId, clientId);
+  if (!c) return { allowed: false, mustNotify: false };
+  return { allowed: c.autonomyAllowed, mustNotify: c.mustNotifyClient };
 }

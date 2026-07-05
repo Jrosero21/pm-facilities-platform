@@ -19,6 +19,7 @@ import { getEffectiveNte } from "@/server/billing/change-orders";
 import { getPriority } from "@/server/job-reference";
 import { getTrade } from "@/server/trades";
 import { getJob } from "@/server/jobs";
+import { clientAutonomyConsent } from "@/server/clients";
 import { getAssignment } from "@/server/dispatch";
 import { getDispatchAssignmentStatusByCode } from "@/server/dispatch-reference";
 import { getSystemUserId } from "@/server/integrations/system-user";
@@ -104,7 +105,11 @@ export async function autoRedispatchForStuckAssignment(input: {
     // deterministic → applicable:false / ok:true (N/A; no run confidence, so confidence is null).
     const quality = await meetsQualityBar({ agentId: DISPATCH_AGENT_ID, tenantId, confidence: null, qualityThreshold: resolved.qualityThreshold });
 
-    const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok;
+    // Phase 28 client-autonomy-consent — HOLD-only conjunct, IDENTICAL to auto-dispatch (§2.1
+    // fail-safe): the job's client must have opted in; null/unresolvable → allowed:false → gated.
+    const consent = await clientAutonomyConsent(tenantId, clientId);
+
+    const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok && consent.allowed;
     const blockedBy = resolved.source === "kill_switch"
       ? "kill_switch"
       : !resolved.autonomyEnabled
@@ -119,10 +124,12 @@ export async function autoRedispatchForStuckAssignment(input: {
                 ? `policy_condition:${conditionsResult.failedOn}`
                 : !quality.ok
                   ? "quality_floor"
-                  : "unknown";
+                  : !consent.allowed
+                    ? "client_autonomy_not_consented"
+                    : "unknown";
 
     const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
-    const decisionMeta = { source: resolved.source, tokenOk: token.ok, spend, conditions: conditionsResult, quality: { applicable: quality.applicable, effectiveFloor: quality.effectiveFloor }, draftAssignmentId, stuckAssignmentId };
+    const decisionMeta = { source: resolved.source, tokenOk: token.ok, spend, conditions: conditionsResult, quality: { applicable: quality.applicable, effectiveFloor: quality.effectiveFloor }, clientAutonomyAllowed: consent.allowed, draftAssignmentId, stuckAssignmentId };
 
     // 5) DECIDE.
     if (!permitted) {

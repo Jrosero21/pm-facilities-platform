@@ -14,6 +14,7 @@ import { getEffectiveNte } from "@/server/billing/change-orders";
 import { getPriority } from "@/server/job-reference";
 import { getTrade } from "@/server/trades";
 import { getJob } from "@/server/jobs";
+import { clientAutonomyConsent } from "@/server/clients";
 import { getVendorPerformanceScoresForVendors } from "@/server/analytics/vendor-performance";
 import { toScoredCandidate, rankCandidates, isCloseCall } from "@/server/scorer";
 import { resolveDispatchTiebreakerRouting, generateDispatchTiebreak } from "@/server/agents/dispatch-tiebreaker/llm";
@@ -280,7 +281,12 @@ export async function autoDispatchDraftForJob(
   // exists for the router decision, so confidence is null (unread on the deterministic path).
   const quality = await meetsQualityBar({ agentId: DISPATCH_AGENT_ID, tenantId, confidence: null, qualityThreshold: resolved.qualityThreshold });
 
-  const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok;
+  // Phase 28 client-autonomy-consent — one more HOLD-only conjunct (§2.1 fail-safe): the job's
+  // client must have opted in (autonomy_allowed=true). A null/unresolvable client → allowed:false
+  // → NOT permitted → the draft stays gated. Consent can only make permitted false, never widen.
+  const consent = await clientAutonomyConsent(tenantId, clientId);
+
+  const permitted = resolved.autonomyEnabled && token.ok && spend.ok && conditionsResult.pass && quality.ok && consent.allowed;
 
   const policyCheck = resolved.requiresReview ? "requires_review" : "review_not_required";
   const decisionMeta = {
@@ -289,6 +295,7 @@ export async function autoDispatchDraftForJob(
     spend,
     conditions: conditionsResult,
     quality: { applicable: quality.applicable, effectiveFloor: quality.effectiveFloor },
+    clientAutonomyAllowed: consent.allowed,
     vendorId: top.vendorId,
     preferenceRank: top.preferenceRank,
     trackRecordScore: top.trackRecordScore,
@@ -313,7 +320,9 @@ export async function autoDispatchDraftForJob(
                 ? `policy_condition:${conditionsResult.failedOn}`
                 : !quality.ok
                   ? "quality_floor"
-                  : "unknown";
+                  : !consent.allowed
+                    ? "client_autonomy_not_consented"
+                    : "unknown";
 
     // FIRST-EVER policy_blocked write. This is the EXPECTED gated path (§2.7), not an error:
     // the run SUCCEEDED in reaching a decision; the draft stays for operator review.

@@ -69,3 +69,27 @@ export async function setClientPriorityAction(
   revalidatePath(`/clients/${clientId}`);
   return null;
 }
+
+export type ClientAutonomyConsentState = { error: string } | null;
+
+/**
+ * Phase 28 — toggle a client's autonomy_allowed flag (mirrors setClientPriorityAction). OPT-IN,
+ * default false: turning this ON lets the aggregator's AUTONOMOUS paths act on this client's jobs
+ * (still subject to the tenant autonomy switch + all guardrails). updateClient audits the change.
+ */
+export async function setClientAutonomyConsentAction(
+  clientId: string,
+  _prev: ClientAutonomyConsentState,
+  formData: FormData,
+): Promise<ClientAutonomyConsentState> {
+  const ctx = await requireTenant();
+  const autonomyAllowed = formData.get("value") === "true";
+  await updateClient({
+    tenantId: ctx.activeTenant.tenantId,
+    id: clientId,
+    actorUserId: ctx.user.id,
+    patch: { autonomyAllowed },
+  });
+  revalidatePath(`/clients/${clientId}`);
+  return null;
+}

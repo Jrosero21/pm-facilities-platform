@@ -45,6 +45,16 @@ export const clients = pgTable(
     // client's jobs get a triage bump in the exceptions list. Default OFF is behavior-preserving (no
     // backfill; ignored entirely while the tenant switch is off). A per-client flag, tenant-controlled.
     isPriority: boolean("is_priority").notNull().default(false),
+    // Phase 28 client-autonomy-consent — per-client permission for the aggregator's AUTONOMOUS
+    // paths (auto-dispatch / auto-redispatch) to act on this client's jobs. OPT-IN, default FALSE
+    // (fail-safe toward gated, §2.1): autonomy is HELD on a client until explicitly consented, even
+    // when the tenant's autonomyEnabled + guardrails all pass. A HOLD-only conjunct in the gate —
+    // it can only make `permitted` false, never widen. Never affects the manual/operator path.
+    autonomyAllowed: boolean("autonomy_allowed").notNull().default(false),
+    // Phase 28 — when an autonomous action DOES fire for a consented client, the client must be
+    // notified (contractual-notification need). COLUMN ONLY this batch — the send is not wired
+    // (it fires only when an autonomous action fires, which needs the scheduled trigger; deferred).
+    mustNotifyClient: boolean("must_notify_client").notNull().default(false),
     createdByUserId: varchar("created_by_user_id", { length: 36 }).references(
       () => users.id,
       { onDelete: "set null" },

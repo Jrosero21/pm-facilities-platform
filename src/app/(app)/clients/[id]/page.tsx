@@ -10,6 +10,7 @@ import { ContactList } from "@/components/contact-list";
 import { BillingModelSelector } from "@/components/billing-model-selector";
 import { RequireVendorInvoiceToggle } from "@/components/require-vendor-invoice-toggle";
 import { PriorityClientToggle } from "@/components/priority-client-toggle";
+import { AutonomyConsentToggle } from "@/components/autonomy-consent-toggle";
 
 export default async function ClientDetailPage({
   params,
@@ -55,6 +56,9 @@ export default async function ClientDetailPage({
 
       {/* Client-priority — the per-client flag (effective only when the tenant switch is on) */}
       <PriorityClientToggle clientId={id} current={client.isPriority} />
+
+      {/* Phase 28 — per-client autonomy consent (opt-in, default off; gates the autonomous paths) */}
+      <AutonomyConsentToggle clientId={id} current={client.autonomyAllowed} />
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="rounded-lg border border-neutral-200 bg-white p-4">
