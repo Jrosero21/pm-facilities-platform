@@ -712,3 +712,80 @@ export async function markJobReadyToBill(input: {
     });
   });
 }
+
+// ── Operator manual job-status set — the coordinator's free-movement hand-control ────────
+// The job-side counterpart to dispatch's setAssignmentStatus. FREE MOVEMENT (operator decision):
+// any status → any status, including re-open from a terminal status; the current status is read as
+// `from`, any valid `to` is allowed. PURE status set — writes ONLY the status + job_status_history
+// + a job.status_changed event + an operator-attributed audit. It does NOT fire the dispatch-driven
+// side effects (no applyDispatchJobFollow) — this is the operator correcting/moving the job by hand,
+// distinct from a dispatch milestone auto-advancing it. Same-status is a no-op (no history/audit).
+// Provenance mirrors the dispatch convention: audit metadata { actor:'operator', via:'operator_console' }.
+export async function setJobStatus(input: {
+  tenantId: string;
+  jobId: string;
+  toCode: string;
+  actorUserId: string;
+  note?: string | null;
+}): Promise<{ changed: boolean; fromCode: string; toCode: string }> {
+  const to = await getJobStatusByCode(input.toCode);
+  if (!to) throw new Error("STATUS_NOT_FOUND");
+
+  let result: { changed: boolean; fromCode: string; toCode: string } = {
+    changed: false,
+    fromCode: input.toCode,
+    toCode: input.toCode,
+  };
+
+  await db.transaction(async (tx) => {
+    const [job] = await tx
+      .select({ statusId: jobs.currentStatusId, code: jobStatuses.code })
+      .from(jobs)
+      .innerJoin(jobStatuses, eq(jobStatuses.id, jobs.currentStatusId))
+      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)))
+      .for("update");
+    if (!job) throw new Error("JOB_NOT_FOUND");
+
+    const fromCode = job.code;
+    result = { changed: false, fromCode, toCode: input.toCode };
+
+    // Same-status no-op — no history/event/audit write.
+    if (job.statusId === to.id) return;
+
+    await tx
+      .update(jobs)
+      .set({ currentStatusId: to.id })
+      .where(and(eq(jobs.tenantId, input.tenantId), eq(jobs.id, input.jobId)));
+
+    await tx.insert(jobStatusHistory).values({
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+      fromStatusId: job.statusId,
+      toStatusId: to.id,
+      changedByUserId: input.actorUserId,
+      note: input.note ?? null,
+    });
+
+    await tx.insert(jobEvents).values({
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+      eventType: "job.status_changed",
+      actorUserId: input.actorUserId,
+      summary: `Status set to ${to.name}`,
+      metadata: { fromStatusCode: fromCode, toStatusCode: input.toCode, actor: "operator", via: "operator_console" },
+    });
+
+    await tx.insert(auditLogs).values({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      action: "job.status_set",
+      targetType: "job",
+      targetId: input.jobId,
+      metadata: { actor: "operator", via: "operator_console", fromCode, toCode: input.toCode, note: input.note ?? null },
+    });
+
+    result = { changed: true, fromCode, toCode: input.toCode };
+  });
+
+  return result;
+}

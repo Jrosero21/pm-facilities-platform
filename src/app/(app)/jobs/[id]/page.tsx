@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { getJobDetail } from "@/server/jobs";
+import { listActiveJobStatuses } from "@/server/job-reference";
+import { JobStatusPicker } from "@/components/job-status-picker";
 import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
 import { listJobContacts } from "@/server/job-contacts";
 import { listJobNotes } from "@/server/job-notes";
@@ -97,6 +99,10 @@ export default async function JobDetailPage({
       // 9f — per-job aging callout; SAME predicate/query as the dashboard queue (null for terminal jobs).
       isJobStalled(tenantId, id),
     ]);
+  // Inline status quick-edit — the global job-status vocabulary + the job's current code (derived).
+  const jobStatuses = await listActiveJobStatuses();
+  const currentStatusCode = jobStatuses.find((s) => s.id === job.currentStatusId)?.code ?? "";
+  const statusOptions = jobStatuses.map((s) => ({ code: s.code, name: s.name }));
   // CF-20.1 — operator-side vendor photos: list rows, then presign each up-front
   // (server-side, mirroring the vendor-invoice-document loader). Any non-url result
   // (placeholder / unavailable / forbidden) collapses to url: null — the panel degrades.
@@ -203,6 +209,13 @@ export default async function JobDetailPage({
           Edit
         </Link>
       </div>
+
+      {/* Inline status quick-edit — change status here without opening the Edit form (operators). */}
+      {canOperate && (
+        <div className="mt-3">
+          <JobStatusPicker jobId={id} currentCode={currentStatusCode} options={statusOptions} />
+        </div>
+      )}
 
       <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {fields.map((f) => (

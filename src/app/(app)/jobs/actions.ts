@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { canSeeOperations } from "@/server/role-predicates";
-import { createJob, updateJob, markJobReadyToBill, type JobPatch } from "@/server/jobs";
+import { createJob, updateJob, markJobReadyToBill, setJobStatus, type JobPatch } from "@/server/jobs";
 // canonicalizeNte lives in the pure money util (NOT here) — every export of a "use server" module
 // must be an async function, so a sync helper cannot be exported from this file (v2.11.0 fix).
 import { canonicalizeNte } from "@/server/billing/money";
@@ -217,4 +217,45 @@ export async function markJobReadyToBillAction(
   }
   revalidatePath(`/jobs/${jobId}`);
   return null;
+}
+
+export type SetJobStatusState = { error?: string; info?: string } | null;
+
+// Operator sets a job's status inline from the job detail (free movement — any status). OPERATIONS-
+// gated (canSeeOperations), like markJobReadyToBill. Reads toCode (+ optional note) from FormData.
+// Mirrors setAssignmentStatusAction; setJobStatus audits + writes history/event. Bound with jobId.
+export async function setJobStatusAction(
+  jobId: string,
+  _prev: SetJobStatusState,
+  formData: FormData,
+): Promise<SetJobStatusState> {
+  const ctx = await requireTenant();
+  if (!canSeeOperations(ctx)) {
+    return { error: "Changing job status requires the operator role." };
+  }
+  const toCode = String(formData.get("toCode") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim() || null;
+  if (!toCode) return { error: "Pick a status." };
+
+  try {
+    const result = await setJobStatus({
+      tenantId: ctx.activeTenant.tenantId,
+      jobId,
+      toCode,
+      actorUserId: ctx.user.id,
+      note,
+    });
+    revalidatePath(`/jobs/${jobId}`);
+    return result.changed ? { info: `Status set to ${result.toCode}.` } : { info: "Status unchanged." };
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "JOB_NOT_FOUND":
+          return { error: "Job not found in this tenant." };
+        case "STATUS_NOT_FOUND":
+          return { error: "That status is not valid." };
+      }
+    }
+    throw err;
+  }
 }
