@@ -1982,3 +1982,31 @@ the downstream dispatch RANKER (scorer.ts) shrinks K=5 toward a FIXED 0.5 PRIOR.
 STATUS: test bed READY. vendor_performance_scores populated with genuine differentiated signal in pm_sandbox. Ready
 for autonomy testing (the dispatch ranker, auto-dispatch/redispatch, the escalation path) against a realistic decision
 surface: proven-good / proven-bad / unproven vendors, power-law client concentration, stuck/stalled dispatches.
+
+---
+
+## Autonomy Test 1 — dispatch ranker evaluated vs. ground truth (READ-ONLY, zero mutation)
+
+First real autonomy test against the test bed (200 non-whale jobs, track-record path, preferenceRank null so the
+sort falls through to trackRecordScore). Ranker = scorer.ts, PURE; judged against seeded vendor tiers.
+
+★ FINDING A — ranker decides CORRECTLY: reliable>flaky 100% (92/92 jobs, 226/226 pairs); flaky never #1 (0/200);
+reliable dominates top picks (79.5%); tail (0.5-prior shrunk) lands BETWEEN proven-good and proven-bad (proven>tail
+163/163, tail>proven-bad 200/200). Only 6/200 (3%) had a proven vendor lose to a thin-record tail vendor — the real
+error bar. The foundational decision ("pick the good vendor") WORKS against realistic data.
+
+★ NOTE — the ranker consumes completion_rate ONLY (re-derived, shrunk toward a FIXED 0.5 prior) — NOT the composite
+score (0.7 completion + 0.3 on-time, pop-mean prior) that vendor-performance.ts computes. Tiers still separate on
+completion alone, so the test holds, but: on-time-rate is IGNORED by the ranker. Flag for later — deliberate or gap?
+
+★ FINDING B (weigh this) — CLOSE-CALL / TIEBREAKER OVER-FIRE: isCloseCall fires on 128/200 (64%) of track-record-path
+jobs → the LLM tiebreaker would fire on ~2/3 of such dispatches (cost/latency/non-determinism). Cause is structural:
+65% of close calls are reliable-vs-reliable (good vendors cluster within EPSILON=0.05). Partly a seed artifact (all
+reliable seeded ~97%), but the real lesson: tiebreaker firing rate is driven by good-vendor clustering, and
+EPSILON=0.05 is loose vs tight clustering. Caveats: whale jobs (40% vol) decided by preference never hit isCloseCall
+(fleet rate < 64%); tiebreaker also needs autonomy+token headroom (not evaluated here). DECISION for framework: is an
+LLM call to break ties between two equally-good vendors worth it, or should near-ties resolve deterministically
+(preference/cost/round-robin) and reserve the LLM for genuine ambiguity?
+
+Zero mutation (assignments 12,765 before/after; createDispatch/autoDispatch never called). Read-only harness:
+scripts/testbed/eval-ranker.ts.
