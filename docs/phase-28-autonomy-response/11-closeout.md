@@ -22,7 +22,7 @@ Complete the v2 arc: a response layer beyond detection (autonomous re-dispatch o
 - `docs/phase-28-autonomy-response/` — these eleven docs.
 
 ## Database Changes
-Migration 0005: `clients.autonomy_allowed` + `clients.must_notify_client`, both boolean NOT NULL default false (additive/zero-downtime). Applied to `pm` + `pm_sandbox`; **Neon pending** (apply before/at deploy).
+Migration 0005: `clients.autonomy_allowed` + `clients.must_notify_client`, both boolean NOT NULL default false (additive/zero-downtime). **Applied to all three DBs** — local `pm`, local `pm_sandbox`, and prod Neon (`neondb`). Verified on Neon by read-only introspection: both columns present, `column_default = false`.
 
 ## API Routes / Server Actions Added
 `setClientAutonomyConsentAction`; `clientAutonomyConsent`; consent conjunct added to `autoDispatchDraftForJob` + `autoRedispatchForStuckAssignment` gates. (See `09-api-routes.md`.)
@@ -61,7 +61,7 @@ Seven deferrals (see `10-known-limitations.md`), led by the **host-gated schedul
 - Performance-ordered fallback (needs `vendor_performance_scores` / B-16.4).
 - CF-28.1 policy-conditions authoring UI (shares CF-23.1 Settings surface).
 - Confidence-floor conditions (post Phase-24 calibration).
-- **Deploy:** apply migration 0005 to Neon; then merge/push; then tag `v3.0.0-phase-28`.
+- ~~**Deploy:** apply migration 0005 to Neon; then merge/push; then tag `v3.0.0-phase-28`.~~ **DONE** — 0005 applied to Neon, merged/pushed to `origin/main`, tagged `v3.0.0-phase-28` (both pushed). Prod live and schema-in-sync.
 
 ## Recommended Next Phase Focus
 A **real-use / operational-efficiency** phase (v3): stand up the host-gated scheduled trigger (with its retry cap), wire the must-notify send, build the deferred Settings/authoring UI, and begin harvesting `vendor_performance_scores` — turning the operator-initiated autonomy into genuine unattended operation on real vendor/client volume. Sender-identity + inbound-reply-routing (banked separately, email-ingestion arc) is the adjacent comms thread.

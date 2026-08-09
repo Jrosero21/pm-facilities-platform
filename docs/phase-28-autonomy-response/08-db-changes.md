@@ -8,7 +8,7 @@ ALTER TABLE "clients" ADD COLUMN "must_notify_client" boolean DEFAULT false NOT 
 - Both **additive, NOT NULL, default false** → zero-downtime; every existing row is valid immediately. Mirrors the `is_priority` migration shape (`0003`).
 - `autonomy_allowed` — per-client opt-in consent gate for the autonomous paths (read by `clientAutonomyConsent`).
 - `must_notify_client` — per-client obligation flag; **column only** (no send wired this phase).
-- **Applied to:** local `pm` + `pm_sandbox` (direct ALTER, per the migration-ledger discipline — never `drizzle-kit migrate`). **Prod Neon: NOT yet applied** — must be applied before/at deploy (schema-first, like `0004`).
+- **Applied to:** local `pm` + `pm_sandbox` + **prod Neon (`neondb`)** — all three (direct ALTER, per the migration-ledger discipline — never `drizzle-kit migrate`). Neon applied schema-first at deploy, like `0004`; verified by read-only introspection (both columns present, `column_default = false`).
 
 ## Schema source
 `src/server/schema/clients.ts` — both columns declared beside `isPriority`, with comments documenting the opt-in fail-safe intent and the deferred send.

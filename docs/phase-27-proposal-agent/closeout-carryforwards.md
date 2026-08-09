@@ -1877,3 +1877,28 @@ autonomous action, which needs the scheduled trigger (a known-limitation). Docum
 DEPLOY: code + migration 0005 → Neon needs 0005 applied before/at deploy (schema-first, like 0004). Behavior-safe
 (opt-in default false → every existing client behaves as today). Bundled into the Phase-28 CLOSEOUT sequence (docs →
 Neon-0005 → merge/push → v3.0.0-phase-28 tag).
+
+---
+
+## Fake-data generator — domain spec (operator-provided; the design basis for realistic test volume)
+
+Strategic pivot: generate realistic mid-sized-company data at volume to unblock autonomy testing / agent work /
+framework decisions (the binding constraint both audits found = no real data; 3 jobs proves nothing). Fake data must
+be COHERENT (passes app integrity) + REALISTICALLY MESSY (the variance autonomy must handle) — operator's domain
+knowledge is what keeps it from being theater.
+
+OPERATOR METRICS (mid-sized facilities aggregator):
+- Volume: ~900–1,400 work orders/WEEK (~130–200/day). High — a real autonomy test bed.
+- Mix: mostly SERVICE + pickups. PM work SURGES at month-start and quarter-start (temporal structure, not uniform).
+- Seasonal spikes: snow + hurricanes drive event-triggered volume (maps to snow module / event-batch).
+- Construction: wildly variable ($90k–$500k+/job), NO consistent volume — rare/lumpy high-value tail, NOT
+  bread-and-butter.
+- Cost central tendency: avg work amount ~$1,000–$1,100 (the dominant service band); long tail up to construction.
+
+GENERATOR DESIGN GOALS (to scope after hygiene): coherent (jobs ref real clients/locations/vendors; dispatch history
+respects the state machine) + realistically messy (vendor performance VARIANCE — some reliable, some ghost/decline/
+stall — so vendor_performance_scores gets meaningful spread). Open scoping Qs: history time-span (3–6mo for scorer
+track record), vendor pool size (multiple eligible per job for fallback/AI-dispatch), client/location count
+(multi-location "500 stores" case), messiness dials (% ghost/decline/stall/complete).
+
+Purpose: populate vendor_performance_scores (B-16.4), give autonomy real activity, enable agent pattern-learning.
