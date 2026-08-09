@@ -1949,3 +1949,36 @@ on `!canSeeOperations`). An end-to-end authz proof needs the session-harness gap
 
 NOT DONE (deliberate): no transition matrix / legality rules; no bulk status set; no client-visibility or
 notification side effects on status change.
+
+---
+
+## Autonomy test bed — synthetic data generator (COMPLETE, sandbox-only)
+
+Branch testbed-generator (not merged/pushed — dev tooling, pm_sandbox only, NOT prod). Built to unblock autonomy
+testing (the binding constraint: no real data). Hybrid high-fidelity: static entities seeded fast, dispatch
+lifecycles driven through the PURE CORE (createJob/createDispatch/sendDispatch/setAssignmentStatus/advanceJobStatus —
+NEVER the *Action wrappers, so zero side effects, structurally proven), then the REAL scorer run over the history.
+
+- scripts/testbed/guard.ts — assertSandbox(): STRICT, no derivation; refuses Neon host + plain pm + unset. Proven
+  adversarially (5 cases refuse, write nothing; guard is first statement, db imports dynamic → Pool never built on
+  bad URL). Run URL must be explicit: postgres://...localhost.../pm_sandbox.
+- config.ts — concentration model (operator domain input): clients 40/30/20/10 power-law (whales/steady/modest/tail);
+  vendors 2500 roster / 200 active-core (quality-tiered reliable/average/flaky ~35/45/20) / 2300 cold tail; core
+  vendors specialized to 1-2 trades + TRADE_DEMAND steering to a 7-trade bread-and-butter set (so (vendor,trade)
+  scoring keys survive K=5); ~$1k central cost + construction tail.
+- seed-entities.ts — dispatchability PROVEN via the real matcher (geoMode enforce), not asserted. TB- namespace,
+  re-runnable (own teardown, CLEAR_ONLY=1 standalone).
+- drive-lifecycles.ts — 11,817 jobs / 13 weeks, backdated timeline (the ONE deliberate reach past the core: created_at
+  rewritten to a planned timeline; transitions genuine, only the clock moves). Tiered outcomes converge on config at
+  scale. Whale concentration 95.8% to preferred core. Zero side effects TB-scoped (all comms/agent/portal logs 0).
+- verify-scorer.ts — ran the REAL populator (src/server/analytics/vendor-performance.ts, NOT modified). RESULT:
+  clean monotonic tier separation (reliable 84.8 / average 73.6 / tail 64.2 [=prior] / flaky 54.0; 30.8pt spread);
+  44/44 same-trade reliable>flaky head-to-head (~50pt); flaky-with-thick-history still scores low (volume doesn't
+  launder poor performance); shrinkage curve measured (thin→prior, thick→observed).
+
+★ TWO SHRINKAGE LAYERS (don't conflate): the POPULATOR (vendor-performance.ts) shrinks K=5 toward the POPULATION MEAN;
+the downstream dispatch RANKER (scorer.ts) shrinks K=5 toward a FIXED 0.5 PRIOR. Autonomy testing consumes the ranker.
+
+STATUS: test bed READY. vendor_performance_scores populated with genuine differentiated signal in pm_sandbox. Ready
+for autonomy testing (the dispatch ranker, auto-dispatch/redispatch, the escalation path) against a realistic decision
+surface: proven-good / proven-bad / unproven vendors, power-law client concentration, stuck/stalled dispatches.
