@@ -4,20 +4,26 @@ Read this file at the start of every session. Full product context lives in `doc
 
 ## Technical context
 
-- Stack: Next.js / React, server-side DB access only (never browser → MySQL).
-- DB: MySQL/MariaDB on Namecheap, accessed via SSH tunnel.
-  - Tunnel: `ssh -p 21098 -L 3307:127.0.0.1:3306 jonnyrosero@host62.registrar-servers.com`
-  - Host: 127.0.0.1:3307 · DB: jonnyrosero_pm · User: jonnyrosero_jonny
+- Stack: Next.js / React, server-side DB access only (never browser → DB).
+- DB: **PostgreSQL** (migrated from MariaDB; the MariaDB/Namecheap/SSH-tunnel era is over — no tunnel, no `mysql` client).
+  - Local dev: `postgres://…@localhost:5432/pm` · sandbox `…/pm_sandbox` (harnesses derive `pm` → `pm_sandbox`).
+  - Production: **Neon** (`neondb`), Vercel-hosted app. Prod URL is `DATABASE_URL_NEON` in `.env.local`.
+  - Driver `pg` (node-postgres) via Drizzle `dialect: "postgresql"` (`drizzle.config.ts`).
 - Project root: `~/Desktop/PM` (fallback `~/Desktop/pm`).
 
-## Session-safe MySQL pattern
+## Session-safe Postgres pattern
 
-Never put the password in shell history. Always use:
+Never put credentials in shell history — read the URL from `.env.local`, never retype it:
 
     cd ~/Desktop/PM 2>/dev/null || cd ~/Desktop/pm
-    read -s MYSQL_PWD
-    export MYSQL_PWD
-    mysql --protocol=tcp -h 127.0.0.1 -P 3307 -u jonnyrosero_jonny jonnyrosero_pm -e "..."
+    # local dev / sandbox
+    psql "$(grep -m1 -E '^DATABASE_URL=' .env.local | cut -d= -f2-)" -c "..."
+    # scripts (server-only imports need the react-server condition)
+    pnpm tsx --env-file=.env.local --conditions=react-server scripts/<name>.ts
+
+Migrations: generate with `pnpm db:generate`; apply as direct DDL (sandbox → verify → prod).
+**Never run `drizzle-kit migrate` against prod** — the `__drizzle_migrations` ledger undercounts and a
+replay produces duplicate-column errors. The schema is ahead of the ledger by design.
 
 ## Working discipline
 
@@ -38,7 +44,7 @@ Never put the password in shell history. Always use:
 
 - The app is source-agnostic. ServiceChannel is one channel among many — do not center the architecture on it.
 - Do not build features from future phases without explicit reason (roadmap §5.4).
-- Browser never connects directly to MySQL.
+- Browser never connects directly to the database.
 - AI output is always a reviewable draft, never final.
 - A phase is not complete until all eleven docs exist under `docs/phase-N-<name>/`.
 
