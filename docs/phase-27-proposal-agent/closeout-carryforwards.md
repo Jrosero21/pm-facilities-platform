@@ -1902,3 +1902,50 @@ track record), vendor pool size (multiple eligible per job for fallback/AI-dispa
 (multi-location "500 stores" case), messiness dials (% ghost/decline/stall/complete).
 
 Purpose: populate vendor_performance_scores (B-16.4), give autonomy real activity, enable agent pattern-learning.
+
+---
+
+## Inline job-status picker — operator hand-control on the job detail (DONE, proven 22/22)
+
+Operators could only change a job's status by opening the Edit form. This adds an inline picker on the job detail
+(mirrors the existing DispatchStatusPicker), so status moves in one action from where the operator already is.
+
+BUILT: `setJobStatus` (src/server/jobs.ts) + `setJobStatusAction` (jobs/actions.ts) + `job-status-picker.tsx` +
+the picker wired into `jobs/[id]/page.tsx` (rendered only when `canOperate`), fed by the global
+`listActiveJobStatuses` vocabulary with the job's current code preselected.
+
+DESIGN (the deliberate choices):
+- FREE MOVEMENT, any→any — including into terminal statuses AND re-opening OUT of them, including CLOSED_BILLED.
+  No transition matrix. This is the operator correcting/moving the job by hand; the operator's judgment is the
+  authority. (Distinct from a dispatch milestone auto-advancing the job.)
+- SAME-STATUS NO-OP — early return before any write; no history, no event, no audit noise from a non-change.
+- TRIPLE-WRITE, one transaction — job_status_history + `job.status_changed` job_event + `job.status_set` audit,
+  all operator-attributed (`actor:'operator'`, `via:'operator_console'`), matching the dispatch convention.
+  Satisfies the every-workflow-gets-a-history-row rule.
+- TENANT-ISOLATED — the `.for("update")` row-lock selects on `and(tenantId, jobId)`; a foreign-tenant jobId
+  finds nothing and throws JOB_NOT_FOUND.
+- OPERATIONS-GATED — `canSeeOperations` in the action, before any DB work (mirrors markJobReadyToBill).
+- ★ NO DISPATCH-FOLLOW — deliberately does NOT call `applyDispatchJobFollow`. A hand-set job status must not
+  cascade into the dispatch side; the job-side and dispatch-side state machines stay independent here.
+
+PROVEN 22/22 (scripts/probe-job-status.ts, sandbox, self-seed + ordered teardown, ephemeral — deleted post-verify).
+Green twice from cold with zero residue; tsc=0:
+  (a) free NEW→ON_HOLD + exactly one history row + event + audit w/ operator provenance and from/to
+  (b) ON_HOLD→CANCELLED (terminal) and re-open CANCELLED→NEW
+  (c) NEW→CLOSED_BILLED (unrestricted)
+  (d) same-status no-op: changed=false AND no new history row
+  (e) bad code → STATUS_NOT_FOUND
+  (g) ★ TENANT ISOLATION — a REAL second tenant (not a fabricated id, which would prove nothing about scoping)
+      against a live job: JOB_NOT_FOUND, job UNCHANGED, and NO history row written
+  (h) DISPATCH-FOLLOW UNTOUCHED — job with a real SENT job_vendor_assignment: after the set, the job status
+      changed while the assignment row was byte-identical and no assignment status-history row appeared
+  (i) OPERATIONS GATE — canSeeOperations allows operator / tenant_admin / super_admin, rejects vendor_user /
+      client_user / accounting / no-role
+
+HONEST SCOPE OF (i): the gate PREDICATE is proven directly, not the action's own wiring — `requireTenant` needs a
+real session (headers/cookies) and cannot run headless, so this follows the prior authz-probe convention. The
+action→predicate seam is read-verified only (actions.ts returns "Changing job status requires the operator role."
+on `!canSeeOperations`). An end-to-end authz proof needs the session-harness gap closed generally, not per-feature.
+
+NOT DONE (deliberate): no transition matrix / legality rules; no bulk status set; no client-visibility or
+notification side effects on status change.
