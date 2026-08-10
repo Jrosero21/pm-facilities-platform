@@ -2010,3 +2010,36 @@ LLM call to break ties between two equally-good vendors worth it, or should near
 
 Zero mutation (assignments 12,765 before/after; createDispatch/autoDispatch never called). Read-only harness:
 scripts/testbed/eval-ranker.ts.
+
+---
+
+## Autonomy Test 2 — tiebreaker framework DECIDED (evidence-based, READ-ONLY eval)
+
+Finding B from Test 1 (LLM tiebreaker fires ~64% of track-record-path dispatches) resolved by read-only eval
+(500 non-whale jobs; epsilon-parameterised predicate reproduces production isCloseCall @0.05 EXACTLY, 0 mismatches).
+
+★ DECIDED DIRECTION (a layered rule, not binary LLM/no-LLM):
+  1. TIGHTEN EPSILON from 0.05 toward ~0.01-0.02 so the LLM only sees genuine ambiguity.
+     Sweep: fire rate 0.05→64.6% · 0.03→36.2% · 0.02→25.6% · 0.01→7.8% · 0.005→7.8% (0.01==0.005: below 0.01
+     nothing remains but true near-ties; 7.8% is the floor of genuinely-ambiguous decisions).
+  2. RESOLVE remaining near-ties with ROUND-ROBIN (not take-higher-score).
+     Round-robin picks a DIFFERENT vendor 52.9% of close calls, at 0.0174 mean score give-up (bounded by ε,
+     negligible). ★ WORK-SPREAD (the real argument): take-higher concentrates 500 jobs → 40 vendors / 76% top-10;
+     round-robin → 83 vendors / 60% top-10. Capacity spreading, bench depth, less single-vendor dependency — an
+     operational property the ranker lacks today, ~free in quality.
+  Net: LLM firing ~65% → <10% on the track-record path (lower fleet-wide; whale jobs 40% decided by preference,
+  never reach this path).
+
+★ CAVEAT (don't over-fit the number): the tight reliable-vs-reliable clustering driving 64.6% is PARTLY a seed
+artifact (all seeded reliable ~97% completion). Real vendors may spread more (lower fire rate on their own). The
+SHAPE holds regardless (epsilon is loose; round-robin spreads work ~free); the EXACT epsilon value needs real-vendor
+calibration. Round-robin is artifact-INDEPENDENT (operational win regardless of clustering).
+
+COST TIEBREAK (rule C) UNEVALUATED — honestly: vendor_rates empty; agreed_nte_amount rejected as proxy (the Batch-2
+generator derived NTE from job cost band, NOT vendor identity → any saving would be a generator artifact). Needs
+real vendor_rates (CF-AID.3 dormant input) or per-vendor pricing in the generator.
+
+STATUS: framework DIRECTION decided on evidence. IMPLEMENTATION deferred = a deliberate scorer.ts change (tighten
+TIEBREAK_EPSILON + add round-robin near-tie resolution) with the epsilon set conservatively (~0.02) now or calibrated
+to real vendor spread later. NOT built this session (changing scorer.ts alters live autonomy behavior — deserves its
+own scoped build). Read-only harness: scripts/testbed/eval-tiebreak.ts.
