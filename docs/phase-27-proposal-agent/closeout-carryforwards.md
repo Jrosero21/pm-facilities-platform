@@ -2043,3 +2043,34 @@ STATUS: framework DIRECTION decided on evidence. IMPLEMENTATION deferred = a del
 TIEBREAK_EPSILON + add round-robin near-tie resolution) with the epsilon set conservatively (~0.02) now or calibrated
 to real vendor spread later. NOT built this session (changing scorer.ts alters live autonomy behavior — deserves its
 own scoped build). Read-only harness: scripts/testbed/eval-tiebreak.ts.
+
+---
+
+## Autonomy Test 3 — escalation agent RUN end-to-end (first agent acting; MUTATING, sandbox TBSTUCK- cohort)
+
+First genuine agent seen acting autonomously. Designed stuck cohort (37 jobs, SENT over-threshold across priorities +
+attempt-depth boundaries, TBSTUCK- namespace, own teardown). Ran the real escalation path (autoRedispatch sweep) with
+autonomy ENABLED for the cohort.
+
+★ RESULT — the agent is COMPETENT: 24 auto_sent (detect→exclude→pick-good-fallback→ghost-first→re-dispatch, NO human).
+Detection precise (just-under controls untouched). Fallback exclusion 24/24 (never re-picks failed/tried vendor,
+replaces_assignment_id set). Fallback QUALITY 24/24 reliable-tier (the proven ranker carried through — Tests 1&2 hold
+in escalation). Boundaries: depth-3 → exhausted no action; no_eligible → REFUSED (0 assignments, didn't force a bad
+dispatch). Gate holds: autonomy OFF → zero writes. Idempotent: 2nd sweep 0 new. Teardown restored (main bed 279/11,817
+intact).
+
+★ MOST REASSURING FINDING — unmeasurable-NTE fail-closed: first run produced 0 auto_sent / 26 prepared_blocked:
+unmeasurable_nte — cohort jobs had no NTE, and withinSpendCeilings FAILS CLOSED on an unbounded candidate. The agent
+REFUSED to commit money it couldn't ceiling. This is the fail-safe philosophy holding under real conditions — the
+core action-autonomy safety property, proven. (Cohort given NTE to make the dispatch path testable; the block is a
+feature. Real implication: jobs need bounded NTE for autonomy to act — correct.)
+
+★ ARCHITECTURAL FINDING (carry to the trigger build) — T1 (autoRedispatchForStuckAssignment) has NO staleness check;
+its only precondition is "currently SENT." isDispatchStuck lives in the SWEEP's candidate selection, not T1. So
+"ignores non-stuck work" is a property of the SWEEP, not T1. Calling T1 directly on a fresh SENT dispatch re-dispatches
+a HEALTHY job. Fine today (sweep is sole caller) — but ★ THE SCHEDULED TRIGGER MUST CALL THROUGH THE SWEEP (with its
+stuck-filter), NOT T1 directly, or it re-dispatches healthy jobs. A real design constraint for the unattended-trigger.
+
+Minor: time-drifting control fixtures (0.9× threshold became genuinely stuck in the 16min seed→eval gap; widened to
+0.5× — a clock fixture needs margin > seed-to-use gap; detector was correct). Harness: eval-escalation.ts,
+seed-stuck-cohort.ts.
