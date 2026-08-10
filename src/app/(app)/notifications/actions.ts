@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { autoRedispatchForStuckAssignment, type AutoRedispatchResult } from "@/server/auto-redispatch";
-import { getExceptions } from "@/server/analytics/exceptions";
+import { runAutoRedispatchSweep } from "@/server/auto-redispatch-sweep";
 import { canManageTenantSettings, setPriorityClientWeighting } from "@/server/tenant-settings";
 
 // Phase 28 / T2a — the per-job autonomous re-dispatch entry. Fires the gate-governed T1 core on
@@ -63,43 +63,17 @@ export type AutoRedispatchSweepState =
  */
 export async function autoRedispatchSweepAction(): Promise<AutoRedispatchSweepState> {
   const ctx = await requireTenant();
-  const tenantId = ctx.activeTenant.tenantId;
 
-  // The candidate set = the can_suggest stuck rows (under the cap, no pending DRAFT, not exhausted).
-  const exceptions = await getExceptions(tenantId);
-
-  let swept = 0;
-  let autoSent = 0;
-  let heldForReview = 0;
-  let skipped = 0;
-  const byReason: Record<string, number> = {};
-
-  // SEQUENTIAL — await EACH before the next (NEVER Promise.all). Spend-aggregate safety: each T1
-  // calls withinSpendCeilings, so sequential firing means each sees the prior's committed spend →
-  // the per-day/tenant ceiling halts a burst. Parallel would let two read the same pre-commit total.
-  for (const e of exceptions) {
-    if (e.kind !== "vendor_not_accepted" || e.redispatchState !== "can_suggest") continue;
-    swept++;
-    try {
-      const r = await autoRedispatchForStuckAssignment({ tenantId, stuckAssignmentId: e.assignmentId });
-      if (r.kind === "auto_sent") {
-        autoSent++;
-      } else if (r.kind === "prepared_blocked") {
-        heldForReview++;
-        byReason[r.blockedBy] = (byReason[r.blockedBy] ?? 0) + 1;
-      } else {
-        skipped++;
-        byReason[r.reason] = (byReason[r.reason] ?? 0) + 1;
-      }
-    } catch {
-      // One job's failure must not abort the whole sweep — T1 already closed its run failed; tally + continue.
-      skipped++;
-      byReason.error = (byReason.error ?? 0) + 1;
-    }
-  }
+  // Phase 29: the loop body moved VERBATIM into runAutoRedispatchSweep so the operator button and
+  // the scheduled trigger run the same code — including the can_suggest stuck-filter, which is the
+  // only thing standing between a trigger and re-dispatching healthy jobs (T1 has no staleness
+  // check of its own). This action keeps exactly its request-scoped concerns: auth + revalidate.
+  // Behaviour is unchanged for the button, except that the shared core now also applies the per-job
+  // cooldown (a job auto-re-dispatched within REDISPATCH_COOLDOWN_HOURS is skipped as "cooldown").
+  const summary = await runAutoRedispatchSweep({ tenantId: ctx.activeTenant.tenantId });
 
   revalidatePath("/notifications");
-  return { ok: true, summary: { swept, autoSent, heldForReview, skipped, byReason } };
+  return { ok: true, summary };
 }
 
 export type TenantWeightingState = { error: string } | null;
