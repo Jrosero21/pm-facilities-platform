@@ -1,7 +1,15 @@
-// ── Phase 29 — the scheduled-trigger ENTRYPOINT for autonomous re-dispatch ──────────────────
-// The route exists and works; NOTHING fires it yet. No vercel.json cron entry is declared in this
-// stage — scheduling and deploy are a separate, explicitly gated step. Until then this is an
-// endpoint that only someone holding CRON_SECRET can invoke.
+// ── Phase 29 — the MANUAL-INVOKE ENTRYPOINT for autonomous re-dispatch ──────────────────────
+// Run it by hand:
+//   curl -X POST http://localhost:3000/api/cron/auto-redispatch -H "Authorization: Bearer $CRON_SECRET"
+// Full notes: docs/phase-29-scheduled-trigger/how-to-run.md
+//
+// There is deliberately NO cron schedule. With no live clients an unattended timer would fire at
+// test data and prove nothing, so the automated schedule is deferred until there is a real
+// operation to run against. The path and header format still match what Vercel Cron sends, so
+// adding a schedule later is a one-file change (a vercel.json `crons` entry) with no change here.
+//
+// Safe to fire at any time: with CRON_SECRET unset the endpoint is disabled outright, and with
+// autonomy off (the default everywhere) a sweep scans nothing and writes nothing.
 //
 // It adds NO permission. It decides only WHICH TENANTS TO SCAN; every job is still re-gated inside
 // autoRedispatchForStuckAssignment (kill-switch → policy → token/spend ceilings → conditions →
