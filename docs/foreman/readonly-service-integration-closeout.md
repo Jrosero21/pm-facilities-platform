@@ -379,7 +379,7 @@ Deployment status:
 
 ## Cloud-to-Cloud Verification
 
-The actual deplloyed PM Preview endpoint was tested through Vercel Deployment
+The actual deployed PM Preview endpoint was tested through Vercel Deployment
 Protection using the Vercel CLI.
 
 Read-only decision endpoint:
