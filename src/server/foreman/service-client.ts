@@ -11,6 +11,13 @@ import {
   CoordinatorEvaluateResponseSchema,
 } from "@/server/foreman/service-contract";
 
+import {
+  ApprovedScopeHandoffApiResponseSchema,
+  ApprovedScopeHandoffQuerySchema,
+  type ApprovedScopeHandoff,
+  type ForemanCanonicalFingerprint,
+} from "@/server/foreman/approved-scope-handoff-contract";
+
 export const FOREMAN_API_TOKEN_MIN_LENGTH =
   32;
 
@@ -252,6 +259,116 @@ export function createForemanServiceClient(
     globalThis.fetch;
 
   return {
+    async getApprovedScopeHandoff(
+      reviewReceiptFingerprint:
+        ForemanCanonicalFingerprint,
+    ): Promise<ApprovedScopeHandoff> {
+      const query =
+        ApprovedScopeHandoffQuerySchema
+          .parse({
+            reviewReceiptFingerprint,
+          });
+
+      const url =
+        new URL(
+          `${baseUrl}/api/v1/approved-scope-handoff`,
+        );
+
+      url.searchParams.set(
+        "reviewReceiptFingerprint",
+        query.reviewReceiptFingerprint,
+      );
+
+      const response =
+        await executeRequest(
+          fetchImpl,
+
+          url.toString(),
+
+          {
+            method:
+              "GET",
+
+            headers: {
+              accept:
+                "application/json",
+
+              authorization:
+                `Bearer ${token}`,
+            },
+          },
+
+          timeoutMs,
+        );
+
+      const raw =
+        await readJson(
+          response,
+        );
+
+      const parsed =
+        ApprovedScopeHandoffApiResponseSchema
+          .safeParse(
+            raw,
+          );
+
+      if (!parsed.success) {
+        throw new ForemanServiceClientError({
+          code:
+            "INVALID_RESPONSE",
+
+          message:
+            "FOREMAN approved-scope handoff response did not match the v1 contract.",
+
+          status:
+            response.status,
+
+          requestId:
+            response.headers.get(
+              "x-foreman-request-id",
+            ),
+        });
+      }
+
+      if (!parsed.data.ok) {
+        throw new ForemanServiceClientError({
+          code:
+            parsed.data.error.code,
+
+          message:
+            parsed.data.error.message,
+
+          status:
+            response.status,
+
+          requestId:
+            response.headers.get(
+              "x-foreman-request-id",
+            ),
+        });
+      }
+
+      if (!response.ok) {
+        throw new ForemanServiceClientError({
+          code:
+            "HTTP_ERROR",
+
+          message:
+            "FOREMAN returned an unexpected HTTP status.",
+
+          status:
+            response.status,
+
+          requestId:
+            response.headers.get(
+              "x-foreman-request-id",
+            ),
+        });
+      }
+
+      return parsed.data.handoff;
+    },
+
     async evaluate(
       input:
         WorkOrderContext,
