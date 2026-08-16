@@ -2074,3 +2074,107 @@ stuck-filter), NOT T1 directly, or it re-dispatches healthy jobs. A real design 
 Minor: time-drifting control fixtures (0.9× threshold became genuinely stuck in the 16min seed→eval gap; widened to
 0.5× — a clock fixture needs margin > seed-to-use gap; detector was correct). Harness: eval-escalation.ts,
 seed-stuck-cohort.ts.
+
+---
+
+## End-to-end operational audit — FLOW GAPS (doc-vs-code divergences, code-grounded)
+
+Full READ-ONLY pipeline audit on main: ingestion → scope → dispatch → track → complete → bill. Every claim traced to
+files/functions; nothing taken from the docs' own account of itself.
+
+★ HEADLINE: the foundation is PHASE-CLOSED (29/29 phases doc-complete, eleven docs each) but OPERATIONALLY INCOMPLETE.
+The gaps are real, they are in the CORE FLOW (not the autonomy layer), and none of them are recorded as gaps in the
+phase docs — each phase closed honestly against its own scope while the seams BETWEEN phases stayed unwired. Ranked
+by consequence:
+
+1. ★ AUTONOMOUS DISPATCH NEVER EMAILS THE VENDOR. notifyVendorOfDispatch is imported in exactly one place —
+   sendDispatchAction (app/(app)/jobs/[id]/dispatch/[assignmentId]/actions.ts:6), called post-commit in a swallowing
+   try/catch. sendDispatch itself never notifies (stated at dispatch.ts:521). auto-dispatch.ts:344 and auto-redispatch
+   call the CORE → assignment flips SENT, sent_at stamps, job.dispatched fires, and NO message leaves the building.
+   This is the bank's own "Sent = recorded, not transmitted" finding — fixed for the MANUAL path (dispatch-notify),
+   still live on the AUTONOMOUS path. (Only matters IF autonomy is pursued — see FRAMING.)
+
+2. ★ EMAIL + EXTERNAL-PORTAL INGESTION HAVE NO PRODUCTION ENTRY POINT. `find src/app/api` returns exactly TWO routes:
+   auth/[...all] and cron/auto-redispatch. ingestEmail and ingestExternalJob have ZERO production callers — the only
+   references outside their own modules are scripts/check-email-ingestion.ts and check-external-integrations.ts. No
+   webhook, no mailbox poller, no scheduled fetch. "Source-agnostic multi-channel intake" is ARCHITECTURALLY TRUE
+   (all 7 channels resolve to one createJob, sourceType 8-value enum, ServiceChannel deliberately not a source type)
+   — but two of those channels have no DOOR in production. The code is real and harness-proven; nothing can call it.
+   (Email is additionally two-step record-don't-apply: ingestEmail → draft; approveEmailDraft → createJobFromDraft.)
+
+3. ★ VENDOR-UPDATE → CLIENT-VISIBLE HAS NO PATH. vendor_update_logs and portal_update_queue exist with full FK/index
+   definitions and ZERO writers anywhere in src (schema comments still say "No Phase 6 writer" and anticipate a Phase
+   10 registration that never happened). What actually happens: createVendorNote (server/vendor/create-vendor-note.ts:37)
+   → createJobNote with visibility 'internal_only', origin 'vendor'. That flag IS the gate. And the code comment at
+   :14 records the consequence — "visibility-promotion is banked FB-10l.2." There is NO code path to promote a vendor
+   note to client-visible. The documented capture → review → share-with-client pipeline is capture + review only.
+   (The one live publish path, publishRewriteDraft → client_update_logs, writes from a REWRITER draft, not a vendor note.)
+
+4. COMPLETED / CLOSED HAVE NO AUTOMATED WRITER. The full set of literal advance targets in the codebase is GHOSTED
+   (assignment), PENDING_INVOICE, DISPATCHED, IN_PROGRESS, CLOSED_BILLED. COMPLETED and CLOSED are named as terminal
+   statuses (stalled-rules.ts:12, proposal-generator/index.ts:31) and nothing advances into them. Automated lifecycle
+   is NEW → DISPATCHED → IN_PROGRESS → PENDING_INVOICE → CLOSED_BILLED; "completion" as a WORK state is operator-
+   ASSERTED via setJobStatus (jobs.ts:724, free movement, any→any incl. re-open from terminal), never derived.
+
+5. JOB AUTO-FOLLOW NO-OPS ON MULTI-VENDOR JOBS. applyDispatchJobFollow (job-status.ts:116) requires EXACTLY ONE active
+   dispatch — `if (n !== 1) return { advanced: false }` at :137 (active = category not in cancelled/draft). A job with
+   2 live dispatches never auto-advances on ON_SITE or WORK_COMPLETE. Silent by design, invisible to a reader.
+   (ON_HOLD is deliberately absent from every fromCodes — a parked job is never auto-advanced. That part is correct.)
+
+6. RADIUS / COUNTY SERVICE AREAS ARE INERT. vendor-matching.ts:16 — stored but no distance computation exists.
+   Effective geo is EQUALITY only: national / state / city / postal_code. This is the banked FIX-or-HIDE item from the
+   live-verify findings, still open. Note it is load-bearing for autonomy: geo is the hard floor in geoMode 'enforce'.
+
+7. RE-SCOPE HAS NO CODE PATH. publishScopeDraft APPENDS, and a second publish into an already-scoped job throws
+   ScopeAlreadyPublished (checked under the job lock, publish.ts:105). Correcting a published scope is not a workflow.
+
+8. NTE NEVER BLOCKS. getEffectiveNte = creation snapshot + Σ approved COs, computed on read. At vendor-invoice approval
+   it emits nte.exceeded twice over (invoice-level; job-aggregate FIRST-CROSSING only) and rejects NOTHING
+   (vendor-invoices.ts:340-380). Its only routing effect is shouldRouteToClient (proposal-routing.ts:18, null NTE →
+   fail-safe "client"). The name implies a ceiling that no write enforces.
+
+★ FRAMING — READ THIS BEFORE ACTING ON THE LIST. These are the REAL foundation-completeness gaps: OPERATIONAL, not
+documentary. The phase docs are not wrong about what they built; they are silent about what sits between the phases.
+Autonomous dispatch (#1) is DOWNSTREAM of a solid flow, not the next step — it only matters if autonomy is pursued,
+and pursuing autonomy is a SEPARATE DELIBERATE DECISION, not an assumed trajectory. #2 and #3 are gaps in the ordinary
+operator's day and do not depend on that decision at all.
+
+RESOLVED — CF-29.3 retired. The phase-29 known-limitation §4 ("enforced twice" only partially verified) is now fully
+traced. Both enforcement paths count the SAME predicate at the SAME grain: exceptions.ts:150 counts per job where
+sent_at IS NOT NULL; redispatch-suggestion.ts:73 filters assignments on a.sentAt != null. Identical semantics — the
+counts cannot drift. The candidate-exclusion path assigns 'exhausted_max_attempts' at exceptions.ts:189+ when
+attemptCount >= REDISPATCH_MAX_ATTEMPTS. Claim holds; safe to retire CF-29.3.
+(Nuance worth keeping: 'suggestion_ready' is evaluated BEFORE the cap, so a job with a pending draft reports
+suggestion_ready even at ≥3 attempts. Harmless — a draft only exists if a prior decideRedispatchCore allowed it — but
+'exhausted_max_attempts' is not a strict function of attempt count.)
+
+INVARIANTS CONFIRMED AS ENFORCED (the good news — these all hold in code, not just in doctrine):
+- SINGLE-WRITER createJob (jobs.ts:257) — all 7 ingestion channels converge; no second inserter into jobs. Its 7-step
+  txn locks the per-tenant counter FOR UPDATE, and the audit_logs insert is INSIDE the txn (atomicity over resilience).
+- PURE-CORE / ACTION-WRAPPER SEAM, three real tiers: PURE (no @/server/db — dispatch-sla-rules, stalled-rules,
+  proposal-routing, money, role-gates, decideRedispatchCore, resolveEffectiveBillingModel) → DATA LAYER (db,
+  tenantId param, named-error throws, TRUSTS callers on authz) → ACTION LAYER (requireTenant, role gates,
+  revalidatePath, post-commit side effects). redispatch-suggestion.ts looks like it imports db but dynamic-imports
+  every DB dep inside the function specifically to keep the core offline-testable — the split is genuine.
+- ★ TENANT ISOLATION IS CONVENTION-ENFORCED, NOT STRUCTURAL. Threaded as an explicit tenantId parameter on every
+  data-layer function; boundary is requireTenant() (auth-context.ts:120) used across 29 action files. There is NO
+  ambient context and NO row-level security. Correct everywhere audited — but a single omitted eq(x.tenantId, …) in a
+  future query is a SILENT cross-tenant leak with nothing to catch it. Worth a lint/test backstop before multi-tenant
+  production load.
+- AUDITABILITY — four substrates, consistently dual-written INSIDE the transaction: typed history (job_status_history,
+  job_vendor_assignment_status_history) · human timeline (job_events) · immutable audit (audit_logs) · domain events
+  (job_billing_events). CLAUDE.md's "every meaningful workflow gets a history/event row" holds everywhere traced.
+  One wart: assignment status history has NO actor column — operator-vs-vendor provenance is carried in
+  audit_logs.metadata ({ actor:'operator', via:'operator_console' }), dispatch.ts:516.
+
+BILLING — traced precisely (it was the least-understood stage; it is in better shape than expected). Eligibility is a
+WORKLIST not a gate (ready-to-bill.ts:16 — "any job is billable regardless of status"). Cost assembly is DETERMINISTIC,
+no LLM (job-bill-prefill.ts:11) and forks correctly on the effective billing model: rate_sheet labor bills the AGREED
+RATE never vendor cost; rate_sheet materials → JUDGMENT at $0 with a clean client-safe description (no cost leak);
+cost_plus is the ONLY model that uses vendor cost as the billed basis. ★ The agreed rate resolves for the DISPATCH's
+matched trade, not the job's primary trade (job-bill-prefill.ts:69 — HVAC work billed at the plumbing rate is wrong).
+"NEVER BLOCK CLIENT BILLING" CONFIRMED end-to-end: vendor-invoice approval is an AP state not a billing gate; the
+cost-plus missing-document check is advisory, re-verified server-side but the ack ALWAYS proceeds and records the
+override in the client_invoice.sent metadata (client-invoices/actions.ts:185,200). Issuance is accounting-gated via a
+PURE predicate (role-gates.ts:13 — accounting OR super_admin; tenant_admin does NOT pass). Close (close.ts:44) is
+first-close-wins on closed_at, transitions from ANY status, and getBillingCloseReadiness is advisory only.
