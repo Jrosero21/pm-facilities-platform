@@ -2296,3 +2296,65 @@ it. Do NOT solve scheduling twice. When the scheduler is built, phase-29's CF-29
 once the foundation is solid AND a scheduler runtime exists, the per-client delivery scheduler. Pursuing the scheduler
 before the foundation is the same trap as pursuing autonomy before a solid flow — see the FRAMING note on the
 operational-audit entry. Banked, not scheduled; this is a vision record, not a work item.
+
+---
+
+## Invoice PDF export — BUILD PLAN (G1 foundation) + explicit deferrals
+
+The concrete plan for the PDF-export piece named in the invoice-delivery entry above. Read-only prep audit done first
+(schema, tooling, attach points, branding); everything below is grounded in that.
+
+### DECISIONS (LOCKED — do not re-litigate mid-build)
+- RENDERER: **@react-pdf/renderer** — pure JS, no headless browser. This is the FIRST new runtime dependency the
+  build needs; package.json today has 16 deps and ZERO PDF/browser tooling (the only "pdf" string in src is a MIME
+  mapping, storage/document-mime.ts:34). A headless browser would work on Vercel Fluid Compute (5 GB package limit)
+  but costs a browser binary for no gain here.
+- DELIVERY: **on-demand stream** — a Server Action / route handler returns bytes. NO R2 dependency. (Note there is
+  currently NO file-serving route at all — only api/auth/[...all] and api/cron/auto-redispatch — so this is net-new.)
+- BRANDING: **minimal tenant company profile, no logo** this pass.
+- BILL-TO: **derived from client_locations** (pragmatic — see D2).
+- ★ HARD RULE FOR THE RENDERER — NEVER print markupTotal / markupPercent / markupAmount. That is THE MARGIN, and it
+  is INTERNAL-ONLY (OQ-6, stated twice in schema/client-invoices.ts:23 and :74 — "the client portal renders the
+  marked-up total, never the cost+markup split"). PRINT `total` ONLY. This is the single easiest way to get the PDF
+  catastrophically wrong: a leaked markup column is a client seeing our margin on our own invoice.
+
+### BUILDING NOW
+- BATCH 1 (SCHEMA):
+  - P1 INVOICE NUMBERING. invoiceNumber is varchar-NULLABLE and NEVER GENERATED — passed through as
+    `input.invoiceNumber ?? null` (billing/client-invoices.ts:119) and left unset by ALL THREE callers
+    (bill-actions.ts:27, client-invoices/actions.ts:77, invoice-creator/publish.ts:64). The audit log literally
+    records `"Client invoice created: (draft)"` (:130). sequenceNumber is the same. ★ A PDF with no invoice number is
+    not an invoice. Mirror the PROVEN pattern: tenant_job_sequences + a `FOR UPDATE` counter lock inside the creating
+    txn (jobs.ts createJob steps 1–4) — same race-safety, same idempotent ensure-row.
+  - P3 MINIMAL TENANT COMPANY PROFILE. tenants today is name / slug / type / status / priorityClientWeightingEnabled
+    + timestamps — NOTHING else. No logo, no address, no legal name, no remit-to, no phone, no email; there is no
+    tenant-settings or company-profile table anywhere in the schema (the only `legal_name` in the codebase is on
+    VENDORS, vendors.ts:32). Add: legal name, address, remit-to, phone, email. Without this the PDF's letterhead can
+    say only `tenants.name`.
+- BATCH 2 (RENDER): @react-pdf renderer + invoice layout (company header · location-derived bill-to · line items ·
+  totals — NO MARKUP) + an on-demand stream download button on the OPERATOR invoice page. Attach point:
+  app/(app)/jobs/[id]/client-invoices/[clientInvoiceId]/page.tsx — it already loads invoice + lines + payments +
+  markup + rate context in one Promise.all (:36) and already renders ClientInvoiceActions; the button belongs there,
+  beside Send/Void. Readers needed already exist: getClientInvoice (:332), listClientInvoiceLineItems (:353).
+  The render is a PURE READ — all money is writer-owned by recalculateClientInvoiceTotals; the PDF computes nothing.
+
+### ★ DEFERRED BUT DEFINITELY NEEDED LATER — operator-flagged, DO NOT DROP
+These are deferrals, NOT rejections. Each one is the difference between "works" and "professional/production".
+- D1 TENANT LOGO. Company profile ships minimal (name/address/remit/phone/email) now. A logo needs file-upload + R2
+  storage. Required for a fully branded, professional invoice. DEFER, NOT DROP.
+- D2 CLIENT BILLING ADDRESS. Bill-to is derived from client_locations now, which is PRAGMATIC BUT SEMANTICALLY WRONG:
+  clients carries only name + clientCode (clients.ts:24-25); full addresses exist only on client_locations
+  (addressLine1/2, city, stateProvince, postalCode, country — :95-100), and a SERVICE location is not a BILLING
+  address. The proper version is a dedicated client billing address. Needed later.
+- D3 R2-PERSISTED PDFs. Render-on-demand-and-stream now (no storage dep). Persisting the generated PDF to R2 + serving
+  a signed URL is the production version — it gives ARCHIVE, RE-DOWNLOAD, and an audit of EXACTLY WHAT WAS SENT
+  (today nothing records the artifact). The storage seam already exists and fits: getStorageProvider() → put() /
+  getSignedUrl(), R2-backed (lib/integrations/storage/). ⚠️ It THROWS STORAGE_NOT_CONFIGURED without R2 creds rather
+  than silently capturing (the deliberate CF-iii.2 fix, where "successful" uploads evaporated) — so D3 requires R2
+  configured in the deployed env. Needed later.
+- D4 CLIENT-FACING DOWNLOAD. Operator download first. The client half is a per-row download on
+  app/(client)/client/invoices/page.tsx (read-only, status='sent', explicitly OQ-6-safe). Needed later.
+
+★ NOTE ON D3 + the delivery-scheduler entry above: the banked per-client invoice-delivery scheduler BATCHES N invoices
+into one PDF. That almost certainly wants persisted artifacts (D3), not on-demand streaming — so D3 is a prerequisite
+of the scheduler, not an optional polish. Sequence accordingly.
