@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   pgTable,
+  text,
   timestamp,
   uniqueIndex,
   varchar,
@@ -26,6 +27,27 @@ export const tenants = pgTable("tenants", {
   // no client-priority bump enters the exceptions triage until a tenant opts in). Governs whether
   // clients.is_priority has any effect.
   priorityClientWeightingEnabled: boolean("priority_client_weighting_enabled").notNull().default(false),
+  // ── invoice-pdf batch 1 — MINIMAL COMPANY PROFILE (the invoice letterhead) ──────────────
+  // The aggregator's own identity, for rendering on client-facing documents (invoice PDF first).
+  // Before this, `name` was the ONLY brandable value on a tenant — there was no address, no legal
+  // name, no remit-to anywhere in the schema. Columns (not a side table): one row per tenant, read
+  // once per render, always needed together — a join would buy nothing. `legalName` mirrors the
+  // naming precedent already set by vendors.legal_name (vendors.ts:32).
+  // ALL NULLABLE + additive ⇒ zero-downtime; every existing row stays valid, and the renderer
+  // degrades to `name` alone when the profile is unset.
+  // ★ NO LOGO — deferred (D1 in the bank): a logo needs file-upload + R2 storage, which is a
+  //   different build. Do not add a logo URL column here as a placeholder.
+  legalName: varchar("legal_name", { length: 255 }),
+  addressLine1: varchar("address_line1", { length: 255 }),
+  addressLine2: varchar("address_line2", { length: 255 }),
+  city: varchar("city", { length: 128 }),
+  stateProvince: varchar("state_province", { length: 128 }),
+  postalCode: varchar("postal_code", { length: 32 }),
+  country: varchar("country", { length: 2 }),
+  // Free text: payment-remittance instructions ("Remit to: … / ACH …"). Multi-line ⇒ text.
+  remitTo: text("remit_to"),
+  phone: varchar("phone", { length: 64 }),
+  email: varchar("email", { length: 255 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });

@@ -43,6 +43,13 @@
       "when": 1783293050526,
       "tag": "0005_great_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786920869285,
+      "tag": "0006_rainy_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

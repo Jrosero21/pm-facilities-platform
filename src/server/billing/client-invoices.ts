@@ -1,10 +1,15 @@
 import "server-only";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import Big from "big.js";
 import { v7 as uuidv7 } from "uuid";
 import { db } from "@/server/db";
-import { clientBillingRules, clientInvoiceLineItems, clientInvoices } from "@/server/schema";
+import {
+  clientBillingRules,
+  clientInvoiceLineItems,
+  clientInvoices,
+  tenantInvoiceSequences,
+} from "@/server/schema";
 import { recalculateClientInvoiceTotals, roundHalfUp } from "@/server/billing/totals";
 import { emitJobBillingEvent } from "@/server/billing/events";
 import { assertCommonLineFields, isDecimalStr } from "@/server/billing/money";
@@ -92,31 +97,68 @@ export type CreateClientInvoiceInput = {
   tenantId: string;
   jobId: string;
   clientId: string;
+  /** OPERATOR OVERRIDE only (e.g. an externally-issued number). Blank/absent ⇒ the per-tenant
+   *  counter allocates INV-000001-style. The stored invoice_number is NEVER null either way. */
   invoiceNumber?: string | null;
-  sequenceNumber?: number | null;
   isFinal?: boolean;
   currency?: string;
   dueAt?: Date | null;
   createdByUserId: string | null;
 };
 
+/**
+ * Render a per-tenant sequence number as the human-readable invoice number.
+ * INV- + 6-digit zero-pad (INV-000001 … INV-999999); beyond 999999 it simply grows wider —
+ * the pad is a minimum, never a ceiling. PURE (exported for the render/verify layers).
+ */
+export function formatInvoiceNumber(sequenceNumber: number): string {
+  return `INV-${String(sequenceNumber).padStart(6, "0")}`;
+}
+
 /** Create a draft client invoice. Snapshots payment_terms_days from the default billing rule at
  *  creation (immutable to later rule edits, 8c-D4). Emits client_invoice.created (the AR document's
- *  authoring IS a meaningful operator state — the deliberate asymmetry vs the absent vendor_invoice.created). */
+ *  authoring IS a meaningful operator state — the deliberate asymmetry vs the absent vendor_invoice.created).
+ *
+ *  invoice-pdf batch 1 — NUMBERING. sequence_number is ALWAYS allocated here from the per-tenant
+ *  counter, and invoice_number is ALWAYS set (operator override if supplied and non-blank, else the
+ *  formatted sequence). This is the SOLE creation path for client invoices, so making it allocate is
+ *  what guarantees "never null" — no caller can opt out, and no future caller can forget.
+ *  The counter mechanic MIRRORS createJob steps 1–4 EXACTLY (jobs.ts:306): idempotent ensure-row →
+ *  SELECT ... FOR UPDATE → allocate → bump, all inside this transaction, so allocation is gapless
+ *  and concurrency-safe. The sequence is consumed even when the operator supplies their own number
+ *  (the counter is the internal monotonic identity; it is not a rendering choice). */
 export async function createClientInvoice(input: CreateClientInvoiceInput): Promise<{ id: string }> {
   const id = uuidv7();
   const currency = input.currency ?? "USD";
-  const sequenceNumber = input.sequenceNumber ?? null;
   const isFinal = input.isFinal ?? false;
+  // Treat a blank/whitespace override as absent — the form's optional text input yields "" not null.
+  const override = input.invoiceNumber?.trim() ? input.invoiceNumber.trim() : null;
   await db.transaction(async (tx) => {
     const rule = await defaultBillingRule(input.tenantId, input.clientId);
     const paymentTermsDays = rule?.paymentTermsDays ?? null;
+
+    // 1. Ensure the tenant's counter row exists (idempotent, race-safe).
+    await tx.execute(sql`
+      INSERT INTO tenant_invoice_sequences (tenant_id, next_number)
+      VALUES (${input.tenantId}, 1)
+      ON CONFLICT (tenant_id) DO NOTHING
+    `);
+    // 2. Lock the counter row and read the number to assign.
+    const seqRows = await tx
+      .select({ nextNumber: tenantInvoiceSequences.nextNumber })
+      .from(tenantInvoiceSequences)
+      .where(eq(tenantInvoiceSequences.tenantId, input.tenantId))
+      .for("update");
+    const sequenceNumber = seqRows[0].nextNumber;
+    const invoiceNumber = override ?? formatInvoiceNumber(sequenceNumber);
+
+    // 3. Insert with the allocated number.
     await tx.insert(clientInvoices).values({
       id,
       tenantId: input.tenantId,
       jobId: input.jobId,
       clientId: input.clientId,
-      invoiceNumber: input.invoiceNumber ?? null,
+      invoiceNumber,
       sequenceNumber,
       isFinal,
       currency,
@@ -124,12 +166,19 @@ export async function createClientInvoice(input: CreateClientInvoiceInput): Prom
       dueAt: input.dueAt ?? null,
       createdByUserId: input.createdByUserId,
     });
+
+    // 4. Bump the counter.
+    await tx
+      .update(tenantInvoiceSequences)
+      .set({ nextNumber: sequenceNumber + 1 })
+      .where(eq(tenantInvoiceSequences.tenantId, input.tenantId));
+
     await emitJobBillingEvent(tx, {
       tenantId: input.tenantId, jobId: input.jobId, eventType: "client_invoice.created",
       actorUserId: input.createdByUserId,
-      summary: `Client invoice created: ${input.invoiceNumber ?? "(draft)"}`,
+      summary: `Client invoice created: ${invoiceNumber}`,
       amount: "0.00", currency, clientInvoiceId: id,
-      metadata: { paymentTermsDays, sequenceNumber, isFinal },
+      metadata: { paymentTermsDays, sequenceNumber, isFinal, numberSource: override ? "operator" : "sequence" },
     });
   });
   return { id };

@@ -29,6 +29,21 @@ import { arMarkupColumns, baseLineItemColumns } from "./billing-shared";
 
 
 
+// ── invoice-pdf batch 1 — PER-TENANT INVOICE NUMBER COUNTER ───────────────────────────
+// A DIRECT MIRROR of tenant_job_sequences (jobs.ts:126): one row per tenant, locked
+// SELECT ... FOR UPDATE inside the createClientInvoice transaction so allocation is gapless
+// and concurrency-safe. Same shape, same mechanic, same cascade — deliberately identical so
+// there is one numbering pattern on the platform, not two.
+// Rows are created on demand by an idempotent INSERT ... ON CONFLICT DO NOTHING (no seed, no
+// tenant-creation hook needed — same as the job counter's carry-forward).
+export const tenantInvoiceSequences = pgTable("tenant_invoice_sequences", {
+  tenantId: varchar("tenant_id", { length: 36 })
+    .primaryKey()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  nextNumber: integer("next_number").notNull().default(1),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 export const clientInvoices = pgTable(
   "client_invoices",
   {
