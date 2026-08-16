@@ -64,6 +64,22 @@ function SendInvoiceButton({ clientInvoiceId, jobId, needsVendorDocAck }: { clie
   );
 }
 
+// invoice-pdf batch 2 — DOWNLOAD PDF. A plain link, not a form: the route renders on demand and
+// streams the bytes (GET, no mutation, no client JS). Deliberately NOT behind `canAccount` — a
+// DRAFT, a SENT and a VOID invoice are all legitimately downloadable, and reading the document is
+// not an accounting DUTY (the read-vs-write asymmetry, role-predicates.ts §3/§11). The route
+// enforces the read gate itself (canSeeFinancials) as the backstop.
+function DownloadPdfLink({ clientInvoiceId }: { clientInvoiceId: string }) {
+  return (
+    <a
+      href={`/api/client-invoices/${clientInvoiceId}/pdf`}
+      className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+    >
+      Download PDF
+    </a>
+  );
+}
+
 export function ClientInvoiceActions({
   clientInvoiceId,
   jobId,
@@ -77,28 +93,32 @@ export function ClientInvoiceActions({
   canAccount: boolean;
   needsVendorDocAck?: boolean;
 }) {
-  if (status === "void") {
-    return <p className="text-sm text-neutral-500">This invoice is void.</p>;
-  }
   const isDraft = status === "draft";
   const isSent = status === "sent";
 
-  if (!canAccount) {
-    return (
-      <p className="text-sm text-neutral-500">
+  // The lifecycle control for this state — or the reason there isn't one. Download rides alongside
+  // it in EVERY branch (hence the restructure from early-returns to one composed row).
+  let lifecycle: React.ReactNode;
+  if (status === "void") {
+    lifecycle = <p className="self-center text-sm text-neutral-500">This invoice is void.</p>;
+  } else if (!canAccount) {
+    lifecycle = (
+      <p className="self-center text-sm text-neutral-500">
         {isDraft ? "Issuing this invoice requires the accounting role." : "Voiding this invoice requires the accounting role."}
       </p>
     );
+  } else if (isDraft) {
+    lifecycle = <SendInvoiceButton clientInvoiceId={clientInvoiceId} jobId={jobId} needsVendorDocAck={needsVendorDocAck} />;
+  } else if (isSent) {
+    lifecycle = <ActionButton action={voidClientInvoiceAction.bind(null, clientInvoiceId, jobId)} label="Void" pendingLabel="Voiding…" variant="danger" />;
+  } else {
+    lifecycle = null;
   }
 
   return (
     <div className="flex flex-wrap items-start gap-2">
-      {isDraft && (
-        <SendInvoiceButton clientInvoiceId={clientInvoiceId} jobId={jobId} needsVendorDocAck={needsVendorDocAck} />
-      )}
-      {isSent && (
-        <ActionButton action={voidClientInvoiceAction.bind(null, clientInvoiceId, jobId)} label="Void" pendingLabel="Voiding…" variant="danger" />
-      )}
+      {lifecycle}
+      <DownloadPdfLink clientInvoiceId={clientInvoiceId} />
     </div>
   );
 }
