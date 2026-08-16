@@ -2254,3 +2254,45 @@ OPTIONAL path that produces email content — never a prerequisite for telling a
 ★ FRAMING: the non-AI foundation is far closer to complete than the flow-gap list suggested. Four of the seven gaps
 (G1, G2, G3 + G7-config) are COMMUNICATION items and small, well-shaped builds; two (G4, G5) are doors onto code that
 already exists and is harness-proven; one (G6) is a product decision, not a defect. None requires new architecture.
+
+---
+
+## Invoice delivery — FOUNDATION capability vs FUTURE automation (scoped, explicitly split)
+
+Refines G1 (client invoice email) from the non-AI operability entry. G1 named the gap; this splits it into what the
+foundation actually needs versus what is a later automation. ★ THE SPLIT IS THE POINT — read it before building.
+
+### FOUNDATION (build now — must-have for demo + operation)
+- Invoice CREATION already WORKS and is DETERMINISTIC, no AI (buildJobBillPrefill → addClientInvoiceLineItem →
+  sendClientInvoice). Nothing to fix there.
+- ★ ADD: PDF EXPORT — a downloadable, professional PDF generated from the EXISTING invoice data (client_invoices +
+  client_invoice_line_items). No new data model; a render over rows that already exist. This is the real foundation
+  deliverable, and it is what makes the invoice presentable to a human at all.
+- ONE-OFF DELIVERY, two acceptable answers, both cheap:
+  (a) ZERO BUILD — the operator downloads the PDF and emails it from their own mail client. Legitimate and shippable.
+  (b) SMALL OPTIONAL BUILD — an in-system one-off send: compose outbound_message + communication_logs with the PDF,
+      post-commit sendCommunication (the dispatch-notify shape, never blocking issuance).
+- ★ NOTE the honest consequence of shipping (a) alone: the send is then INVISIBLE to the system — no communication_logs
+  row, no delivery_status, no audit that the client was told. Fine for demo; a real gap for operation. (b) is what
+  closes G1 properly. Decide deliberately rather than by default.
+
+### FUTURE AUTOMATION (BANKED — explicitly NOT a foundation must-have)
+A PER-CLIENT INVOICE-DELIVERY SCHEDULER. Every client differs; delivery preference is per-client CONFIG, not a global
+setting:
+- CADENCE — day-of-week, weekly (e.g. every Wednesday for client A, every Friday for client B).
+- BATCHING — N invoices per PDF (e.g. 50/PDF) OR one-invoice-per-PDF.
+- PACKAGING — batch into ONE email, or one email per invoice.
+Depends on: PDF export (the foundation piece above) + a SCHEDULER RUNTIME. Neither the cadence config nor the batching
+logic is hard; the missing substrate is the runtime that fires them.
+
+★ THE PATTERN WORTH NAMING — this is the SAME SHAPE as phase-29: a capability built and proven, with the SCHEDULE
+deliberately deferred (phase-29 built the sweep core + cooldown + token-guarded route, then removed the vercel.json
+cron; see the phase-29 doc set). Two independent features — escalation re-dispatch and invoice delivery — now both
+want "run this on a cadence." That is the signal that a REUSABLE SCHEDULER RUNTIME is a platform concern, not a
+per-feature one: build it once (trigger + per-tenant/per-client cadence config + idempotency + audit) and both consume
+it. Do NOT solve scheduling twice. When the scheduler is built, phase-29's CF-29.1 and this entry close together.
+
+★ SEQUENCING (deliberate, do not collapse): PDF export (foundation) → decide one-off delivery (a) or (b) → THEN, only
+once the foundation is solid AND a scheduler runtime exists, the per-client delivery scheduler. Pursuing the scheduler
+before the foundation is the same trap as pursuing autonomy before a solid flow — see the FRAMING note on the
+operational-audit entry. Banked, not scheduled; this is a vision record, not a work item.
