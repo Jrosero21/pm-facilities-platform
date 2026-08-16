@@ -2102,13 +2102,31 @@ by consequence:
    — but two of those channels have no DOOR in production. The code is real and harness-proven; nothing can call it.
    (Email is additionally two-step record-don't-apply: ingestEmail → draft; approveEmailDraft → createJobFromDraft.)
 
-3. ★ VENDOR-UPDATE → CLIENT-VISIBLE HAS NO PATH. vendor_update_logs and portal_update_queue exist with full FK/index
-   definitions and ZERO writers anywhere in src (schema comments still say "No Phase 6 writer" and anticipate a Phase
-   10 registration that never happened). What actually happens: createVendorNote (server/vendor/create-vendor-note.ts:37)
-   → createJobNote with visibility 'internal_only', origin 'vendor'. That flag IS the gate. And the code comment at
-   :14 records the consequence — "visibility-promotion is banked FB-10l.2." There is NO code path to promote a vendor
-   note to client-visible. The documented capture → review → share-with-client pipeline is capture + review only.
-   (The one live publish path, publishRewriteDraft → client_update_logs, writes from a REWRITER draft, not a vendor note.)
+3. ~~★ VENDOR-UPDATE → CLIENT-VISIBLE HAS NO PATH.~~ ★★ THIS FINDING WAS WRONG — CORRECTED BELOW. STRUCK, NOT DELETED
+   (the reasoning error is worth keeping). The claim was: "visibility-promotion is banked FB-10l.2, there is NO code
+   path to promote a vendor note to client-visible." FB-10l.2 SHIPPED — in Phase 18c.
+   ★ WHAT IS ACTUALLY TRUE:
+   - promoteNoteVisibility (job-notes.ts:178) — "Operator-gated visibility promotion (Phase 18c, FB-10l.2)" — flips a
+     note to client_visible / client_and_vendor_visible (PROMOTION_TARGETS restricts it to exactly those two), audited
+     as job_note.visibility_promoted. FULLY WIRED: note-visibility-actions.ts:14 → components/vendor-updates-inbox.tsx:57
+     → mounted at app/(app)/review/page.tsx:73.
+   - Client-visible updates therefore work AI-FREE via job_notes, two ways: author the note client_visible directly
+     (createJobNoteAction reads visibility from the form, note-actions.ts:22), OR promote an existing note.
+   - ★ THE READER IS job_notes, NOT client_update_logs. The client portal reads listClientJobNotes
+     (server/client/list-client-job-notes.ts), filtering visibility IN ('client_visible','client_and_vendor_visible'),
+     mounted at app/(client)/client/jobs/[id]/page.tsx:4. client_update_logs is NEVER read by the portal.
+   - client_update_logs is a SEPARATE, AI-ONLY path (sole writer publishRewriteDraft, client-updates.ts:103, requires
+     an approved rewriter draft ⇒ a real LLM run) whose only consumer is resolveSendContent (communications.ts:218) —
+     i.e. it produces EMAIL CONTENT, not the portal post.
+   - Vendor notes staying internal_only (createVendorNote → visibility 'internal_only', origin 'vendor') is CORRECT BY
+     DESIGN — aggregator mediation, not a gap. The operator decides what the client sees.
+   ★ WHAT STANDS from the original finding: vendor_update_logs and portal_update_queue genuinely have ZERO writers
+   anywhere in src. They are dead tables — the capture/queue substrate Phase 6 anticipated was never used, because the
+   job_notes visibility flag became the mechanism instead. Dead schema, not a broken workflow.
+   ★ HOW THE ERROR HAPPENED (the lesson): I trusted a CODE COMMENT — create-vendor-note.ts:14 still says
+   "visibility-promotion is banked FB-10l.2" — written in Phase 10 and never updated when Phase 18c built it. A stale
+   comment outranked a grep for the actual writer. RULE: verify a "not built" claim by searching for the WRITER, never
+   by reading a comment that says it isn't built.
 
 4. COMPLETED / CLOSED HAVE NO AUTOMATED WRITER. The full set of literal advance targets in the codebase is GHOSTED
    (assignment), PENDING_INVOICE, DISPATCHED, IN_PROGRESS, CLOSED_BILLED. COMPLETED and CLOSED are named as terminal
@@ -2178,3 +2196,61 @@ cost-plus missing-document check is advisory, re-verified server-side but the ac
 override in the client_invoice.sent metadata (client-invoices/actions.ts:185,200). Issuance is accounting-gated via a
 PURE predicate (role-gates.ts:13 — accounting OR super_admin; tenant_admin does NOT pass). Close (close.ts:44) is
 first-close-wins on closed_at, transitions from ANY status, and getBillingCloseReadiness is advisory only.
+
+---
+
+## Non-AI operability audit — CAN run WOs end-to-end with zero AI (code-grounded)
+
+★ ANSWER: YES. Read-only audit on main, every capability traced to a file/function and marked WORKS (no AI) / GAP
+(unwired, must build) / AI-ONLY (no manual fallback).
+
+THE OPERABLE AI-FREE SPINE — a work order flows start-to-finish with no AI anywhere:
+intake (4 live doors: manual / client-portal / PM / snow, all → createJob) → free-text scope (jobs.scopeOfWork,
+carried into dispatchScope) → dispatch (findCandidateVendorsForJob + createDispatch + sendDispatch — vendor-matching.ts
+and dispatch.ts have ZERO agent/llm imports; the manual path doesn't even touch scorer.ts) → VENDOR EMAIL
+(notifyVendorOfDispatch → sendCommunication → provider; deterministic string builder) → CLIENT UPDATE, both modes
+(portal post via a client_visible job_note; OR email via shareNote(client) → communication_logs draft →
+sendCommunicationAction → provider) → status / completion / close (setJobStatus free-movement, markJobReadyToBill,
+markBillingClosed) → full billing (deterministic prefill → invoice → issue, no LLM). Also AI-free: vendor portal
+access email (sendAssignmentLink, magic-links/send-link.ts:82).
+
+★ The communication story is BETTER than the flow-gap entry implied: vendor email works, client-update-to-portal works,
+client-update-by-email works — all AI-free. Share ≠ Send is a deliberate two-step (delivery_status starts 'draft').
+
+GAP LIST — the non-AI foundation build spec, ordered by value:
+- G1 ★ CLIENT INVOICE EMAIL — sendClientInvoice (billing/client-invoices.ts:288) is a PURE STATUS FLIP: status='sent',
+  issuedAt, issuedByUserId, + a client_invoice.sent billing event. NO communication_logs, NO outbound_message, NO
+  provider call. "Sent" = issued in the system, NOT transmitted; the client learns of it only by logging into the
+  portal. This is the SAME "recorded, not transmitted" shape dispatch had before dispatch-notify — and the fix is the
+  same shape too: compose outbound_message + communication_logs, then post-commit sendCommunication (never blocking
+  the issuance). HIGHEST VALUE — invoices are being issued that nobody is told about.
+- G2 LOG-A-CALL — 'phone_call' is in the channel enum (enums.ts:20) and recipientType includes 'internal' (:61), but
+  communication_logs has exactly FOUR writers (shareNote, publishRewriteDraft, dispatch-notify, send-link) and none
+  logs an off-system contact. Needs a logContact core + operator action + form. Vocabulary exists; path does not.
+- G3 INTERNAL / USER EMAIL — recipientType:'internal' is DEFINED and UNUSED (zero hits). No user-to-user, no team, no
+  staff notification of any kind. Every outbound path targets a vendor_contact or client_contact.
+- G4 EMAIL INTAKE DOOR — ingestEmail built + harness-proven, no production door. Needs a webhook or mailbox poller.
+  (Note it is two-step record-don't-apply: ingestEmail → draft; approveEmailDraft → createJobFromDraft → createJob.)
+- G5 EXTERNAL-PORTAL INTAKE DOOR — ingestExternalJob built, needs a route or scheduled fetch.
+- G6 STRUCTURED SCOPE BY HAND — ★ THE ONE GENUINELY AI-ONLY WORKFLOW. job_scope_drafts' sole writer is createScopeDraft
+  (agents/scope-generator/drafts.ts:101), reachable ONLY as createScopeDraftTool inside runScopeGenerator (index.ts:93),
+  and agentRunId is a required column; job_scope_steps' sole writer is publishScopeDraft, which requires a draft. So
+  an operator CANNOT produce job_scope_steps / approvedScopeOfWork / scopeGenerationStatus='approved' without an LLM
+  run. WORKING FALLBACK: free-text jobs.scopeOfWork (set at createJob:336, editable via updateJob:558) — createDispatch
+  falls back approvedScopeOfWork ?? scopeOfWork (dispatch.ts:266), so dispatch carries a hand-typed scope fine. Cost of
+  the fallback: scopeGenerationStatus stays 'not_started' forever, the dispatch-new page flags noApprovedScope, and
+  there are no per-step records. ★ DECISION REQUIRED: accept free-text as the non-AI scope mode, OR add an
+  operator-authored structured draft path (agentRunId must go nullable). Not a bug — a product choice.
+- G7 (CONFIG, not build) — getSendProvider() returns CaptureProvider (NO network) when SEND_CAPTURE=1 or RESEND_API_KEY
+  is absent (lib/integrations/send/index.ts:23). Fail-safe by design, but nothing actually leaves the building until
+  that key is set in the deployed env. Deploy config, not a build item.
+
+★ CORRECTION to the "8 flow-gaps" entry above: finding #3 (vendor-note → client promotion "no path") was WRONG —
+promoteNoteVisibility shipped in Phase 18c and is fully wired. See the struck-through #3 for the corrected account and
+the lesson (a stale code comment outranked a grep for the writer). THE MEDIATION MODEL WORKS AS DESIGNED: vendor notes
+land internal_only; the operator authors or promotes client-visible notes AI-free; the AI rewriter is a SEPARATE,
+OPTIONAL path that produces email content — never a prerequisite for telling a client something.
+
+★ FRAMING: the non-AI foundation is far closer to complete than the flow-gap list suggested. Four of the seven gaps
+(G1, G2, G3 + G7-config) are COMMUNICATION items and small, well-shaped builds; two (G4, G5) are doors onto code that
+already exists and is harness-proven; one (G6) is a product decision, not a defect. None requires new architecture.
