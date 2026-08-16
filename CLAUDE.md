@@ -9,13 +9,13 @@ Read this file at the start of every session. Full product context lives in `doc
   - Local dev: `postgres://…@localhost:5432/pm` · sandbox `…/pm_sandbox` (harnesses derive `pm` → `pm_sandbox`).
   - Production: **Neon** (`neondb`), Vercel-hosted app. Prod URL is `DATABASE_URL_NEON` in `.env.local`.
   - Driver `pg` (node-postgres) via Drizzle `dialect: "postgresql"` (`drizzle.config.ts`).
-- Project root: `~/Desktop/PM` (fallback `~/Desktop/pm`).
+- Project root: `~/projects/PM`.
 
 ## Session-safe Postgres pattern
 
 Never put credentials in shell history — read the URL from `.env.local`, never retype it:
 
-    cd ~/Desktop/PM 2>/dev/null || cd ~/Desktop/pm
+    cd ~/projects/PM
     # local dev / sandbox
     psql "$(grep -m1 -E '^DATABASE_URL=' .env.local | cut -d= -f2-)" -c "..."
     # scripts (server-only imports need the react-server condition)
@@ -38,7 +38,7 @@ replay produces duplicate-column errors. The schema is ahead of the ledger by de
 
 - Branch per phase: `phase-N-<short-name>` (e.g. `phase-4-jobs`).
 - Tag per closeout: `v0.N.0-phase-N`.
-- Before major phases, take a local rsync snapshot to `~/Desktop/PM_snapshot_v0_N_0_phase_N/` (exclude `node_modules`, `.next`, `.git`).
+- Before major phases, take a local rsync snapshot to `~/projects/PM_snapshot_v0_N_0_phase_N/` (exclude `node_modules`, `.next`, `.git`).
 
 ## Hard rules
 
