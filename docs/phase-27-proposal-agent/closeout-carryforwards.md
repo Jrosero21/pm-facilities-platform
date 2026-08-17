@@ -2452,3 +2452,36 @@ means revising all four together, not just the PDF. Note also that today's clien
 "hide markup": it renders the marked-up TOTAL only, never subtotal or line items (which is why it is list-only with no
 detail route). Any invoice document that shows line items — the PDF already does — is already beyond that contract,
 and B is where that gets reconciled deliberately rather than by accident.
+
+---
+
+## ★ PROD DB SAFETY — the empty-connection-string footgun (standing operational rule)
+
+★ `psql ""` (an EMPTY connection string) does NOT error — it silently connects to a LOCAL DEFAULT DB (OS-user-named on
+macOS), so a mistyped or unset connection var runs DDL against the WRONG DATABASE WITHOUT WARNING.
+
+★ THE NEON VAR IS `DATABASE_URL_NEON` — in `.env.local`, NOT shell env, and NOT `NEON_DATABASE_URL`.
+
+ALWAYS, for prod DB ops:
+  1. READ THE URL FROM `.env.local` VIA grep, not `$VAR`:
+     `neon=$(grep -m1 -E '^DATABASE_URL_NEON=' .env.local | cut -d= -f2- | tr -d '"'"'"'')`
+  2. CONFIRM THE TARGET BEFORE ANY DDL: `psql "$neon" -c "SELECT current_database();"` must print `neondb`.
+  3. USE `-v ON_ERROR_STOP=1` so a PARTIAL apply halts instead of continuing past the first failure.
+
+WHAT ACTUALLY HAPPENED (invoice-PDF Neon apply, Gate 1 prep): the command referenced `$NEON_DATABASE_URL` — a name
+that does not exist — so it ran as `psql ""` and connected to a scratch DB named `jonnyrosero` (the OS user). Of the
+12 statements in migration 0006, ONLY the first succeeded: `CREATE TABLE tenant_invoice_sequences` landed in the
+scratch DB. The ten `ALTER TABLE "tenants" ADD COLUMN` statements and the FK all FAILED there because `tenants` does
+not exist in that database. Stray table was empty, unreferenced, and has been DROPPED. ★ NEON WAS NEVER TOUCHED
+(verified: `tenant_invoice_sequences` absent, 0 of the 10 company-profile columns present). Local `pm` intact.
+
+★ WHY IT WAS SILENT — three things lined up, and this is the part worth remembering:
+  - the var NAME was wrong (`NEON_DATABASE_URL` vs `DATABASE_URL_NEON`);
+  - `.env.local` IS NOT SHELL ENV, so even the right name would have been empty — which is exactly WHY the CLAUDE.md
+    session-safe pattern greps the value out of the file instead of referencing `$VAR`;
+  - `psql ""` connects successfully, and `sed` on an empty string prints a blank line — so the "redacted URL" echo
+    looked like redaction working rather than an empty variable.
+★ GENERALISE: a connection string that is EMPTY is more dangerous than one that is WRONG — a wrong one fails loudly,
+an empty one succeeds against something else. Any script that takes a DB URL from the environment should assert the
+target is non-empty AND is the intended database before it writes. Applies to psql, tsx harnesses, and any future
+migration runner.
