@@ -2358,3 +2358,97 @@ These are deferrals, NOT rejections. Each one is the difference between "works" 
 ★ NOTE ON D3 + the delivery-scheduler entry above: the banked per-client invoice-delivery scheduler BATCHES N invoices
 into one PDF. That almost certainly wants persisted artifacts (D3), not on-demand streaming — so D3 is a prerequisite
 of the scheduler, not an optional polish. Sequence accordingly.
+
+---
+
+## ★ PLATFORM PRINCIPLE — favor tenant-configurable over hardcoded (multi-tenant vocabulary)
+
+STANDING DESIGN PRINCIPLE (operator-articulated). Applies platform-wide, not to one phase — read it when designing
+ANY enum, label, category, status vocabulary, or business rule.
+
+This is a MULTI-TENANT platform. Different companies name things differently, categorize differently, charge
+differently. Wherever reasonable, favor tenant/client-CONFIGURABLE over hardcoded. What reads as a fixed enum in code
+is, in reality, every tenant's own vocabulary and rules. ★ Hardcoding bakes ONE company's mental model into a platform
+meant to serve many — and the cost is not discovered until the second tenant arrives with different words for the same
+things.
+
+★ CALIBRATION — this is NOT a mandate to build configurability everywhere (that is its own failure mode):
+  (a) HARDCODE sensible defaults NOW to keep shipping. Velocity is real; a config layer nobody needs yet is waste.
+  (b) NOTICE when the thing being hardcoded is really a TENANT'S CHOICE — categories, statuses, labels, rules, rates,
+      terms. Noticing is the actual discipline; the fix can wait, the awareness cannot.
+  (c) DESIGN SO IT CAN BECOME CONFIG LATER WITHOUT A REWRITE. Concretely: keep the vocabulary behind a read seam,
+      don't scatter `switch` statements that ASSUME they know every member's meaning, don't let display labels and
+      business semantics collapse into the same identifier.
+  (d) BUILD THE CONFIG LAYER DELIBERATELY when genuinely needed — as its own scoped work, not smuggled into an
+      unrelated batch.
+Don't build full configurability prematurely; don't paint into hardcoded corners either. The failure to avoid is (c),
+not (a).
+
+CANDIDATES THAT ARE REALLY TENANT-CHOICES — flag these whenever touched, even if not changing them:
+  - line_item_category (hardcoded enum today — see B below)
+  - job status + dispatch status LABELS (the codes may stay canonical; the display vocabulary is a tenant's)
+  - priority labels (EMERGENCY/URGENT/HIGH/ROUTINE is one company's ladder; priorities are ALREADY per-tenant rows,
+    which is the right shape — note the SLA thresholds keyed to those codes in dispatch-sla-rules.ts are not)
+  - trade vocabulary
+  - billing terms / rules
+
+★ WHEN B (BELOW) IS BUILT IT IS THE FIRST INSTANCE OF THIS PRINCIPLE — build it as a PATTERN the later ones
+(configurable statuses, labels, trade vocabulary) can follow, not as a one-off. The shape chosen there — how a tenant
+definition is stored, resolved, defaulted, and migrated from the existing enum — becomes the platform's answer for
+every candidate above. Design it accordingly.
+
+---
+
+## B — Configurable line-item types (next-build candidate, foundational)
+
+TODAY: line_item_category is a HARDCODED pgEnum — labor / materials / equipment / trip / permit / fee / tax / other
+(enums.ts:44) — plus a fixed cost-assembly model in job-bill-prefill.ts (labor deterministic from agreed rates,
+materials JUDGMENT at $0, cost_plus bills vendor cost).
+
+OPERATOR'S INTENT: line items should be tenant/client-CONFIGURABLE. A client's domain may need custom types that do
+not map onto the built-ins. It is not always labor/materials — we are generalizing away from one company's chart.
+
+★ WHY IT IS A PHASE, NOT A BATCH — moving enum → config table touches:
+  - SCHEMA: a new definition table + the FK/migration off the enum (the enum is spread into FOUR line-item tables via
+    baseLineItemColumns(): proposal / change_order / vendor_invoice / client_invoice — all four move together).
+  - The invoice + proposal + change-order line-item EDITORS (category pickers).
+  - PREFILL LOGIC (job-bill-prefill.ts) — and this is the hard part, see below.
+  - The PDF renderer, and every VALIDATION site that reads the enum.
+  - ★ THE ASSEMBLY MODEL ITSELF, which currently ASSUMES IT KNOWS EACH CATEGORY'S MEANING: it branches on
+    "is this labor?" to decide deterministic-vs-judgment, on isTimeUnit for the hours treatment, and on category to
+    pick a default rate type (defaultRateTypeForCategory). A CUSTOM category breaks that assumption — the code would
+    have no idea whether a tenant's new "Subcontract" type prices from a rate, from cost, or from operator judgment.
+    ★ THIS is the real scope of B: not renaming a dropdown, but moving category MEANING out of code and into data.
+
+DESIGN QUESTIONS FOR WHEN IT IS BUILT (unresolved — decide at build time, not now):
+  - Per-TENANT or per-CLIENT? (per-tenant is the lighter default; per-client is what "a client's domain" implies)
+  - A line-item-type definition is roughly: { name, taxable?, carries-markup?, display-order,
+    deterministic-vs-judgment?, default-rate-type? } — the last two are what let the assembly model stop guessing.
+  - MIGRATE the existing enum values in as each tenant's DEFAULTS, so nothing existing breaks and the current
+    behaviour is reproduced by config rather than by code.
+
+DECISION: hardcode the main categories for NOW — they work, and they are correct for the current operator. Build B
+DELIBERATELY as its own phase later. ★ NOT DEMO-BLOCKING.
+
+★ CONNECTION TO THE COST-PLUS MARKUP FINDING (audit entry above): the open question of whether cost-plus markup should
+be a VISIBLE AGREED LINE ITEM rather than a hidden markupTotal aggregate lands squarely inside B's territory — a
+"Contract markup" line is exactly a configurable line-item TYPE with { carries-markup: n/a, deterministic }. If the
+markup-as-line-item model is adopted, prefer implementing it AS the first configurable type rather than adding one
+more hardcoded enum member. (This was recorded as an open sequencing note; it is now DECIDED — see immediately below.)
+
+★ COST-PLUS MARKUP MODEL — FOLDED INTO B (DECIDED). The disclosed-markup-as-line-item model, AND making OQ-6
+PER-MODEL (hide margin on rate_sheet/flat; disclose the agreed markup line on cost_plus — across the invoice PDF, the
+client portal, the proposal reader, and the external-portal sync payload), are NOT a separate hardcoded fix. A
+"Contract markup" line IS a configurable line-item type, so it becomes B's FIRST configurable type.
+RATIONALE: a hardcoded markup-line stopgap would violate the principle recorded immediately above — it would add ONE
+MORE hardcoded enum member to the very enum B exists to dissolve, in the same week the principle was written. The
+cheap fix and the right fix point in opposite directions here; take the right one.
+DECISION: the invoice PDF SHIPS AS-IS. rate_sheet and flat reconcile EXACTLY (agreed-rate lines force markupPercent
+null → markupTotal 0 → Subtotal + Tax = Total, no gap). cost_plus invoice rendering + OQ-6-per-model RESOLVE WHEN B IS
+BUILT. The totals gap appears ONLY on cost_plus, and is NOT DEMO-BLOCKING.
+★ CARRY THIS INTO B: OQ-6 is currently a BLANKET rule stated in four places (schema/client-invoices.ts:24,
+list-client-invoices.ts:24, list-client-job-proposals.ts:29, lib/integrations/core/sync.ts:110) — making it per-model
+means revising all four together, not just the PDF. Note also that today's client portal contract is STRICTER than
+"hide markup": it renders the marked-up TOTAL only, never subtotal or line items (which is why it is list-only with no
+detail route). Any invoice document that shows line items — the PDF already does — is already beyond that contract,
+and B is where that gets reconciled deliberately rather than by accident.
