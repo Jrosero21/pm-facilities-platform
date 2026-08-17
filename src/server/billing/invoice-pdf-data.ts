@@ -58,6 +58,15 @@ export type InvoicePdfLine = {
 
 /** Client-facing totals ONLY. No markupTotal — deliberately absent. */
 export type InvoicePdfData = {
+  /**
+   * TRUE when the invoice carries undisclosed markup (markup_total > 0), which makes the
+   * client-facing arithmetic fail to reconcile: lines and subtotal are PRE-markup while `total` is
+   * POST-markup, so the difference reads as an unexplained gap. A BOOLEAN, never the amount — the
+   * DTO's no-markup-value invariant is intact; this says only THAT there is markup, not how much.
+   * The renderer refuses to produce such a document (see renderClientInvoicePdf). Resolved when B
+   * (configurable line-item types) lands the disclosed "Contract markup" line.
+   */
+  hasUndisclosedMarkup: boolean;
   /** Always a printable string — see resolveInvoiceLabel for the pre-existing-null fallback. */
   invoiceLabel: string;
   /** True when invoiceLabel is a fallback rather than a real allocated number. */
@@ -132,6 +141,12 @@ export async function loadInvoicePdfData(
   });
 
   return {
+    // Boolean only — inv.markupTotal is COMPARED here and never carried out of this function.
+    // Detecting on markup_total (rather than the billing model) is deliberate: the gap is caused by
+    // markup being present, whatever produced it. A cost_plus invoice whose client has no markup rule
+    // has markup_total 0 and renders fine; a rate_sheet invoice where an operator hand-typed a markup
+    // percent WOULD gap, and is caught here too. The arithmetic is the truth, not the model label.
+    hasUndisclosedMarkup: Number(inv.markupTotal) > 0,
     invoiceLabel: label,
     invoiceLabelIsFallback: isFallback,
     status: inv.status,

@@ -2485,3 +2485,25 @@ not exist in that database. Stray table was empty, unreferenced, and has been DR
 an empty one succeeds against something else. Any script that takes a DB URL from the environment should assert the
 target is non-empty AND is the intended database before it writes. Applies to psql, tsx harnesses, and any future
 migration runner.
+## @react-pdf/renderer — TESTING NOTE (harness limitation, not a bug)
+
+★ @react-pdf/renderer FAILS under `pnpm tsx --conditions=react-server` — the STANDARD harness flag from CLAUDE.md's
+session-safe script pattern. It works CORRECTLY in the actual Next route handler. PDF verification must therefore go
+through a RUNNING ROUTE, not the script harness.
+
+WHAT THE FAILURE LOOKS LIKE (so it is recognised, not re-debugged): `TypeError: Cannot read properties of undefined
+(reading 'S')` from `@react-pdf/reconciler`. The react-server condition resolves React to its RSC build, which lacks
+the reconciler internals @react-pdf needs. Proven both ways: the same render returns `{ok:true, bytes:1491}` from a
+Next route handler and throws from the harness. It is an environment/resolution issue, NOT a defect in the renderer or
+in our code.
+
+★ THE TRAP: dropping `--conditions=react-server` to work around it does NOT help — every module in the chain imports
+`server-only`, which then throws "This module cannot be imported from a Client Component module." The two flags are
+mutually exclusive for this code path. There is no working script-harness configuration; stop looking for one.
+
+HOW TO VERIFY A PDF CHANGE: start the dev server and exercise the real route (`/api/client-invoices/<id>/pdf`), or add
+a temporary route that calls the render and asserts, then delete it. ★ AND when asserting PDF CONTENT: @react-pdf
+writes text as HEX-ENCODED GLYPH strings inside FlateDecode'd content streams (`[<5052> 20 <4f42452046> …] TJ`), so a
+plain ASCII `grep` over the bytes finds NOTHING and every "absent" assertion passes vacuously. Inflate the streams,
+then decode the `<hex>` tokens. ALWAYS include POSITIVE CONTROLS (assert a value you KNOW is on the page) — without
+them a broken extractor reports a clean bill of health. This was hit for real while proving the OQ-6 no-markup rule.

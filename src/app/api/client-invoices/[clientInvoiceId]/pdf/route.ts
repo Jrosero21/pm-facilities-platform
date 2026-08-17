@@ -28,15 +28,24 @@ export async function GET(
     return new Response("Forbidden", { status: 403 });
   }
 
-  const rendered = await renderClientInvoicePdf(ctx.activeTenant.tenantId, clientInvoiceId);
-  if (!rendered) return new Response("Not found", { status: 404 });
+  const result = await renderClientInvoicePdf(ctx.activeTenant.tenantId, clientInvoiceId);
+  if (result.kind === "not_found") return new Response("Not found", { status: 404 });
+  // 409 Conflict — the request is valid and authorized, but this invoice's current state cannot
+  // produce a correct document (interim cost-plus guard; see renderClientInvoicePdf). Plain text so
+  // the operator sees the explanation directly in the browser tab the link opened.
+  if (result.kind === "blocked") {
+    return new Response(result.message, {
+      status: 409,
+      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  }
 
-  return new Response(new Uint8Array(rendered.bytes), {
+  return new Response(new Uint8Array(result.bytes), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${rendered.filename}"`,
-      "Content-Length": String(rendered.bytes.byteLength),
+      "Content-Disposition": `attachment; filename="${result.filename}"`,
+      "Content-Length": String(result.bytes.byteLength),
       "Cache-Control": "no-store",
     },
   });
