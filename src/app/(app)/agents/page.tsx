@@ -20,6 +20,7 @@ import {
   agentLatencyDistribution,
 } from "@/server/analytics/agent-observability";
 import { EmptyState } from "@/components/empty-state";
+import { formatRatioAsPercent } from "@/lib/percent";
 
 const H2 = "text-sm font-semibold text-neutral-900";
 const CARD = "rounded-lg border border-neutral-200 bg-white p-4";
@@ -33,11 +34,6 @@ function fmtDuration(seconds: number): string {
   if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
   const d = Math.floor(h / 24);
   return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
-}
-
-/** rate (0–1) → integer percent string. */
-function fmtPct(rate: number): string {
-  return `${Math.round(rate * 100)}%`;
 }
 
 export default async function AgentsPage() {
@@ -119,7 +115,7 @@ export default async function AgentsPage() {
                   <span className="text-neutral-700">{a.agentId}</span>
                   {a.applicable ? (
                     <span className="font-medium text-neutral-900">
-                      {fmtPct(a.rate)}{" "}
+                      {formatRatioAsPercent(a.rate)}{" "}
                       <span className="text-xs font-normal text-neutral-500">
                         ({a.approvedAsIs}/{a.reviewed} approved as-is)
                       </span>

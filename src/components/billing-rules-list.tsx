@@ -6,6 +6,7 @@ import {
   setDefaultClientBillingRuleAction,
   type BillingRuleActionState,
 } from "@/app/(app)/clients/[id]/billing-rules/actions";
+import { formatPercentValue } from "@/lib/percent";
 
 // ── CF-27.7 Seam 0 — billing-rules list + set-default/archive ─────────────────────────
 // Rows show name + markup % + payment terms + status, with a "Default" badge on the resolved row
@@ -57,7 +58,7 @@ export function BillingRulesList({ rules }: { rules: BillingRuleListRow[] }) {
               )}
             </p>
             <p className="mt-0.5 text-xs text-neutral-500">
-              {r.markupPercent != null ? `${r.markupPercent}% markup` : "no markup"}
+              {r.markupPercent != null ? `${formatPercentValue(r.markupPercent)} markup` : "no markup"}
               {r.paymentTermsDays != null ? ` · net ${r.paymentTermsDays}d` : ""}
             </p>
           </div>
