@@ -6,6 +6,7 @@ import {
   removeProposalLineItemAction,
   type ProposalActionState,
 } from "@/app/(app)/jobs/[id]/proposals/actions";
+import { BUILT_IN_LINE_ITEM_TYPE_KEYS, isDeterministicCategory } from "@/server/billing/line-item-types";
 
 // Phase (ii) billing-from-rates — the editor's rate-fill affordance (client-safe shape; mirrors the
 // server LaborRatePickerContext). enabled only for rate_sheet jobs; absent/disabled = manual pricing.
@@ -21,7 +22,10 @@ type RatePickerContext = {
 // inline-edit UI is a deferred polish — see the 8c.11b deviation note.) Categories are hardcoded
 // to match lineItemCategoryEnum (avoids pulling the server schema into the client bundle).
 
-const CATEGORIES = ["labor", "materials", "equipment", "trip", "permit", "fee", "tax", "other"] as const;
+// The picker's options and the "does this price itself from a rate?" test both come from the
+// shared definitions now — this file used to carry its own copy of each, and all three
+// line-item editors carried the same two copies.
+const CATEGORIES = BUILT_IN_LINE_ITEM_TYPE_KEYS;
 const inputClass =
   "mt-1 block w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900";
 
@@ -70,7 +74,7 @@ export function ProposalLineItemsEditor({
   const [state, formAction, pending] = useActionState<ProposalActionState, FormData>(addAction, null);
   // labor/trip on a rate_sheet job → offer the agreed-rate fill (pick trade, leave price blank).
   const [category, setCategory] = useState("labor");
-  const rateEligible = !!rateContext?.enabled && (category === "labor" || category === "trip");
+  const rateEligible = !!rateContext?.enabled && isDeterministicCategory(category);
 
   return (
     <div className="space-y-4">

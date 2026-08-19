@@ -307,20 +307,16 @@ export async function loadJobBillingContext(input: {
   };
 }
 
-// v1 resolvable categories → the rate_type each resolves at. A category ABSENT here NEVER
-// auto-resolves (materials/fee/permit/tax/equipment/other = judgment, operator/agent authored).
-const RESOLVABLE_CATEGORY_RATE_TYPE: Readonly<Record<string, RateType>> = {
-  labor: "hourly",
-  trip: "trip_charge",
-};
+// ── B slice 1 — the category→rate_type mapping MOVED OUT ───────────────────────────────
+// This file used to carry its own RESOLVABLE_CATEGORY_RATE_TYPE literal. The same knowledge is
+// now data in billing/line-item-types.ts, and this is a straight re-export so every existing
+// consumer (invoice-creator, job-bill-prefill) keeps importing it from here unchanged.
+// Re-exported rather than deleted ON PURPOSE: a second definition is how the two copies drift,
+// and the whole point of B is that a tenant's custom type has ONE place that says what it means.
+import { defaultRateTypeForCategory } from "@/server/billing/line-item-types";
 
-/** The rate_type a resolvable category defaults to (labor→hourly, trip→trip_charge); null when the
- *  category never auto-resolves. Exported so an add-line writer can record provenance rate_type for an
- *  EXPLICIT agreed-rate line (the resolved price passed back as a unit_price — Phase ii Unit 2a)
- *  without re-deriving the mapping. */
-export function defaultRateTypeForCategory(category: string): RateType | null {
-  return RESOLVABLE_CATEGORY_RATE_TYPE[category] ?? null;
-}
+// Re-exported so every existing consumer keeps its `from "@/server/billing/client-rates"` import.
+export { defaultRateTypeForCategory };
 
 /** The rate-resolved DEFAULT for a labor line: unit_price + forced-null markup + provenance. */
 export type ResolvedLaborLine = {
@@ -349,7 +345,7 @@ export async function resolveLaborLineDefault(input: {
 }): Promise<ResolvedLaborLine | null> {
   if (input.explicitUnitPrice !== undefined) return null; // operator's explicit price always wins
   if (!input.tradeId) return null; // need a trade to resolve a rate
-  const defaultRateType = RESOLVABLE_CATEGORY_RATE_TYPE[input.category];
+  const defaultRateType = defaultRateTypeForCategory(input.category);
   if (!defaultRateType) return null; // category not labor/trip → judgment, never auto-resolved
   const rateType = input.rateType ?? defaultRateType;
 
@@ -393,7 +389,7 @@ export async function resolveAgreedRateProvenance(input: {
   rateType?: RateType;
 }): Promise<{ tradeId: string; rateType: RateType } | null> {
   if (!input.tradeId) return null;
-  const defaultRateType = RESOLVABLE_CATEGORY_RATE_TYPE[input.category];
+  const defaultRateType = defaultRateTypeForCategory(input.category);
   if (!defaultRateType) return null; // not labor/trip → judgment, no provenance
   const rateType = input.rateType ?? defaultRateType;
 

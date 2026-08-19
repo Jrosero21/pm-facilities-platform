@@ -42,6 +42,7 @@ export const jobReferenceCategory = pgEnum("job_reference_category", ["open", "i
 export const jobsFollowUpCategory = pgEnum("jobs_follow_up_category", ["vendor_followup", "confirm_onsite", "proposal_followup", "general"]);
 export const jobsSourceType = pgEnum("jobs_source_type", ["manual", "internal_client_portal", "external_client_portal", "email_ingestion", "forwarded_email", "api", "preventative_maintenance", "snow_event"]);
 export const lineItemCategory = pgEnum("line_item_category", ["labor", "materials", "equipment", "trip", "permit", "fee", "tax", "other"]);
+export const lineItemPricingModel = pgEnum("line_item_pricing_model", ["deterministic", "judgment"]);
 export const linkStatus = pgEnum("link_status", ["active", "unlinked"]);
 export const llmKeyProvider = pgEnum("llm_key_provider", ["anthropic", "openai"]);
 export const llmKeyStatus = pgEnum("llm_key_status", ["active", "revoked"]);
