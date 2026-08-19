@@ -83,7 +83,16 @@ const styles = StyleSheet.create({
 /** "City, ST 12345" from parts, skipping the missing ones. Empty string when nothing is set.
  *  Delegates to the shared address formatter so the PDF and the screens cannot drift. */
 function cityLine(p: { city: string | null; stateProvince: string | null; postalCode: string | null }): string {
-  return formatAddressLines({ addressLine1: null, addressLine2: null, ...p })[0] ?? "";
+  // Built field-by-field, NOT by spreading `p`: callers pass the whole company / billTo object,
+  // whose real addressLine1 would override a spread-in null and make this return the STREET line.
+  // The declared parameter type hides that from tsc, so only a rendered PDF catches it.
+  return formatAddressLines({
+    addressLine1: null,
+    addressLine2: null,
+    city: p.city,
+    stateProvince: p.stateProvince,
+    postalCode: p.postalCode,
+  })[0] ?? "";
 }
 
 /** Stored as-is, formatted UTC so the output is deterministic across machines.
