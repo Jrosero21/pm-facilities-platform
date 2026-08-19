@@ -15,10 +15,8 @@ import {
   geoMatchLabel,
   tradeMatchLabel,
 } from "@/components/dispatch-facets";
-
-function fmt(d: Date | null): string {
-  return d ? d.toLocaleString() : "—";
-}
+import { formatMoney } from "@/lib/money";
+import { formatDateTime } from "@/lib/format-date";
 
 /** matched_geo_types_at_dispatch is JSON (longtext on MariaDB) — parse defensively. */
 function geoTypes(raw: unknown): string[] {
@@ -63,9 +61,9 @@ export default async function AssignmentDetailPage({
     { label: "Vendor", value: a.vendorName },
     { label: "Branch", value: a.vendorLocationName ?? "Vendor-wide (no branch)" },
     { label: "Vendor contact", value: a.vendorContactName },
-    { label: "Scheduled start", value: fmt(a.scheduledStartAt) },
-    { label: "Scheduled end", value: fmt(a.scheduledEndAt) },
-    { label: "Agreed NTE", value: a.agreedNteAmount ? `$${a.agreedNteAmount}` : null },
+    { label: "Scheduled start", value: formatDateTime(a.scheduledStartAt) },
+    { label: "Scheduled end", value: formatDateTime(a.scheduledEndAt) },
+    { label: "Agreed NTE", value: a.agreedNteAmount ? formatMoney(a.agreedNteAmount) : null },
   ];
 
   const branchCoverage =

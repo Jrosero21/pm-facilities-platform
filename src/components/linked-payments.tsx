@@ -1,4 +1,5 @@
 import type { PaymentRow } from "@/server/billing/payments";
+import { formatDate } from "@/lib/format-date";
 
 // ── Phase 8 batch 8c.11d — linked-payments section (read-only, contextual) ────────────
 // Shown on an invoice detail: "how has this invoice been paid?" Uses the existing 8c.9 readers
@@ -28,7 +29,7 @@ export function LinkedPayments({ payments }: { payments: PaymentRow[] }) {
               <td className="px-3 py-2 text-right font-medium">${p.amount}</td>
               <td className="px-3 py-2">{p.method ?? "—"}</td>
               <td className="px-3 py-2">{p.reference ?? "—"}</td>
-              <td className="px-3 py-2">{p.paidAt.toLocaleDateString()}</td>
+              <td className="px-3 py-2">{formatDate(p.paidAt)}</td>
             </tr>
           ))}
         </tbody>

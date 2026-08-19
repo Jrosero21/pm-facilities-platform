@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Exception } from "@/server/analytics/exceptions";
 import { FOLLOW_UP_CATEGORY_LABELS } from "@/lib/follow-up";
+import { compactAge } from "@/lib/relative-time";
 import { SuggestReplacementButton } from "@/components/suggest-replacement-button";
 import { AutoRedispatchOneButton } from "@/components/auto-redispatch-one-button";
 
@@ -17,13 +18,6 @@ const KIND_META: Record<Exception["kind"], { label: string; badge: string }> = {
 };
 
 // Humanize an elapsed-seconds count into a compact age ("6h", "2d", "45m").
-function humanizeAge(seconds: number): string {
-  if (seconds < 60) return `${Math.max(0, Math.floor(seconds))}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
-}
-
 function truncate(s: string, n = 120): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
@@ -82,7 +76,7 @@ function ExceptionRow({ item }: { item: Exception }) {
         >
           #{item.jobNumber} · {item.clientName}
         </Link>
-        <span className="text-xs text-neutral-500">{humanizeAge(trueAgeSeconds(item))}</span>
+        <span className="text-xs text-neutral-500">{compactAge(trueAgeSeconds(item))}</span>
         {/* Recommended next step — a deterministic hint (not a button); the operator clicks through below. */}
         <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
           → {item.recommendedAction.label}
@@ -123,9 +117,9 @@ function Detail({ item }: { item: Exception }) {
     case "vendor_not_accepted":
       return (
         <p className="text-sm text-neutral-800">
-          {item.vendorName} has not accepted the dispatch ({humanizeAge(item.ageSeconds)} since sent)
+          {item.vendorName} has not accepted the dispatch ({compactAge(item.ageSeconds)} since sent)
           {item.isStuck && item.thresholdSeconds != null
-            ? ` — past the ${humanizeAge(item.thresholdSeconds)} threshold.`
+            ? ` — past the ${compactAge(item.thresholdSeconds)} threshold.`
             : "."}
         </p>
       );
@@ -146,7 +140,7 @@ function Detail({ item }: { item: Exception }) {
       return (
         <p className="text-sm text-neutral-800">
           {tierLabel[item.urgencyTier] ?? item.urgencyTier} —{" "}
-          {humanizeAge(item.ageInCurrentStatusSeconds)} in current status.
+          {compactAge(item.ageInCurrentStatusSeconds)} in current status.
         </p>
       );
     }
@@ -154,7 +148,7 @@ function Detail({ item }: { item: Exception }) {
       const cat = item.category ? FOLLOW_UP_CATEGORY_LABELS[item.category] : null;
       return (
         <p className="text-sm text-neutral-800">
-          Follow-up{cat ? ` (${cat})` : ""} was due {humanizeAge(item.sortKey)} ago.
+          Follow-up{cat ? ` (${cat})` : ""} was due {compactAge(item.sortKey)} ago.
         </p>
       );
     }

@@ -7,6 +7,7 @@ import {
   type LinkControlState,
 } from "@/app/(app)/jobs/[id]/dispatch/[assignmentId]/actions";
 import type { AssignmentTokenListItem } from "@/server/magic-links/list-assignment-tokens";
+import { formatDateTime } from "@/lib/format-date";
 
 // Phase 21 — operator vendor-link controls. "Send link" mints + emails a fresh magic link to
 // the vendor contact (disabled with a note when no contact email is on file). Each active token
@@ -52,7 +53,7 @@ export function VendorLinkSection({
             <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white p-3">
               <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATE_BADGE[t.state]}`}>{t.state}</span>
               <span className="text-xs text-neutral-500">
-                created {new Date(t.createdAt).toLocaleString()} · expires {new Date(t.expiresAt).toLocaleString()}
+                created {formatDateTime(new Date(t.createdAt))} · expires {formatDateTime(new Date(t.expiresAt))}
               </span>
               {t.state === "active" || t.state === "unsent" ? (
                 <RevokeButton jobId={jobId} assignmentId={assignmentId} tokenId={t.id} />

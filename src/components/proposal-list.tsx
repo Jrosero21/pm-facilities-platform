@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ProposalRow } from "@/server/billing/proposals";
+import { formatDate } from "@/lib/format-date";
 
 // ── Phase 8 batch 8c.11b — compact proposal list on the job detail (navigable) ────────
 // Makes the 11a billing "Proposals N" count navigable. Server component; links to the detail
@@ -53,7 +54,7 @@ export function ProposalList({ proposals, jobId }: { proposals: ProposalRow[]; j
                       <span className="ml-2 text-xs font-normal text-neutral-500">rev {p.revisionNumber}</span>
                     )}
                   </p>
-                  <p className="mt-0.5 text-xs text-neutral-500">{p.createdAt.toLocaleDateString()}</p>
+                  <p className="mt-0.5 text-xs text-neutral-500">{formatDate(p.createdAt)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="text-sm font-medium text-neutral-900">${p.total}</span>

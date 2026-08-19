@@ -9,6 +9,7 @@ import { getVendor } from "@/server/vendors";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { sendCommunication } from "@/server/communications";
 import { writeAuditLog } from "@/server/audit";
+import { formatMoney } from "@/lib/money";
 
 // ── Phase dispatch-notify — OUTBOUND VENDOR NOTIFICATION (compose → send, post-commit) ──
 // The operator send seam finally TRANSMITS: after sendDispatch flips DRAFT→SENT, this notifies
@@ -67,7 +68,7 @@ export function buildDispatchNotification(
   if (input.priorityName) lines.push(`Priority: ${input.priorityName}`);
   const when = formatWhen(input.scheduledStartAt);
   if (when) lines.push(`Scheduled start: ${when}`);
-  if (input.agreedNteAmount) lines.push(`Not-to-exceed: $${input.agreedNteAmount}`);
+  if (input.agreedNteAmount) lines.push(`Not-to-exceed: ${formatMoney(input.agreedNteAmount)}`);
   lines.push("");
   lines.push("Scope of work:");
   lines.push(input.approvedScope ?? "(scope to be confirmed by the coordinator)");

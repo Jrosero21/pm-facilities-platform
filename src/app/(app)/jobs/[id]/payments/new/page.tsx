@@ -5,6 +5,7 @@ import { getJobDetail } from "@/server/jobs";
 import { listClientInvoicesForJob } from "@/server/billing/client-invoices";
 import { listVendorInvoicesForJob } from "@/server/billing/vendor-invoices";
 import { PaymentForm } from "@/components/payment-form";
+import { formatMoney } from "@/lib/money";
 
 export default async function NewPaymentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,10 +20,10 @@ export default async function NewPaymentPage({ params }: { params: Promise<{ id:
 
   const clientOptions = clientInvs
     .filter((ci) => ci.status === "sent")
-    .map((ci) => ({ id: ci.id, label: `${ci.invoiceNumber ?? "(no number)"} · $${ci.total} · ${ci.paymentStatus}` }));
+    .map((ci) => ({ id: ci.id, label: `${ci.invoiceNumber ?? "(no number)"} · ${formatMoney(ci.total)} · ${ci.paymentStatus}` }));
   const vendorOptions = vendorInvs
     .filter((vi) => vi.status === "approved")
-    .map((vi) => ({ id: vi.id, label: `${vi.invoiceNumber ?? "(no number)"} · $${vi.total} · ${vi.paymentStatus}` }));
+    .map((vi) => ({ id: vi.id, label: `${vi.invoiceNumber ?? "(no number)"} · ${formatMoney(vi.total)} · ${vi.paymentStatus}` }));
 
   return (
     <div>

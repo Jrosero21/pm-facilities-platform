@@ -6,6 +6,7 @@ import {
   getLinklessAttachmentUrl,
 } from "@/server/magic-links/link-surface";
 import { LinkSurface } from "@/components/magic-link/link-surface";
+import { formatDateTime } from "@/lib/format-date";
 
 // Phase 21 — the linkless magic-link surface. SESSION-PUBLIC: a top-level segment outside the
 // (vendor)/(app)/(client) auth groups, inheriting only the root layout (no auth shell). The raw
@@ -59,7 +60,7 @@ export default async function MagicLinkPage({
             {notes.map((n) => (
               <li key={n.id} className="rounded-lg border border-neutral-200 bg-white p-3">
                 <p className="whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
-                <p className="mt-1 text-xs text-neutral-500">{new Date(n.createdAt).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-neutral-500">{formatDateTime(new Date(n.createdAt))}</p>
               </li>
             ))}
           </ul>
@@ -84,7 +85,7 @@ export default async function MagicLinkPage({
                 {served.kind === "unavailable" && (
                   <p className="mt-1 text-xs text-neutral-500">Image unavailable.</p>
                 )}
-                <p className="mt-1 text-xs text-neutral-500">{new Date(row.createdAt).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-neutral-500">{formatDateTime(new Date(row.createdAt))}</p>
               </div>
             ))}
           </div>

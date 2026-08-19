@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ClientInvoiceRow } from "@/server/billing/client-invoices";
+import { formatDate } from "@/lib/format-date";
 
 // ── Phase 8 batch 8c.11d — compact client-invoice (AR) list on the job detail ─────────
 
@@ -32,7 +33,7 @@ export function ClientInvoiceList({ clientInvoices, jobId }: { clientInvoices: C
               <Link href={`/jobs/${jobId}/client-invoices/${ci.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-neutral-50">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-neutral-900">{ci.invoiceNumber ?? "(draft)"}</p>
-                  <p className="mt-0.5 text-xs text-neutral-500">{ci.createdAt.toLocaleDateString()}</p>
+                  <p className="mt-0.5 text-xs text-neutral-500">{formatDate(ci.createdAt)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="text-sm font-medium text-neutral-900">${ci.total}</span>

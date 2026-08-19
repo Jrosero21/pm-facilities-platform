@@ -5,6 +5,7 @@ import { listClientJobNotes } from "@/server/client/list-client-job-notes";
 import { listClientJobProposals } from "@/server/client/list-client-job-proposals";
 import { ClientNoteForm } from "@/components/client/client-note-form";
 import { ProposalAccept } from "@/components/client/proposal-accept";
+import { formatDate, formatDateTime } from "@/lib/format-date";
 
 function money(total: string, currency: string): string {
   try {
@@ -79,9 +80,9 @@ export default async function ClientJobDetailPage({
                 Scheduled
               </dt>
               <dd className="text-neutral-700">
-                {new Date(detail.scheduledStartAt).toLocaleString()}
+                {formatDateTime(new Date(detail.scheduledStartAt))}
                 {detail.scheduledEndAt
-                  ? ` – ${new Date(detail.scheduledEndAt).toLocaleString()}`
+                  ? ` – ${formatDateTime(new Date(detail.scheduledEndAt))}`
                   : ""}
               </dd>
             </div>
@@ -91,7 +92,7 @@ export default async function ClientJobDetailPage({
               Submitted
             </dt>
             <dd className="text-neutral-700">
-              {detail.createdAt.toLocaleString()}
+              {formatDateTime(detail.createdAt)}
             </dd>
           </div>
         </dl>
@@ -119,10 +120,10 @@ export default async function ClientJobDetailPage({
                 </div>
                 <p className="mt-1 text-xs text-neutral-500">
                   {p.sentAt
-                    ? `Sent ${new Date(p.sentAt).toLocaleDateString()}`
+                    ? `Sent ${formatDate(new Date(p.sentAt))}`
                     : ""}
                   {p.validUntil
-                    ? ` · Valid until ${new Date(p.validUntil).toLocaleDateString()}`
+                    ? ` · Valid until ${formatDate(new Date(p.validUntil))}`
                     : ""}
                 </p>
                 <ProposalAccept jobId={id} proposalId={p.id} />
@@ -147,7 +148,7 @@ export default async function ClientJobDetailPage({
               >
                 <p className="text-xs text-neutral-500">
                   {n.authorName ?? "Team"} ·{" "}
-                  {new Date(n.createdAt).toLocaleString()}
+                  {formatDateTime(new Date(n.createdAt))}
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700">
                   {n.body}

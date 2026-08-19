@@ -1,5 +1,9 @@
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { InvoicePdfBillTo, InvoicePdfCompany, InvoicePdfData } from "@/server/billing/invoice-pdf-data";
+import { formatAddressLines } from "@/lib/address";
+import { formatDate } from "@/lib/format-date";
+import { formatMoney } from "@/lib/money";
+import { formatPhone } from "@/lib/phone";
 
 // ── invoice-pdf batch 2 — THE INVOICE DOCUMENT (layout only) ──────────────────────────
 // A pure @react-pdf component over InvoicePdfData. NO db, NO fetch, NO computation: every money
@@ -76,20 +80,22 @@ const styles = StyleSheet.create({
   footerText: { fontSize: 7.5, color: C.muted },
 });
 
-/** "City, ST 12345" from parts, skipping the missing ones. Empty string when nothing is set. */
+/** "City, ST 12345" from parts, skipping the missing ones. Empty string when nothing is set.
+ *  Delegates to the shared address formatter so the PDF and the screens cannot drift. */
 function cityLine(p: { city: string | null; stateProvince: string | null; postalCode: string | null }): string {
-  const left = [p.city, p.stateProvince].filter(Boolean).join(", ");
-  return [left, p.postalCode].filter(Boolean).join(" ").trim();
+  return formatAddressLines({ addressLine1: null, addressLine2: null, ...p })[0] ?? "";
 }
 
-/** Stored as-is, formatted UTC so the output is deterministic across machines. */
+/** Stored as-is, formatted UTC so the output is deterministic across machines.
+ *  "n/a" (not the em dash the screens use) is kept deliberately: this string reaches a client. */
 function fmtDate(d: Date | null): string {
-  if (!d) return "n/a";
-  const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${M[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  return d ? formatDate(d, "UTC") : "n/a";
 }
 
-const money = (currency: string, amount: string) => `${currency === "USD" ? "$" : `${currency} `}${amount}`;
+// USD goes through the shared formatter (thousands separators, negatives as -$X). Any other
+// currency keeps the plain "CUR 1234.56" form — formatMoney is USD-only by design.
+const money = (currency: string, amount: string) =>
+  currency === "USD" ? formatMoney(amount) : `${currency} ${amount}`;
 
 function CompanyBlock({ company }: { company: InvoicePdfCompany }) {
   const line2 = cityLine(company);
@@ -103,7 +109,7 @@ function CompanyBlock({ company }: { company: InvoicePdfCompany }) {
       {company.addressLine1 ? <Text style={styles.companyLine}>{company.addressLine1}</Text> : null}
       {company.addressLine2 ? <Text style={styles.companyLine}>{company.addressLine2}</Text> : null}
       {line2 ? <Text style={styles.companyLine}>{line2}</Text> : null}
-      {company.phone ? <Text style={styles.companyLine}>{company.phone}</Text> : null}
+      {company.phone ? <Text style={styles.companyLine}>{formatPhone(company.phone)}</Text> : null}
       {company.email ? <Text style={styles.companyLine}>{company.email}</Text> : null}
     </View>
   );

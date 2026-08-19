@@ -11,6 +11,7 @@ import {
   publishDraftAction,
   type RewriterActionState,
 } from "@/app/(app)/jobs/rewriter-actions";
+import { formatDateTime } from "@/lib/format-date";
 
 type Meta = { strippedItems?: string[]; rephrasings?: string[] };
 function metaOf(d: DraftQueueItem): Meta {
@@ -87,7 +88,7 @@ function PendingRow({ item }: { item: DraftQueueItem }) {
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <JobLabel item={item} />
             <ConfidenceBadge confidence={item.confidence} />
-            <span className="text-xs text-neutral-500">{item.createdAt.toLocaleString()}</span>
+            <span className="text-xs text-neutral-500">{formatDateTime(item.createdAt)}</span>
           </div>
           <p className="line-clamp-2 whitespace-pre-wrap text-sm text-neutral-800">{item.draftContent}</p>
         </div>

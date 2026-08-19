@@ -10,6 +10,7 @@ import {
   publishScopeDraftAction,
   type ScopeActionState,
 } from "@/app/(app)/jobs/scope-actions";
+import { formatDateTime } from "@/lib/format-date";
 
 // The scope draft queue (7d.2). Three attention groups mirroring UpdateDraftsSection:
 // Pending review → review/edit/act; Ready to publish → (publish button lands 7d.3);
@@ -78,7 +79,7 @@ function PendingScopeRow({ jobId, draft }: { jobId: string; draft: ScopeDraftDet
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <ConfidenceBadge confidence={draft.confidence} />
             <span className="text-xs text-neutral-500">
-              {draft.proposedSteps.length} steps · {draft.createdAt.toLocaleString()}
+              {draft.proposedSteps.length} steps · {formatDateTime(draft.createdAt)}
             </span>
           </div>
           <p className="line-clamp-2 text-sm text-neutral-800">{draft.proposedSteps[0]?.instruction ?? "—"}</p>

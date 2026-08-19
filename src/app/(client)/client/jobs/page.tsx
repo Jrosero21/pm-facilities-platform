@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireClient } from "@/server/auth-context";
 import { listClientJobs } from "@/server/client/list-client-jobs";
+import { formatDate } from "@/lib/format-date";
 
 /**
  * Client jobs (work orders) list — Phase 11 batch 11d.
@@ -66,7 +67,7 @@ export default async function ClientJobsPage() {
                     {row.locationName}
                   </td>
                   <td className="px-4 py-2 text-neutral-600">
-                    {row.createdAt.toLocaleDateString()}
+                    {formatDate(row.createdAt)}
                   </td>
                 </tr>
               ))}

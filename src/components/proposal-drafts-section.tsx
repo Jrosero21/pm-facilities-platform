@@ -17,6 +17,7 @@ import {
   previewProposalRoutingAction,
   type ProposalRoutingPreview,
 } from "@/app/(app)/jobs/proposal-actions";
+import { formatMoney } from "@/lib/money";
 
 // ── v2.10.1 — proposal draft review section ───────────────────────────────────────────
 // The proposal agent's editor over the shared shell. The draft is NUMBER-FREE — the operator
@@ -115,7 +116,7 @@ function RoutingPreview({ jobId, draftId, serialized }: { jobId: string; draftId
         result.ok ? (
           <p className="mt-2 text-xs text-neutral-700">
             Totals <span className="font-medium">${result.total}</span> · Job NTE{" "}
-            <span className="font-medium">{result.effectiveNte === null ? "none" : `$${result.effectiveNte}`}</span> → routes{" "}
+            <span className="font-medium">{result.effectiveNte === null ? "none" : formatMoney(result.effectiveNte)}</span> → routes{" "}
             <span className={`font-semibold ${result.willRoute === "internal" ? "text-purple-700" : "text-sky-700"}`}>
               {result.willRoute.toUpperCase()}
             </span>

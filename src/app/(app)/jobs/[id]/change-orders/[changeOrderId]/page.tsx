@@ -5,6 +5,7 @@ import { getChangeOrder, getEffectiveNte, listChangeOrderLineItems } from "@/ser
 import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
 import { ChangeOrderActions } from "@/components/change-order-actions";
 import { ChangeOrderLineItemsEditor } from "@/components/change-order-line-items-editor";
+import { formatMoney } from "@/lib/money";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-neutral-100 text-neutral-700",
@@ -32,10 +33,10 @@ export default async function ChangeOrderDetailPage({
   if (!co || co.jobId !== id) notFound();
 
   const header: { label: string; value: string | null }[] = [
-    { label: "Subtotal", value: `$${co.subtotal}` },
-    { label: "Markup", value: `$${co.markupTotal}` },
-    { label: "Tax", value: `$${co.taxTotal}` },
-    { label: "Total", value: `$${co.total}` },
+    { label: "Subtotal", value: formatMoney(co.subtotal) },
+    { label: "Markup", value: formatMoney(co.markupTotal) },
+    { label: "Tax", value: formatMoney(co.taxTotal) },
+    { label: "Total", value: formatMoney(co.total) },
     { label: "Currency", value: co.currency },
   ];
 
@@ -44,11 +45,11 @@ export default async function ChangeOrderDetailPage({
   if (effectiveNte === null) {
     nteNote = "This job has no NTE ceiling.";
   } else if (co.status === "approved") {
-    nteNote = `Included in the job's current effective NTE of $${effectiveNte}.`;
+    nteNote = `Included in the job's current effective NTE of ${formatMoney(effectiveNte)}.`;
   } else if (co.status === "draft" || co.status === "submitted") {
-    nteNote = `Current job effective NTE is $${effectiveNte}; approving this change order adds $${co.total}.`;
+    nteNote = `Current job effective NTE is ${formatMoney(effectiveNte)}; approving this change order adds ${formatMoney(co.total)}.`;
   } else {
-    nteNote = `Not applied — the job's effective NTE is $${effectiveNte}.`;
+    nteNote = `Not applied — the job's effective NTE is ${formatMoney(effectiveNte)}.`;
   }
 
   return (

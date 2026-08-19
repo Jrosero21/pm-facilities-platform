@@ -58,6 +58,8 @@ import { isJobStalled } from "@/server/analytics/stalled-jobs";
 import { tierBadge } from "@/components/dashboard/tier-colors";
 import { listJobPhotos, getJobPhotoUrl } from "@/server/job-attachments";
 import { JobPhotosPanel, type JobPhotoTile } from "@/components/job-photos-panel";
+import { formatMoney } from "@/lib/money";
+import { formatDateTime } from "@/lib/format-date";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -69,10 +71,6 @@ const sourceLabel: Record<string, string> = {
   preventative_maintenance: "Preventative maintenance",
   snow_event: "Snow event",
 };
-
-function fmt(d: Date | null): string {
-  return d ? d.toLocaleString() : "—";
-}
 
 export default async function JobDetailPage({
   params,
@@ -178,7 +176,7 @@ export default async function JobDetailPage({
     { label: "Source", value: sourceLabel[job.sourceType] ?? job.sourceType },
     {
       label: "Not-to-exceed",
-      value: job.notToExceedAmount ? `$${job.notToExceedAmount}` : null,
+      value: job.notToExceedAmount ? formatMoney(job.notToExceedAmount) : null,
     },
   ];
 
@@ -244,17 +242,17 @@ export default async function JobDetailPage({
 
       <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[
-          { label: "Scheduled start", value: fmt(job.scheduledStartAt) },
-          { label: "Scheduled end", value: fmt(job.scheduledEndAt) },
-          { label: "Due", value: fmt(job.dueAt) },
-          { label: "Follow-up", value: fmt(job.followUpAt) },
+          { label: "Scheduled start", value: formatDateTime(job.scheduledStartAt) },
+          { label: "Scheduled end", value: formatDateTime(job.scheduledEndAt) },
+          { label: "Due", value: formatDateTime(job.dueAt) },
+          { label: "Follow-up", value: formatDateTime(job.followUpAt) },
           {
             label: "Follow-up type",
             value: job.followUpAt && job.followUpCategory ? FOLLOW_UP_CATEGORY_LABELS[job.followUpCategory] : "—",
           },
-          { label: "Completed", value: fmt(job.completedAt) },
-          { label: "Closed", value: fmt(job.closedAt) },
-          { label: "Created", value: job.createdAt.toLocaleString() },
+          { label: "Completed", value: formatDateTime(job.completedAt) },
+          { label: "Closed", value: formatDateTime(job.closedAt) },
+          { label: "Created", value: formatDateTime(job.createdAt) },
         ].map((f) => (
           <div key={f.label} className="rounded-lg border border-neutral-200 bg-white p-4">
             <dt className="text-xs uppercase tracking-wide text-neutral-500">{f.label}</dt>
@@ -347,9 +345,9 @@ export default async function JobDetailPage({
                   {[
                     a.vendorLocationName ?? "Vendor-wide",
                     a.scheduledStartAt
-                      ? `Scheduled ${a.scheduledStartAt.toLocaleString()}`
+                      ? `Scheduled ${formatDateTime(a.scheduledStartAt)}`
                       : null,
-                    a.agreedNteAmount ? `NTE $${a.agreedNteAmount}` : null,
+                    a.agreedNteAmount ? `NTE ${formatMoney(a.agreedNteAmount)}` : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -403,7 +401,7 @@ export default async function JobDetailPage({
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
                 <p className="mt-1 text-xs text-neutral-500">
-                  {n.createdAt.toLocaleString()}
+                  {formatDateTime(n.createdAt)}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <DraftClientUpdateButton jobId={job.id} noteId={n.id} />
@@ -465,7 +463,7 @@ export default async function JobDetailPage({
                 </p>
                 <p className="mt-1 text-xs text-neutral-500">
                   {c.recipientEmail ? `To ${c.recipientEmail} · ` : ""}
-                  {c.sentByName ?? "System"} · {c.createdAt.toLocaleString()}
+                  {c.sentByName ?? "System"} · {formatDateTime(c.createdAt)}
                 </p>
                 <div className="mt-2">
                   <DeliveryTransitionButtons

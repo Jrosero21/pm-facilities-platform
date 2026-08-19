@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireVendor } from "@/server/auth-context";
 import { listVendorAssignments } from "@/server/vendor/list-assigned-jobs";
+import { formatDateTime } from "@/lib/format-date";
 
 /**
  * Vendor jobs list — Phase 10 batch 10j.
@@ -74,7 +75,7 @@ export default async function VendorJobsPage() {
                   </td>
                   <td className="px-4 py-2 text-neutral-600">
                     {row.scheduledStartAt
-                      ? new Date(row.scheduledStartAt).toLocaleString()
+                      ? formatDateTime(new Date(row.scheduledStartAt))
                       : "—"}
                   </td>
                 </tr>

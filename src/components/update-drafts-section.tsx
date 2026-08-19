@@ -10,6 +10,7 @@ import {
   publishDraftAction,
   type RewriterActionState,
 } from "@/app/(app)/jobs/rewriter-actions";
+import { formatDateTime } from "@/lib/format-date";
 
 type Meta = { strippedItems?: string[]; rephrasings?: string[] };
 function metaOf(d: DraftListItemDetailed): Meta {
@@ -92,7 +93,7 @@ function PendingRow({
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <ConfidenceBadge confidence={draft.confidence} />
-            <span className="text-xs text-neutral-500">from note · {draft.createdAt.toLocaleString()}</span>
+            <span className="text-xs text-neutral-500">from note · {formatDateTime(draft.createdAt)}</span>
           </div>
           <p className="line-clamp-2 whitespace-pre-wrap text-sm text-neutral-800">{draft.draftContent}</p>
         </div>

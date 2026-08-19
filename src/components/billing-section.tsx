@@ -3,6 +3,7 @@ import type { ChangeOrderRow } from "@/server/billing/change-orders";
 import type { VendorInvoiceRow } from "@/server/billing/vendor-invoices";
 import type { ClientInvoiceRow } from "@/server/billing/client-invoices";
 import type { PaymentRow } from "@/server/billing/payments";
+import { formatMoney } from "@/lib/money";
 
 // ── Phase 8 batch 8c.11a — read-only billing summary (server component) ────────────────
 // The financial overview block on the job detail page: margin, the soft close-readiness
@@ -21,11 +22,6 @@ const CONCERN_LABELS: Record<string, string> = {
   open_proposals: "Open proposals",
   open_change_orders: "Open change orders",
 };
-
-// Format a decimal string as currency; negatives render as -$X (not $-X).
-function money(s: string): string {
-  return s.startsWith("-") ? `-$${s.slice(1)}` : `$${s}`;
-}
 
 export function BillingSection(props: {
   margin: JobMargin;
@@ -53,11 +49,11 @@ export function BillingSection(props: {
         <dd className="mt-2 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-neutral-500">Revenue (AR)</span>
-            <span className="font-medium text-neutral-900">{money(margin.revenue)}</span>
+            <span className="font-medium text-neutral-900">{formatMoney(margin.revenue)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-neutral-500">Cost (AP)</span>
-            <span className="font-medium text-neutral-900">{money(margin.cost)}</span>
+            <span className="font-medium text-neutral-900">{formatMoney(margin.cost)}</span>
           </div>
           <div className="flex justify-between border-t border-neutral-100 pt-1">
             <span className="text-neutral-500">Margin</span>
@@ -66,7 +62,7 @@ export function BillingSection(props: {
                 margin.margin.startsWith("-") ? "text-red-600" : "text-emerald-700"
               }`}
             >
-              {money(margin.margin)}
+              {formatMoney(margin.margin)}
             </span>
           </div>
         </dd>

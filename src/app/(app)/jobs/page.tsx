@@ -6,6 +6,7 @@ import { getJobStatusByCode } from "@/server/job-reference";
 import { getReadyToBillRows, type ReadyToBillRow } from "@/server/analytics/ready-to-bill";
 import { listClients } from "@/server/clients";
 import { billJobAction } from "@/app/(app)/jobs/bill-actions";
+import { formatDate } from "@/lib/format-date";
 
 // (9e) searchParams is async (a Promise) per Next 15 — first searchParams-driven route in the app
 // (manifest §6 establishes the convention). ?status= / ?priority= / ?client= carry validated entity
@@ -148,12 +149,12 @@ export default async function JobsPage({
                   <td className="px-4 py-2 text-neutral-600">{j.locationName}</td>
                   <td className="px-4 py-2 text-neutral-600">{j.statusName}</td>
                   <td className="px-4 py-2 text-neutral-600">{j.priorityName ?? "—"}</td>
-                  <td className="px-4 py-2 text-neutral-600">{j.createdAt.toLocaleDateString()}</td>
+                  <td className="px-4 py-2 text-neutral-600">{formatDate(j.createdAt)}</td>
                   {activeReadyToBill && (
                     <>
                       <td className="px-4 py-2 text-neutral-600">
                         {(j as ReadyToBillRow).handoffAt
-                          ? (j as ReadyToBillRow).handoffAt!.toLocaleDateString()
+                          ? formatDate((j as ReadyToBillRow).handoffAt!)
                           : "—"}
                       </td>
                       <td className="px-4 py-2 text-neutral-600">${(j as ReadyToBillRow).cost}</td>

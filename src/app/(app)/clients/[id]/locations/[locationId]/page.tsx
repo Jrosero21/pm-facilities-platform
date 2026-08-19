@@ -23,6 +23,7 @@ import { ContactForm } from "@/components/contact-form";
 import { ContactList } from "@/components/contact-list";
 import { PreferredVendorForm } from "@/components/preferred-vendor-form";
 import { BlockedVendorForm } from "@/components/blocked-vendor-form";
+import { formatDate } from "@/lib/format-date";
 
 export default async function LocationDetailPage({
   params,
@@ -215,7 +216,7 @@ export default async function LocationDetailPage({
                         {b.blockedByName ?? b.blockedByEmail ?? "—"}
                       </td>
                       <td className="px-4 py-2 text-neutral-600">
-                        {b.createdAt.toLocaleDateString()}
+                        {formatDate(b.createdAt)}
                       </td>
                       <td className="px-4 py-2 text-right">
                         <form action={removeBlocked}>

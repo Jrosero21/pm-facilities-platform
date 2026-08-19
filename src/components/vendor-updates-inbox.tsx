@@ -10,6 +10,7 @@ import {
 } from "@/components/note-visibility-badge";
 import { promoteNoteVisibilityAction } from "@/app/(app)/jobs/note-visibility-actions";
 import type { RewriterActionState } from "@/app/(app)/jobs/rewriter-actions";
+import { formatDateTime } from "@/lib/format-date";
 
 // The two FB-10l.2 promotion targets (mirror PROMOTION_TARGETS in job-notes.ts).
 const PROMOTABLE_OPTIONS = NOTE_VISIBILITY_OPTIONS.filter(
@@ -44,7 +45,7 @@ function Row({ item }: { item: VendorUpdateItem }) {
         <NoteOriginBadge origin={item.origin} />
         <NoteVisibilityBadge visibility={item.visibility} />
         <span className="text-xs text-neutral-500">
-          {item.authorName ?? "—"} · {item.createdAt.toLocaleString()}
+          {item.authorName ?? "—"} · {formatDateTime(item.createdAt)}
         </span>
       </div>
       <p className="whitespace-pre-wrap text-sm text-neutral-800">{item.body}</p>

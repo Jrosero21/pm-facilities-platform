@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { archiveClientRateAction, type ClientRateActionState } from "@/app/(app)/clients/[id]/rates/actions";
+import { formatDate } from "@/lib/format-date";
 
 // ── Phase (i) rate-sheet — rates list + archive ───────────────────────────────────────
 // Rows show trade (or "All trades"), rate_type, amount + currency, unit, effective/expiry, status.
@@ -45,8 +46,7 @@ function ArchiveButton({ action }: { action: BoundAction }) {
 
 function dateRange(eff: Date | null, exp: Date | null): string {
   if (!eff && !exp) return "";
-  const fmt = (d: Date) => d.toLocaleDateString();
-  return ` · ${eff ? fmt(eff) : "…"} → ${exp ? fmt(exp) : "…"}`;
+  return ` · ${eff ? formatDate(eff) : "…"} → ${exp ? formatDate(exp) : "…"}`;
 }
 
 export function ClientRatesList({ rates }: { rates: ClientRateListRow[] }) {

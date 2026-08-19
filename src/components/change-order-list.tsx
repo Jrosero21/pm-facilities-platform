@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ChangeOrderRow } from "@/server/billing/change-orders";
+import { formatDate } from "@/lib/format-date";
 
 // ── Phase 8 batch 8c.11c — compact change-order list on the job detail (navigable) ────
 // Mirrors proposal-list.tsx. COs have a reason (not a title) + no revision concept.
@@ -42,7 +43,7 @@ export function ChangeOrderList({ changeOrders, jobId }: { changeOrders: ChangeO
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-neutral-900">{reasonLabel(co.reason)}</p>
-                  <p className="mt-0.5 text-xs text-neutral-500">{co.createdAt.toLocaleDateString()}</p>
+                  <p className="mt-0.5 text-xs text-neutral-500">{formatDate(co.createdAt)}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <span className="text-sm font-medium text-neutral-900">${co.total}</span>

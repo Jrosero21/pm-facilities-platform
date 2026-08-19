@@ -4,23 +4,8 @@ import { useState } from "react";
 import type { TimelineRow } from "@/lib/timeline";
 import { DeliveryStatusBadge } from "@/components/delivery-status-badge";
 import { NoteVisibilityBadge } from "@/components/note-visibility-badge";
-
-// --- native relative time (no date-fns; Intl.RelativeTimeFormat) ---
-const RTF = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-function relativeTime(d: Date): string {
-  const sec = Math.round((d.getTime() - Date.now()) / 1000);
-  const a = Math.abs(sec);
-  if (a < 60) return RTF.format(sec, "second");
-  const min = Math.round(sec / 60);
-  if (Math.abs(min) < 60) return RTF.format(min, "minute");
-  const hr = Math.round(min / 60);
-  if (Math.abs(hr) < 24) return RTF.format(hr, "hour");
-  const day = Math.round(hr / 24);
-  if (Math.abs(day) < 30) return RTF.format(day, "day");
-  const mon = Math.round(day / 30);
-  if (Math.abs(mon) < 12) return RTF.format(mon, "month");
-  return RTF.format(Math.round(mon / 12), "year");
-}
+import { formatDateTime } from "@/lib/format-date";
+import { relativeTime } from "@/lib/relative-time";
 
 function dayLabel(d: Date): string {
   const today = new Date();
@@ -155,6 +140,8 @@ function accent(row: TimelineRow): string {
 
 export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
   const [mode, setMode] = useState<FilterMode>("all");
+  // One instant for the whole render, so every row is relative to the same clock.
+  const now = new Date();
   const filtered = rows.filter((r) => {
     switch (mode) {
       case "all":
@@ -219,8 +206,8 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
                         <span>{rowActor(row)}</span>
                         <span>·</span>
-                        <span title={row.createdAt.toLocaleString()} suppressHydrationWarning>
-                          {relativeTime(row.createdAt)}
+                        <span title={formatDateTime(row.createdAt)} suppressHydrationWarning>
+                          {relativeTime(row.createdAt, now)}
                         </span>
                         {row.kind === "communication" && (
                           <>

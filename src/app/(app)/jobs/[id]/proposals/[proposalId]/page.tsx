@@ -5,6 +5,8 @@ import { getProposal, listProposalLineItems } from "@/server/billing/proposals";
 import { loadLaborRatePickerContext } from "@/server/billing/client-rates";
 import { ProposalActions } from "@/components/proposal-actions";
 import { ProposalLineItemsEditor } from "@/components/proposal-line-items-editor";
+import { formatMoney } from "@/lib/money";
+import { formatDate } from "@/lib/format-date";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-neutral-100 text-neutral-700",
@@ -35,12 +37,12 @@ export default async function ProposalDetailPage({
   if (!proposal || proposal.jobId !== id) notFound();
 
   const header: { label: string; value: string | null }[] = [
-    { label: "Subtotal", value: `$${proposal.subtotal}` },
-    { label: "Markup", value: `$${proposal.markupTotal}` },
-    { label: "Tax", value: `$${proposal.taxTotal}` },
-    { label: "Total", value: `$${proposal.total}` },
+    { label: "Subtotal", value: formatMoney(proposal.subtotal) },
+    { label: "Markup", value: formatMoney(proposal.markupTotal) },
+    { label: "Tax", value: formatMoney(proposal.taxTotal) },
+    { label: "Total", value: formatMoney(proposal.total) },
     { label: "Currency", value: proposal.currency },
-    { label: "Valid until", value: proposal.validUntil ? proposal.validUntil.toLocaleDateString() : null },
+    { label: "Valid until", value: proposal.validUntil ? formatDate(proposal.validUntil) : null },
   ];
 
   return (

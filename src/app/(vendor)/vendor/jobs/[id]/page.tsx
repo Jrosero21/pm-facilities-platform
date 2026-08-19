@@ -19,6 +19,7 @@ import {
   markOnSiteAction,
   markWorkCompleteAction,
 } from "@/app/(vendor)/vendor/jobs/actions";
+import { formatDateTime } from "@/lib/format-date";
 
 /**
  * Vendor assignment detail page.
@@ -103,7 +104,7 @@ export default async function VendorAssignmentDetailPage({
         <p className="mt-1 text-sm text-neutral-600">
           {detail.matchedTradeName}
           {detail.scheduledStartAt
-            ? ` · Scheduled ${new Date(detail.scheduledStartAt).toLocaleString()}`
+            ? ` · Scheduled ${formatDateTime(new Date(detail.scheduledStartAt))}`
             : ""}
         </p>
         {detail.dispatchScope && (
@@ -182,7 +183,7 @@ export default async function VendorAssignmentDetailPage({
                   <NoteVisibilityBadge visibility={n.visibility} />
                   <span className="text-xs text-neutral-500">
                     {n.authorName ?? "Unknown"} ·{" "}
-                    {new Date(n.createdAt).toLocaleString()}
+                    {formatDateTime(new Date(n.createdAt))}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-neutral-700">
@@ -226,7 +227,7 @@ export default async function VendorAssignmentDetailPage({
                     </span>
                     <span className="text-xs text-neutral-500">
                       {a.authorName ?? "Unknown"} ·{" "}
-                      {new Date(a.createdAt).toLocaleString()}
+                      {formatDateTime(new Date(a.createdAt))}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-neutral-700">{a.title}</p>
@@ -284,7 +285,7 @@ export default async function VendorAssignmentDetailPage({
                     {inv.invoiceNumber ?? "(no invoice #)"}
                   </p>
                   <p className="text-xs text-neutral-500">
-                    {new Date(inv.createdAt).toLocaleString()}
+                    {formatDateTime(new Date(inv.createdAt))}
                   </p>
                 </div>
                 <div className="text-right">

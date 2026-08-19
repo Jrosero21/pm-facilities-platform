@@ -2,6 +2,7 @@
 
 import { useActionState, useState, type ReactNode } from "react";
 import { ConfidenceBadge } from "@/components/confidence-badge";
+import { formatDateTime } from "@/lib/format-date";
 
 // ── v2.10.1 — shared agent-draft review shell ─────────────────────────────────────────
 // Extracts the chrome the scope/update draft sections each re-implement, so the invoice and
@@ -107,7 +108,7 @@ export function AgentDraftsSection<TDraft extends AgentDraftChrome>({
 
 function rowMeta(draft: AgentDraftChrome): string {
   const lines = draft.lineCount != null ? `${draft.lineCount} line${draft.lineCount === 1 ? "" : "s"} · ` : "";
-  return `${lines}${draft.createdAt.toLocaleString()}`;
+  return `${lines}${formatDateTime(draft.createdAt)}`;
 }
 
 // Non-generic — receives the already-rendered editor node + the bound reject/discard actions.

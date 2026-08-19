@@ -14,6 +14,7 @@ import { VendorInvoiceActions } from "@/components/vendor-invoice-actions";
 import { VendorInvoiceLineItemsEditor } from "@/components/vendor-invoice-line-items-editor";
 import { VendorInvoiceDocuments } from "@/components/vendor-invoice-documents";
 import { LinkedPayments } from "@/components/linked-payments";
+import { formatMoney } from "@/lib/money";
 
 const STATUS_STYLE: Record<string, string> = {
   received: "bg-neutral-100 text-neutral-700",
@@ -60,10 +61,10 @@ export default async function VendorInvoiceDetailPage({
 
   const header: { label: string; value: string | null }[] = [
     { label: "Invoice #", value: inv.invoiceNumber ?? "—" },
-    { label: "Subtotal", value: `$${inv.subtotal}` },
-    { label: "Tax", value: `$${inv.taxTotal}` },
-    { label: "Total", value: `$${inv.total}` },
-    { label: "NTE baseline", value: inv.nteBaselineAmount ? `$${inv.nteBaselineAmount}` : "—" },
+    { label: "Subtotal", value: formatMoney(inv.subtotal) },
+    { label: "Tax", value: formatMoney(inv.taxTotal) },
+    { label: "Total", value: formatMoney(inv.total) },
+    { label: "NTE baseline", value: inv.nteBaselineAmount ? formatMoney(inv.nteBaselineAmount) : "—" },
     { label: "Payment", value: inv.paymentStatus },
   ];
 

@@ -13,6 +13,7 @@ import { isAccountingRole } from "@/server/billing/role-gates";
 import { ClientInvoiceActions } from "@/components/client-invoice-actions";
 import { ClientInvoiceLineItemsEditor } from "@/components/client-invoice-line-items-editor";
 import { LinkedPayments } from "@/components/linked-payments";
+import { formatMoney } from "@/lib/money";
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-neutral-100 text-neutral-700",
@@ -50,10 +51,10 @@ export default async function ClientInvoiceDetailPage({
 
   const header: { label: string; value: string | null }[] = [
     { label: "Invoice #", value: inv.invoiceNumber ?? "—" },
-    { label: "Subtotal", value: `$${inv.subtotal}` },
-    { label: "Markup", value: `$${inv.markupTotal}` },
-    { label: "Tax", value: `$${inv.taxTotal}` },
-    { label: "Total", value: `$${inv.total}` },
+    { label: "Subtotal", value: formatMoney(inv.subtotal) },
+    { label: "Markup", value: formatMoney(inv.markupTotal) },
+    { label: "Tax", value: formatMoney(inv.taxTotal) },
+    { label: "Total", value: formatMoney(inv.total) },
     { label: "Payment", value: inv.paymentStatus },
   ];
 

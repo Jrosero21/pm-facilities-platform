@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireClient } from "@/server/auth-context";
 import { listClientInvoicesForClientScope } from "@/server/client/list-client-invoices";
+import { formatDate } from "@/lib/format-date";
 
 /**
  * Client invoices — Phase 11 batch 11i (read-only, list-only, OQ-6-safe).
@@ -60,10 +61,10 @@ export default async function ClientInvoicesPage() {
                     Job #{inv.jobNumber}
                   </Link>
                   {inv.issuedAt
-                    ? ` · Issued ${new Date(inv.issuedAt).toLocaleDateString()}`
+                    ? ` · Issued ${formatDate(new Date(inv.issuedAt))}`
                     : ""}
                   {inv.dueAt
-                    ? ` · Due ${new Date(inv.dueAt).toLocaleDateString()}`
+                    ? ` · Due ${formatDate(new Date(inv.dueAt))}`
                     : ""}
                 </p>
               </div>
