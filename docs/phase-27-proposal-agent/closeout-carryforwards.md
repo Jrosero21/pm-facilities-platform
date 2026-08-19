@@ -2499,7 +2499,9 @@ in our code.
 
 ★ THE TRAP: dropping `--conditions=react-server` to work around it does NOT help — every module in the chain imports
 `server-only`, which then throws "This module cannot be imported from a Client Component module." The two flags are
-mutually exclusive for this code path. There is no working script-harness configuration; stop looking for one.
+mutually exclusive for this code path. There is no working script-harness configuration FOR `renderClientInvoicePdf`.
+★ CORRECTED 2026-08-19 — there IS one for the DOCUMENT layer. See the correction immediately below before
+acting on the sentence above.
 
 HOW TO VERIFY A PDF CHANGE: start the dev server and exercise the real route (`/api/client-invoices/<id>/pdf`), or add
 a temporary route that calls the render and asserts, then delete it. ★ AND when asserting PDF CONTENT: @react-pdf
@@ -2507,3 +2509,34 @@ writes text as HEX-ENCODED GLYPH strings inside FlateDecode'd content streams (`
 plain ASCII `grep` over the bytes finds NOTHING and every "absent" assertion passes vacuously. Inflate the streams,
 then decode the `<hex>` tokens. ALWAYS include POSITIVE CONTROLS (assert a value you KNOW is on the page) — without
 them a broken extractor reports a clean bill of health. This was hit for real while proving the OQ-6 no-markup rule.
+
+## ★ CORRECTION 2026-08-19 — the PDF *document* IS testable without a route or a database
+
+The note above is right about `renderClientInvoicePdf` and wrong as a general claim, so it sent the next reader
+looking for a running server they did not need. The correction, proven by `src/server/billing/invoice-pdf-document.test.ts`:
+
+★ `renderClientInvoicePdf` genuinely cannot be harnessed — it imports `server-only` AND the db. `InvoiceDocument`
+CAN. Its only RUNTIME imports are `@react-pdf` and the pure `@/lib` formatters; the `invoice-pdf-data` import is
+`import type`, which is ERASED at compile time and therefore drags in nothing. So it renders under plain vitest/tsx
+with NO `--conditions` flag, against a hand-built `InvoicePdfData` fixture, with no database and no dev server.
+"Every module in the chain imports server-only" was the false step — the chain is shorter than it looks.
+
+WHAT THIS BUYS: layout, money/date/address/phone formatting and the OQ-6 no-markup rule are now asserted on every
+`pnpm test` run in ~75ms, instead of only when someone remembers to boot a server. It is not a replacement for the
+route check — `loadInvoicePdfData`, `requireTenant` and `canSeeFinancials` are outside the document and still need a
+real request.
+
+★ GLYPH WIDTH — the note's `[<5052> 20 <4f42452046> …] TJ` example is SINGLE-byte codes (`50`=P, `52`=R), not
+two-byte. A decoder that reads 4 hex digits per character produces garbage and finds nothing. AND the kerning numbers
+sit BETWEEN the hex tokens of one run (`[<...Seed > 100 <T> 60 <enant>] TJ`), so the tokens of a run must be
+concatenated with the numbers dropped, or "Phase 9 Seed Tenant" never matches.
+
+★ THE POSITIVE-CONTROL WARNING ABOVE IS EXACTLY RIGHT AND WAS HIT AGAIN. The first version of this extractor used the
+wrong glyph width: it reported all 8 positive controls MISSING while all 5 negative controls ("no markup", "no
+unseparated money") PASSED. Without the positives that is indistinguishable from a clean bill of health. The test's
+first assertion is therefore that extraction produced real text at all.
+
+VERIFIED END TO END 2026-08-19 against `pm_sandbox` (after applying migration 0006 there — sandbox was behind by the
+whole company-profile batch): 200 with `$1,200.00` and both city lines in the bytes, 403 for a tenant member without
+a financial role, 307 unauthenticated, 404 for an unknown id, 409 for a cost-plus invoice. Migration 0006 is applied
+to sandbox and to local `pm`; ★ NOT YET TO NEON.

@@ -105,7 +105,7 @@ async function main() {
     { id: pArchived,  tenantId: tA, jobId: jobA, title: "arch",   storageKey: "tenant/A/job/A/attachment/arch.jpg",   createdAt: new Date(now),          ...base, status: "archived" as const },
     { id: pDoc,       tenantId: tA, jobId: jobA, title: "a-doc",  storageKey: "tenant/A/job/A/attachment/doc.pdf",    createdAt: new Date(now),          ...base, attachmentType: "document" as const, fileMimeType: "application/pdf" },
     { id: pTenantB,   tenantId: tB, jobId: jobB, title: "bphoto", storageKey: "tenant/B/job/B/attachment/b.jpg",      createdAt: new Date(now),          ...base },
-  ] as any);
+  ] as (typeof jobAttachments.$inferInsert)[]);
 
   // Put the stored photo's bytes into the capture store so getSignedUrl can sign the key.
   // The capture provider signs ONLY keys put() this process (in-memory Map) — without this,
@@ -136,7 +136,7 @@ async function main() {
   // ===== getJobPhotoUrl — the no-leak discriminated result (security property) =====
   const urlStored = await getJobPhotoUrl({ tenantId: tA, jobId: jobA, attachmentId: pStored });
   check("url: stored photo under capture provider -> kind 'url' with capture:// URL",
-    urlStored.kind === "url" && /^capture:\/\//.test((urlStored as any).url), urlStored);
+    urlStored.kind === "url" && /^capture:\/\//.test(urlStored.url), urlStored);
 
   const urlTitleOnly = await getJobPhotoUrl({ tenantId: tA, jobId: jobA, attachmentId: pTitleOnly });
   check("url: title-only row (no storageKey) -> placeholder", urlTitleOnly.kind === "placeholder", urlTitleOnly);
