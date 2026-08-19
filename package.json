@@ -24,6 +24,8 @@
     "db:seed:dispatch-reference": "tsx --env-file=.env.local db/seeds/dispatch-reference.ts",
     "db:seed:agent-config": "tsx --env-file=.env.local db/seeds/agent-config.ts",
     "db:check:line-item-types": "tsx --env-file=.env.local --conditions=react-server scripts/check-line-item-types.ts",
+    "set:company-profile": "tsx --env-file=.env.local --conditions=react-server scripts/set-company-profile.ts",
+    "set:company-profile:prod": "SET_COMPANY_PROFILE_PROD=1 DATABASE_URL=\"$(grep -m1 -E '^DATABASE_URL_NEON=' .env.local | cut -d= -f2- | tr -d '\"')\" tsx --conditions=react-server scripts/set-company-profile.ts",
     "db:check:analytics-readers": "tsx --env-file=.env.local --conditions=react-server scripts/check-analytics-readers.ts",
     "db:check:vendor-predicates": "tsx --env-file=.env.local --conditions=react-server scripts/check-vendor-predicates.ts",
     "db:check:client-portal": "tsx --env-file=.env.local --conditions=react-server scripts/check-client-portal.ts",
