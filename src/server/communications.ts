@@ -6,7 +6,7 @@ import { writeAuditLog } from "@/server/audit";
 import { db } from "@/server/db";
 import { clientUpdateLogs, communicationLogs, outboundMessages, users } from "@/server/schema";
 import { getJob } from "@/server/jobs";
-import { getSendProvider } from "@/lib/integrations/send";
+import { getSendProvider, type SendAttachment } from "@/lib/integrations/send";
 import { getJobNote } from "@/server/job-notes";
 import { listClientContacts } from "@/server/client-contacts";
 import { listVendorContacts } from "@/server/vendor-contacts";
@@ -255,6 +255,13 @@ export async function sendCommunication(args: {
   tenantId: string;
   commId: string;
   actorUserId: string;
+  /**
+   * G1 batch 2 — OPTIONAL attachments, PURE PASS-THROUGH. Forwarded verbatim into the SendRequest
+   * and nothing else: sendCommunication does not render, fetch, or inspect them, so this function
+   * stays as generic as it was. The invoice-specific rendering lives in notifyClientOfInvoice.
+   * Absent (dispatch-notify, client-updates, shareNote, send-link) ⇒ behaviour is unchanged.
+   */
+  attachments?: SendAttachment[];
 }): Promise<CommunicationRow> {
   const row = await getCommunication(args.tenantId, args.commId);
   if (!row) throw new Error("COMMUNICATION_NOT_FOUND");
@@ -272,7 +279,15 @@ export async function sendCommunication(args: {
   const { subject, body } = await resolveSendContent(args.tenantId, row);
 
   const provider = getSendProvider();
-  const result = await provider.send({ to: row.recipientEmail, subject, body, commId: row.id });
+  // attachments spread in only when supplied — an absent field leaves the SendRequest identical
+  // to what every pre-G1 caller produced (and ResendProvider then omits the key entirely).
+  const result = await provider.send({
+    to: row.recipientEmail,
+    subject,
+    body,
+    commId: row.id,
+    ...(args.attachments && args.attachments.length > 0 ? { attachments: args.attachments } : {}),
+  });
 
   if (result.status === "sent") {
     await db

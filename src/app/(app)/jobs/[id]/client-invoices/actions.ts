@@ -13,6 +13,7 @@ import {
   voidClientInvoice,
 } from "@/server/billing/client-invoices";
 import { shouldWarnMissingVendorDoc } from "@/server/billing/cost-plus-doc-gate";
+import { notifyClientOfInvoice } from "@/server/billing/invoice-notify";
 import {
   ClientInvoiceNotEditable,
   ClientInvoiceNotSendable,
@@ -210,6 +211,17 @@ export async function sendClientInvoiceAction(
       actorUserId: ctx.user.id,
       acknowledgedMissingVendorDoc: warn && acknowledged, // override audit only when the warning applied
     });
+
+    // G1 batch 2 — POST-COMMIT delivery, mirroring sendDispatchAction → notifyVendorOfDispatch.
+    // Issuance above has already committed and is NOT conditional on this: notifyClientOfInvoice
+    // is warn-not-block internally, and the catch here is the last backstop so an unforeseen
+    // delivery fault can never surface as a failed issuance the operator would retry.
+    try {
+      await notifyClientOfInvoice({ tenantId, clientInvoiceId, actorUserId: ctx.user.id });
+    } catch (notifyErr) {
+      console.error(`[invoice-notify] delivery failed for ${clientInvoiceId}:`, notifyErr);
+    }
+
     revalidatePath(`/jobs/${jobId}/client-invoices/${clientInvoiceId}`);
     revalidatePath(`/jobs/${jobId}`);
     return null;
