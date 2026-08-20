@@ -2539,7 +2539,8 @@ first assertion is therefore that extraction produced real text at all.
 VERIFIED END TO END 2026-08-19 against `pm_sandbox` (after applying migration 0006 there — sandbox was behind by the
 whole company-profile batch): 200 with `$1,200.00` and both city lines in the bytes, 403 for a tenant member without
 a financial role, 307 unauthenticated, 404 for an unknown id, 409 for a cost-plus invoice. Migration 0006 is applied
-to sandbox and to local `pm`; ★ NOT YET TO NEON.
+to sandbox and to local `pm`; ~~★ NOT YET TO NEON.~~ **(SUPERSEDED — 0006 applied to Neon, see shipped-affcf06
+entry.)**
 
 ---
 
@@ -2556,5 +2557,37 @@ tenant_line_item_types) both APPLIED via direct DDL (neondb-confirmed, ON_ERROR_
 (both additive, inert). G7 confirmed: RESEND_API_KEY set in Vercel prod env (email transmits, not captures).
 
 Foundation status: G6 CLOSED (free-text jobs.scopeOfWork is the accepted non-AI scope mode — dispatches via
-approvedScopeOfWork ?? scopeOfWork; no build). G7 CLOSED (RESEND live in prod). G1 NEXT (invoice email delivery).
+approvedScopeOfWork ?? scopeOfWork; no build) (accepted trade-offs: scopeGenerationStatus stays 'not_started', the
+dispatch-new page flags noApprovedScope, no per-step records). G7 CLOSED (RESEND live in prod). G1 NEXT (invoice
+email delivery).
 Deferred prod data: rose-analytics company profile columns still NULL (PDF renders name-only until populated).
+
+---
+
+## G1 — invoice email delivery (BUILT, branch invoice-email-delivery, wired+build-verified, NOT yet prod-proven)
+
+Two batches. Batch 1 (fb21bb8): extended the provider seam — SendRequest gains optional attachments (SendAttachment
+{filename, content: string|Uint8Array, contentType?}); ResendProvider maps to Resend's native attachments array
+(content base64 on raw REST, MIME key content_type snake_case); CaptureProvider records attachments (count/filenames/
+size) but transmits nothing. Additive — absent attachments = byte-identical payload; existing sends (dispatch, client-
+updates, shareNote, send-link) unchanged.
+
+Batch 2 (ed7ce9a): notifyClientOfInvoice mirrors dispatch-notify's 6-step post-commit shape. sendCommunication gained
+attachments PASS-THROUGH (generic stays generic — forwards, never renders). notifyClientOfInvoice does the invoice-
+specific render (renderClientInvoicePdf -> discriminated {ok|not_found|blocked}, tenant-scoped, bytes already
+Uint8Array). PDF renders BEFORE composing comm rows (a refused render strands no orphan draft; cost_plus lands here as
+reason "pdf_not_renderable" — issued-not-mailed, correct). Recipient: walks listClientContacts primary-first, first
+non-empty email (null-email primary doesn't block a secondary). Sender name from getTenantCompanyProfile (same as PDF
+letterhead). Hooked post-commit in sendClientInvoiceAction, try/catch so a delivery fault never surfaces as failed
+issuance. Pure builder split to invoice-notify-content.ts (server-only can't be vitest'd — same reason
+buildDispatchNotification is untested; small dispatch-side follow-up noted).
+
+★ IDEMPOTENCY — CLOSED by tracing every writer. client_invoices.status has exactly 2 writers (draft->sent :348,
+sent->void :370); totals.ts writes only amounts, payments.ts only paymentStatus. NO un-void, NO reopen-to-draft path
+anywhere. ClientInvoiceNotSendable is a genuine one-shot — operator cannot notify twice — structurally identical to
+dispatch's ASSIGNMENT_NOT_DRAFT.
+
+Green: tsc 0, 526/526 (515 + 11 new incl. an OQ-6 property test — exactly one money figure, no margin word), lint
+clean, build 0. ★ NOT PROVEN: the actual render-and-attach-and-send path. renderClientInvoicePdf runs only in Next
+runtime (@react-pdf harness constraint) + route needs a session (local seed-password diverged, the Gate-B wall). Plan:
+ship, then prove in prod by issuing a test invoice to an operator-controlled client-contact email (real RESEND).
