@@ -2602,3 +2602,32 @@ path transmits real bytes via Resend, the client-contact recipient resolver work
 renders correctly. G1 CLOSED — the delivery half now matches the issue half. RESEND_API_KEY confirmed live in Vercel
 prod (a real email was delivered, not captured). Test data labeled "ZZ TEST — G1 email (delete me)" on prod client
 list — clean up when convenient.
+
+---
+
+## ★ FUTURE UI/UX — unify the Communications surface into ONE mode-driven composer (operator-articulated, NOT now)
+
+OBSERVATION (from seeing G2 live): the job-detail Communications section is accreting SEPARATE stacked form-blocks
+(log-a-call form, and more coming as G3+ land) that clog the UI. Each new comm capability adding its own section is
+the wrong end state.
+
+DIRECTION: ONE Communications section with a SINGLE entry point that offers multiple modes, the mode driving behavior:
+  - record a NOTE
+  - log a CALL (what G2 built)
+  - send/record an EMAIL — sent directly, system auto-flags it (the G1/dispatch pattern)
+  - manual classification: operator flags "client update" / "client phone call" / etc. in plain terms
+  - integration inbound: a message arriving from a client's external system AUTO-flags as "client incoming message"
+    (ties to G4/G5 intake doors + the external-portal framework)
+
+The system handles direction, visibility, whether it SENDS vs just RECORDS, and auto-classification-by-source; the
+operator just picks "what am I recording?" in plain language. This unifies the piecemeal pieces already built
+(log-a-call, invoice email G1, dispatch-notify, client-updates) under one coherent operator affordance — the portal
+feels like one tool, not a pile of features.
+
+WHY BANKED NOT BUILT: it's a UI/UX consolidation phase, best done AFTER the comm capabilities exist (G2 done, G3 next,
+intake G4/G5) so the composer can offer all real modes at once. Aligns with the platform principle (source
+auto-classifies; operator picks intent in plain terms). Not demo-blocking; a polish/consolidation phase.
+
+CONNECTS TO: G3 (internal email — another mode), G4/G5 (intake doors — the auto-flag-inbound source), and the
+"advisory operator classification" idea. The current per-feature sections are the RIGHT way to build each capability
+(prove it works), then a later phase consolidates the surface.
