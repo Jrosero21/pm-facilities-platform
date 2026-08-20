@@ -2693,3 +2693,72 @@ TWO IMPLEMENTATION NOTES FOUND WHILE SETTING THE INTERIM VALUE:
      coordinator block of the same document. Interim mitigation: store an already-formatted value ("(949) 264-2223").
      PROPER FIX (small, do with the per-user work): apply formatPhone in the token resolver so storage format stops
      mattering.
+
+---
+
+## VENDOR WORK ORDER — per-client dispatch template -> WO PDF (BUILT, branch vendor-work-order, 5 batches, green,
+   UNPROVEN end-to-end — do NOT ship to a real vendor until visually proven)
+
+The dispatch-side equivalent of the invoice PDF: a per-client dispatch-instructions template (client SOPs + the
+aggregator's protective language + tokens) that renders into a Vendor Work Order PDF, attached on dispatch and
+regenerable on demand. Commits 59ecc30 (b0) -> 146c09e (b1) -> c970706 (b2) -> b79b90e (b3) -> c86bf24 (b4).
+
+BATCH 0 (59ecc30) — jobs.assigned_user_id (the COORDINATOR). Nullable FK -> users, ON DELETE set null (mirrors
+created_by_user_id). DEFAULTS to creator in createJob; reassignable later (NO reassignment UI/history yet — when it
+lands it MUST write an event, not just overwrite). getJobCoordinator returns {name,email,source:"assigned"|"creator"}
+— NON-SILENT fallback (a vendor doc distinguishes real assignment from provisional authorship). Migration 0008 +
+backfill (UPDATE assigned=created_by WHERE null; the backfill is a DATA write, separate confirm-target discipline).
+
+BATCH 1 (146c09e) — template storage. clients.dispatch_instructions + tenants.default_dispatch_instructions (both
+nullable text, migration 0009). resolveDispatchInstructions returns {template, source:"client"|"tenant_default"|
+"none"} — ★ REPLACES, never concatenates (a client with its own template fully overrides the default; clearing it
+opts back in — because these clauses, PO/invoicing/after-hours, are exactly the ones a client contradicts). Audited
+setters record the FACT (set/cleared/replaced + lengths), not the text. Client-scoped, distinct from
+client_location_access_notes (site access). No UI (settings surface deferred).
+
+BATCH 2 (c970706) — token registry + PURE resolver (first real tests in this arc, +27). Syntax {token} braces NOT @
+(@ occurs in prose — "ap@client.com" would mangle under @-syntax; test proves emails pass through). Case-insensitive.
+12 tokens, one registry entry each (extensible — adding one is one entry, a test renders every registered token):
+{jobnumber}{client}{site}{siteaddress}{trade}{priority}{scope}{nte}/{dne}{coordinator}{coordinatoremail}
+{coordinatorphone}. ★ {coordinatorphone} resolves from tenants.phone (company line — users has no phone; Batch 0's
+refusal to invent one preserved). {scope} uses approvedScopeOfWork ?? scopeOfWork (same as createDispatch — no
+divergent resolution). ★ MISSING {nte} OMITS the line (a blank spend-cap reads as "no limit" to a vendor — the
+dangerous misread; [not set] would advertise an internal gap). Unknown tokens left verbatim + reported (operator typo
+visible, not crashed). Pure module dispatch-template.ts (vitest-reachable), IO in dispatch-context.ts.
+
+BATCH 3 (b79b90e) — the WO PDF (mirrors invoice-PDF stack). ★ CONFIDENTIALITY MIRROR of the invoice: invoice hides
+MARGIN from the CLIENT; WO hides CLIENT PRICE from the VENDOR — they leak OPPOSITE directions. DTO carries NO client
+money at all — no invoice figure, no rate sheet, no markup, NOT even jobs.not_to_exceed_amount. Only money is
+assignment.agreedNteAmount (the ceiling THIS vendor was dispatched under). Enforced STRUCTURALLY — a leak requires
+adding a field to the DTO first. ★ Keyed on the ASSIGNMENT not the job (a 3-assignment job has 3 WOs; job alone can't
+say which vendor/NTE/scope-snapshot). renderWorkOrderPdf(tenantId, assignmentId) -> {ok|not_found|blocked} (invoice
+contract). Route /api/dispatch-assignments/[assignmentId]/work-order, requireTenant + canSeeOperations (NOT
+canSeeFinancials — it carries no client pricing, and gating on accounting would lock out the dispatchers who send it).
+Absent facts omitted never mis-stated (no template->no heading, no NTE->no box, no coordinator->no block).
+
+BATCH 4 (c86bf24) — dispatch attach + resend + UI. dispatch-notify already routes through sendCommunication (:183) so
+G1's attachment seam needed no plumbing. On dispatch: render WO -> attach; ★ WARN-NOT-BLOCK, deliberately WEAKER than
+the invoice's refuse-on-render-fail — the EMAIL is the operative act (tells the vendor to show up), attachment carries
+facts already in the body, so a failed render sends the email without it + records workOrderAttached/workOrderSkipped
+on the event; NEVER blocks the dispatch. ★ RESEND — the ONE deliberately-NON-idempotent send (an operator asking
+again, usually because something CHANGED — refusing the 2nd breaks the feature). Guard = 60s SERVER-SIDE cooldown
+(not a confirm dialog — server-side catches duplicated posts, retried actions, two operators at once). RE-RENDERS not
+replays (stale bytes would defeat "resent because the NTE changed"); a failed resend render ABORTS (no fallback when
+delivering the doc IS the purpose). UI: "Work Order PDF" download link + "Resend to vendor" button on the assignment
+workspace under the facts block.
+
+Green: tsc 0, 600/600 (573 + 27 new), lint clean, build 0. Route in both manifests.
+
+★ UNPROVEN — DO NOT SHIP TO A REAL VENDOR UNTIL:
+  1. NO WO PDF HAS EVER RENDERED (the @react-pdf harness constraint — only a running app proves it; the layout is
+     UNSEEN). Outward-facing (goes to vendors) — must be seen before it touches one.
+  2. The dispatch-email new failure surface (render throws -> send-without-attachment) has never executed.
+  3. The resend has never run (the cooldown summary-marker match is "works in principle, surprises in practice").
+  4. Both template columns EMPTY everywhere — nothing to render until a template is set.
+  5. Neon migrations 0008 (+ its data backfill) and 0009 UNAPPLIED — branch cannot deploy until that gate.
+
+NEXT SESSION — deliberate proof: (a) apply 0008+backfill+0009 to Neon (confirm-target discipline); (b) set a template
+on a client (the audited setter) with real tokens + client SOPs + protective language; (c) render the WO in a running
+app and LOOK AT IT (needs the Gate-B local-auth wall resolved, OR prove in prod on a controlled test dispatch);
+(d) test dispatch -> confirm the vendor (operator-controlled email) receives the WO PDF with filled tokens; (e) test
+resend after a scope/NTE change. Only after (c)+(d) does this touch a real vendor.
