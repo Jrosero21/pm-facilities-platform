@@ -1,0 +1,2 @@
+ALTER TABLE "jobs" ADD COLUMN "assigned_user_id" varchar(36);--> statement-breakpoint
+ALTER TABLE "jobs" ADD CONSTRAINT "jobs_assigned_user_id_users_id_fk" FOREIGN KEY ("assigned_user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;

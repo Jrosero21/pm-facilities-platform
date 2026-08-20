@@ -101,6 +101,25 @@ export const jobs = pgTable(
       () => users.id,
       { onDelete: "set null" },
     ),
+    // ── vendor-WO batch 0 — THE COORDINATOR ────────────────────────────────────────────
+    // Who OWNS this job now, as distinct from created_by_user_id, which records who typed it
+    // in and never changes. Until this column existed the platform had no ownership concept at
+    // all: staff-side had nothing equivalent to job_vendor_assignments, so "the coordinator" on
+    // a vendor-facing document could only ever be resolved from authorship — right by accident,
+    // and silently wrong the moment anyone else picked the work up.
+    //
+    // NULLABLE and additive: every existing row stays valid, and null reads as "unassigned"
+    // rather than as a claim about anyone. createJob now seeds it from the creator, and a
+    // one-off backfill does the same for history, so null is a transitional state, not a design.
+    //
+    // FK mirrors created_by_user_id EXACTLY — same length, same ON DELETE set null. Deleting a
+    // user must orphan the job's coordinator, never cascade the job away.
+    // ★ Reassignment is a FAST-FOLLOW: there is no action, no UI, and no history table for it
+    //   yet. When one lands it must write an event, not just overwrite this column.
+    assignedUserId: varchar("assigned_user_id", { length: 36 }).references(
+      () => users.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
   },

@@ -336,6 +336,11 @@ export async function createJob(input: CreateJobInput): Promise<JobRow> {
       scopeOfWork: input.scopeOfWork ?? null,
       notToExceedAmount: finalNte, // 8c.4: rule-resolved snapshot or operator value (matrix 9c)
       createdByUserId: input.createdByUserId,
+      // vendor-WO batch 0 — the coordinator DEFAULTS to the creator, so every new job owns
+      // itself from the moment it exists and no job is ever born unassigned. The two columns
+      // are the same value here and diverge the moment reassignment lands: created_by is
+      // history and never moves, assigned_user_id is current ownership and does.
+      assignedUserId: input.createdByUserId,
     });
 
     // 4. Bump the counter.

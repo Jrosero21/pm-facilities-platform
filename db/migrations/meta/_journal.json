@@ -57,6 +57,13 @@
       "when": 1787152991080,
       "tag": "0007_parched_mystique",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787258162461,
+      "tag": "0008_clever_kitty_pryde",
+      "breakpoints": true
     }
   ]
 }
