@@ -2631,3 +2631,43 @@ auto-classifies; operator picks intent in plain terms). Not demo-blocking; a pol
 CONNECTS TO: G3 (internal email — another mode), G4/G5 (intake doors — the auto-flag-inbound source), and the
 "advisory operator classification" idea. The current per-feature sections are the RIGHT way to build each capability
 (prove it works), then a later phase consolidates the surface.
+
+---
+
+## G3 — internal/user email (BUILT, branch internal-email, build-verified, end-to-end proof DEFERRED)
+
+Closes the internal-email CAPABILITY gap: staff (tenant admins) now get notified of the unattended auto-redispatch
+sweep result. Commits a722eaa (resolver) + 9584107 (notify). Trigger chosen: #1, the overnight sweep — the ONE place
+the platform acts with no operator present (every other candidate has an operator already looking at a screen).
+
+Step 1 — src/server/internal-recipients.ts: getInternalRecipient + listInternalRecipientsByRole, BOTH scoped through
+active tenant_users membership (users is global — a bare user-id lookup would let one tenant's notification reach a
+user who only belongs to another; tenant-membership is the gate). Global super_admin deliberately EXCLUDED (platform
+operator, not this tenant's staff — cross-tenant disclosure otherwise). users.email is NOT NULL + UNIQUE so internal
+resolution is simpler than client/vendor (no null-email fallback chain).
+
+Step 2 — notifyInternalOfSweep, OPTION (c): a cross-job sweep digest is NOT a per-job communication, so it deliberately
+does NOT use sendCommunication / the communication_logs spine (which requires job_id NOT NULL — same constraint as G2).
+Instead: compose content -> outbound_messages (tenant-scoped, no job_id, created_by null), send via
+getSendProvider().send() direct (commId carries the SWEEP key — the field is an idempotency key, "= comm_logs.id" was
+convention not constraint), record delivery in audit_logs (sweep.notification_sent/_skipped, actorLabel "system",
+metadata = COUNTS + roles only, no job numbers/client names/addresses — same discipline as the company-profile setter).
+Fires ONLY when autoSent > 0 || heldForReview > 0 (quiet night sends nothing — mailing "0 and 0" trains operators to
+ignore the sender). Idempotency: OUR audit-row check bucketed to the UTC hour (not the provider's key — CaptureProvider
+ignores keys, so a provider-only guard is untestable). Subject leads with heldForReview (work handed back needs a
+person; autoSent is work finished). Hooked post-sweep in the cron route inside its own try (sweep success independent
+of whether the email left).
+
+★ PRECISE STATUS — two things a naive entry would get WRONG:
+  1. recipientType "internal" is STILL UNUSED (zero call sites). G3 delivers internal email as a CAPABILITY but via the
+     direct path, NOT the comm-spine recipientType. The first genuine recipientType:"internal" writer would be a
+     JOB-SCOPED internal notification (candidate #2, the pending_review agent draft, would qualify). Do not claim
+     "internal recipientType now has a writer."
+  2. END-TO-END UNPROVEN + automatic value depends on the DEFERRED sweep schedule. Pure half (activity gate, UTC-hour
+     bucketing, subject/body) has 19 tests; the DB-touching half has none. The cron has NO schedule (Phase 29 deferred
+     it — Vercel Hobby caps cron at daily; needs Pro/external scheduler), so in prod this fires ONLY on a manual curl
+     invoke until a vercel.json cron entry exists. G3's headline "overnight, nobody watching, the machine tells you"
+     value is not live until the sweep is scheduled. Proof deferred to when the sweep runs unattended (or a manual
+     prod invoke against a stuck-assignment state).
+
+Green: tsc 0, 573/573 (554 + 19 new), lint clean, build 0.
