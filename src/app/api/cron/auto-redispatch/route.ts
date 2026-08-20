@@ -20,6 +20,7 @@ import { db } from "@/server/db";
 import { agentPolicies } from "@/server/schema";
 import { and, eq } from "drizzle-orm";
 import { runAutoRedispatchSweep, type SweepSummary } from "@/server/auto-redispatch-sweep";
+import { notifyInternalOfSweep } from "@/server/sweep-notify";
 
 export const dynamic = "force-dynamic"; // never cached — it mutates
 export const maxDuration = 300;
@@ -76,6 +77,17 @@ async function handle(request: Request): Promise<Response> {
     try {
       const summary = await runAutoRedispatchSweep({ tenantId, now: startedAt });
       perTenant.push({ tenantId, summary });
+
+      // G3 — tell somebody. The sweep is the one path that acts with NO operator present, so
+      // heldForReview > 0 would otherwise mean "the system stopped and wants a human" with no way
+      // for the human to find out. Fires only when the run actually did something; idempotent per
+      // tenant per hour. Isolated in its own try: the sweep's work is already committed and its
+      // success must not depend on whether an email left the building.
+      try {
+        await notifyInternalOfSweep({ tenantId, counts: summary, at: startedAt });
+      } catch (notifyErr) {
+        console.error("[cron:auto-redispatch] sweep notification failed:", tenantId, notifyErr);
+      }
       totals.swept += summary.swept;
       totals.autoSent += summary.autoSent;
       totals.heldForReview += summary.heldForReview;
