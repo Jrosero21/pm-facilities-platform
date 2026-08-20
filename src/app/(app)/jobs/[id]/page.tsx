@@ -471,7 +471,11 @@ export default async function JobDetailPage({
                 className="rounded-lg border border-neutral-200 bg-white p-4"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <DeliveryStatusBadge status={c.deliveryStatus} />
+                  <DeliveryStatusBadge
+                    status={c.deliveryStatus}
+                    channel={c.channel}
+                    direction={c.direction}
+                  />
                   <NoteVisibilityBadge visibility={c.visibility} />
                   <span className="text-xs uppercase tracking-wide text-neutral-500">
                     {c.channel} · {c.direction}

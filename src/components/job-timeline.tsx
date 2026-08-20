@@ -211,7 +211,11 @@ export function JobTimeline({ rows }: { rows: TimelineRow[] }) {
                         </span>
                         {row.kind === "communication" && (
                           <>
-                            <DeliveryStatusBadge status={row.deliveryStatus} />
+                            <DeliveryStatusBadge
+                              status={row.deliveryStatus}
+                              channel={row.channel}
+                              direction={row.direction}
+                            />
                             <NoteVisibilityBadge visibility={row.visibility} />
                           </>
                         )}
