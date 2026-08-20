@@ -2588,9 +2588,10 @@ anywhere. ClientInvoiceNotSendable is a genuine one-shot — operator cannot not
 dispatch's ASSIGNMENT_NOT_DRAFT.
 
 Green: tsc 0, 526/526 (515 + 11 new incl. an OQ-6 property test — exactly one money figure, no margin word), lint
-clean, build 0. ★ NOT PROVEN: the actual render-and-attach-and-send path. renderClientInvoicePdf runs only in Next
+clean, build 0. ~~★ NOT PROVEN: the actual render-and-attach-and-send path. renderClientInvoicePdf runs only in Next
 runtime (@react-pdf harness constraint) + route needs a session (local seed-password diverged, the Gate-B wall). Plan:
-ship, then prove in prod by issuing a test invoice to an operator-controlled client-contact email (real RESEND).
+ship, then prove in prod by issuing a test invoice to an operator-controlled client-contact email (real RESEND).~~
+**(SUPERSEDED — G1 proven end-to-end in prod 2026-08-20; see the G1-PROVEN entry below.)**
 
 ---
 
