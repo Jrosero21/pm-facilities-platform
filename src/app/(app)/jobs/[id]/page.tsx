@@ -10,6 +10,9 @@ import { listJobNotes } from "@/server/job-notes";
 import { listJobEvents } from "@/server/job-events";
 import { listAssignmentsForJob } from "@/server/dispatch";
 import { listCommunicationsForJob } from "@/server/communications";
+import { listClientContacts } from "@/server/client-contacts";
+import { listVendorContacts } from "@/server/vendor-contacts";
+import { LogACallForm, type CallContactOption } from "@/components/log-a-call-form";
 import { listDraftsForJobDetailed } from "@/server/agents/drafts";
 import { createJobContactAction } from "@/app/(app)/jobs/contact-actions";
 import { createJobNoteAction } from "@/app/(app)/jobs/note-actions";
@@ -97,6 +100,19 @@ export default async function JobDetailPage({
       // 9f — per-job aging callout; SAME predicate/query as the dashboard queue (null for terminal jobs).
       isJobStalled(tenantId, id),
     ]);
+  // G2 — who a logged call could have been with: the client's contacts, plus the contacts of every
+  // vendor actually assigned to THIS job (deduped — one vendor can hold several assignments). The
+  // form filters by party; logContact re-verifies server-side (CONTACT_NOT_IN_PARTY).
+  const assignedVendorIds = [...new Set(assignments.map((a) => a.vendorId))];
+  const [clientContactRows, vendorContactRows] = await Promise.all([
+    listClientContacts(tenantId, job.clientId),
+    Promise.all(assignedVendorIds.map((vid) => listVendorContacts(tenantId, vid))),
+  ]);
+  const callContacts: CallContactOption[] = [
+    ...clientContactRows.map((c) => ({ id: c.id, name: c.name, party: "client" as const })),
+    ...vendorContactRows.flat().map((c) => ({ id: c.id, name: c.name, party: "vendor" as const })),
+  ];
+
   // Inline status quick-edit — the global job-status vocabulary + the job's current code (derived).
   const jobStatuses = await listActiveJobStatuses();
   const currentStatusCode = jobStatuses.find((s) => s.id === job.currentStatusId)?.code ?? "";
@@ -440,9 +456,12 @@ export default async function JobDetailPage({
       {/* Communications */}
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-neutral-900">Communications</h2>
+        {/* G2 — log an off-system contact. Sits at the TOP of the section because it is the one
+            thing here an operator comes to WRITE; everything below it is a read surface. */}
+        <LogACallForm jobId={id} contacts={callContacts} />
         {communications.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-600">
-            No communications yet. Share a client- or vendor-visible note above to log one.
+            No communications yet. Share a client- or vendor-visible note above, or log a call.
           </p>
         ) : (
           <div className="mt-3 space-y-2">
