@@ -9,8 +9,15 @@ import type { SendProvider } from "./provider";
 import { CaptureProvider } from "./capture-provider";
 import { ResendProvider } from "./resend-provider";
 
-export type { SendProvider, SendRequest, SendResult } from "./provider";
-export { CaptureProvider, getCaptured, resetCaptured } from "./capture-provider";
+export type { SendAttachment, SendProvider, SendRequest, SendResult } from "./provider";
+export type { CapturedAttachment } from "./capture-provider";
+export {
+  CaptureProvider,
+  countCapturedAttachments,
+  getCaptured,
+  getCapturedAttachments,
+  resetCaptured,
+} from "./capture-provider";
 export { ResendProvider } from "./resend-provider";
 
 /**
