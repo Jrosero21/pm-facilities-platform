@@ -2591,3 +2591,13 @@ Green: tsc 0, 526/526 (515 + 11 new incl. an OQ-6 property test — exactly one 
 clean, build 0. ★ NOT PROVEN: the actual render-and-attach-and-send path. renderClientInvoicePdf runs only in Next
 runtime (@react-pdf harness constraint) + route needs a session (local seed-password diverged, the Gate-B wall). Plan:
 ship, then prove in prod by issuing a test invoice to an operator-controlled client-contact email (real RESEND).
+
+---
+
+★ G1 — PROVEN end-to-end in PROD (2026-08-20). Issued a test client invoice through the live app to a client contact
+with an operator-controlled email; the email arrived with the invoice PDF attached, rendering the full rose-analytics
+letterhead (company block + REMIT TO). Confirms: notifyClientOfInvoice fires post-issue, the provider-seam attachment
+path transmits real bytes via Resend, the client-contact recipient resolver works, and the populated company profile
+renders correctly. G1 CLOSED — the delivery half now matches the issue half. RESEND_API_KEY confirmed live in Vercel
+prod (a real email was delivered, not captured). Test data labeled "ZZ TEST — G1 email (delete me)" on prod client
+list — clean up when convenient.
