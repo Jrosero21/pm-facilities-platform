@@ -48,6 +48,20 @@ export const tenants = pgTable("tenants", {
   remitTo: text("remit_to"),
   phone: varchar("phone", { length: 64 }),
   email: varchar("email", { length: 255 }),
+  // ── vendor-WO batch 1 — DEFAULT DISPATCH INSTRUCTIONS (the system fallback) ──────────
+  // The aggregator's own standing boilerplate, used for any client that has not set its own.
+  // Same raw-template shape as clients.dispatch_instructions (free text with @tokens,
+  // substituted in batch 2) — this is the FALLBACK, not a wrapper: resolution picks ONE of the
+  // two, it never concatenates them.
+  //
+  // Why a tenant default exists at all: most clients will never need bespoke instructions, and
+  // without this the common case would be either an empty section on every work order or the
+  // same paragraph copied onto every client row — where a policy change then has to be applied
+  // N times and will be missed somewhere.
+  //
+  // NULLABLE + additive, mirroring remit_to above: a tenant that sets neither simply renders no
+  // instructions section, which is the correct degradation.
+  defaultDispatchInstructions: text("default_dispatch_instructions"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date()),
 });

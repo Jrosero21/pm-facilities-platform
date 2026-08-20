@@ -3,6 +3,7 @@ import {
   numeric,
   index,
   pgTable,
+  text,
   timestamp,
   uniqueIndex,
   varchar,
@@ -51,6 +52,25 @@ export const clients = pgTable(
     // when the tenant's autonomyEnabled + guardrails all pass. A HOLD-only conjunct in the gate —
     // it can only make `permitted` false, never widen. Never affects the manual/operator path.
     autonomyAllowed: boolean("autonomy_allowed").notNull().default(false),
+    // ── vendor-WO batch 1 — PER-CLIENT DISPATCH INSTRUCTIONS ──────────────────────────
+    // The standing boilerplate a vendor must be told every time this client's work is
+    // dispatched: check-in procedure, PO requirements, badging, invoicing rules, after-hours
+    // contact. Free text with @tokens (substituted in batch 2); this column holds the RAW
+    // template, never a rendered result.
+    //
+    // ★ THE FIRST FREE-TEXT COLUMN ON clients. Every other column here is a flag, a code, or an
+    // FK — the table could say what a client IS but never what working with them REQUIRES.
+    // Multi-line prose ⇒ text, mirroring tenants.remit_to rather than a length-capped varchar.
+    //
+    // NULLABLE and additive: null means "this client has nothing specific", which falls through
+    // to tenants.default_dispatch_instructions. Null is a real resting state here, not a
+    // transitional one — most clients will never need their own.
+    //
+    // Deliberately CLIENT-scoped, not location-scoped. client_location_access_notes already owns
+    // site-specific access detail (gate codes, dock info); this is the client's standing policy,
+    // which applies at every one of their sites. Keeping them apart stops one being edited in
+    // place of the other.
+    dispatchInstructions: text("dispatch_instructions"),
     // Phase 28 — when an autonomous action DOES fire for a consented client, the client must be
     // notified (contractual-notification need). COLUMN ONLY this batch — the send is not wired
     // (it fires only when an autonomous action fires, which needs the scheduled trigger; deferred).
