@@ -6,6 +6,7 @@ import { listActiveDispatchStatuses } from "@/server/dispatch-reference";
 import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { SendDispatchButton } from "@/components/send-dispatch-button";
 import { ApproveRedispatchButton } from "@/components/approve-redispatch-button";
+import { WorkOrderActions } from "@/components/work-order-actions";
 import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
@@ -101,6 +102,16 @@ export default async function AssignmentDetailPage({
           </div>
         ))}
       </dl>
+
+      {/* vendor-WO batch 4 — the work order for THIS assignment: view it, or re-send it to the
+          vendor. Placed directly under the facts because those are the values the document
+          renders, so an operator who has just checked or changed them acts here. */}
+      <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+        <p className="text-xs uppercase tracking-wide text-neutral-500">Work order</p>
+        <div className="mt-2">
+          <WorkOrderActions jobId={a.jobId} assignmentId={a.id} />
+        </div>
+      </div>
 
       {/* Facet snapshot — the audit story of why this vendor was matched at dispatch */}
       <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">

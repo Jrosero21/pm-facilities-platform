@@ -8,6 +8,7 @@ import { getJobDetail } from "@/server/jobs";
 import { getVendor } from "@/server/vendors";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { sendCommunication } from "@/server/communications";
+import { renderWorkOrderPdf } from "@/server/work-order-pdf";
 import { writeAuditLog } from "@/server/audit";
 import { formatMoney } from "@/lib/money";
 
@@ -154,6 +155,30 @@ export async function notifyVendorOfDispatch(input: {
     approvedScope: assignment.dispatchScope ?? null,
   });
 
+  // ── vendor-WO batch 4 — RENDER THE WORK ORDER BEFORE COMPOSING ──────────────────────
+  // Attached via G1's SendRequest.attachments seam. Rendering happens BEFORE the comm rows exist,
+  // mirroring notifyClientOfInvoice: a render that fails must not strand an orphan draft row.
+  //
+  // ★ WARN-NOT-BLOCK, AND WEAKER THAN THE INVOICE'S RULE ON PURPOSE. notifyClientOfInvoice
+  // REFUSES to mail an invoice whose PDF will not render, because a wrong invoice is worse than
+  // no invoice. Here the email is the operative act — it is what tells the vendor to show up —
+  // and the attachment is a convenience carrying facts already in the body. So a failed render
+  // downgrades to "send the email without it and record why", never to "do not dispatch".
+  let workOrder: { filename: string; bytes: Uint8Array } | null = null;
+  let workOrderSkipReason: string | null = null;
+  try {
+    const rendered = await renderWorkOrderPdf(input.tenantId, input.assignmentId);
+    if (rendered.kind === "ok") {
+      workOrder = { filename: rendered.filename, bytes: rendered.bytes };
+    } else {
+      workOrderSkipReason = rendered.kind;
+    }
+  } catch (err) {
+    // @react-pdf faults must not cost the vendor their dispatch email.
+    workOrderSkipReason = "render_error";
+    console.error("[dispatch-notify] work order render failed (email still sends):", err);
+  }
+
   // Compose the outbound_message + communication_logs pair inline (mirrors send-link.ts — no helper).
   const omId = uuidv7();
   await db.insert(outboundMessages).values({
@@ -173,7 +198,9 @@ export async function notifyVendorOfDispatch(input: {
     direction: "outbound",
     sourceType: "outbound_message",
     sourceId: omId,
-    summary: `Dispatch notification sent to ${recipientEmail}`,
+    summary: workOrder
+      ? `Dispatch notification + work order sent to ${recipientEmail}`
+      : `Dispatch notification sent to ${recipientEmail}`,
     recipientType: "vendor_contact",
     recipientId: assignment.vendorContactId ?? null,
     recipientEmail,
@@ -184,6 +211,17 @@ export async function notifyVendorOfDispatch(input: {
     tenantId: input.tenantId,
     commId: clId,
     actorUserId: input.actorUserId ?? "",
+    ...(workOrder
+      ? {
+          attachments: [
+            {
+              filename: workOrder.filename,
+              content: workOrder.bytes,
+              contentType: "application/pdf",
+            },
+          ],
+        }
+      : {}),
   });
 
   if (result.deliveryStatus === "sent") {
@@ -192,8 +230,18 @@ export async function notifyVendorOfDispatch(input: {
       jobId: assignment.jobId,
       eventType: "dispatch.notification_sent",
       actorUserId: input.actorUserId,
-      summary: `Dispatch notification emailed to ${recipientEmail}`,
-      metadata: { assignmentId: input.assignmentId, vendorId: assignment.vendorId, commId: clId },
+      summary: workOrder
+        ? `Dispatch notification + work order emailed to ${recipientEmail}`
+        : `Dispatch notification emailed to ${recipientEmail}`,
+      metadata: {
+        assignmentId: input.assignmentId,
+        vendorId: assignment.vendorId,
+        commId: clId,
+        // Records WHETHER the work order went and, when it did not, WHY — so an operator asking
+        // "did the vendor get the WO?" has an answer on the timeline rather than a guess.
+        workOrderAttached: workOrder !== null,
+        ...(workOrderSkipReason ? { workOrderSkipped: workOrderSkipReason } : {}),
+      },
     });
   }
 

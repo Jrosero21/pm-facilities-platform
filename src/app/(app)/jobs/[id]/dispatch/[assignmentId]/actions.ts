@@ -7,10 +7,48 @@ import { notifyVendorOfDispatch } from "@/server/dispatch-notify";
 import { approveRedispatch } from "@/server/redispatch-suggestion";
 import { sendAssignmentLink } from "@/server/magic-links/send-link";
 import { revokeToken } from "@/server/magic-links/token-core";
+import { resendWorkOrder } from "@/server/work-order-resend";
 
 export type SendDispatchState = { error: string } | null;
 export type LinkControlState = { error?: string; info?: string } | null;
 export type SetStatusState = { error?: string; info?: string } | null;
+export type ResendWorkOrderState = { error?: string; info?: string } | null;
+
+// vendor-WO batch 4 — operator re-sends the work order to the assignment's vendor.
+// Bound with (jobId, assignmentId). Re-RENDERS from current state, so the vendor receives the
+// document as it stands now (latest scope, NTE and dispatch instructions), not a stored copy.
+// Every outcome reports rather than throws: this is a deliberate operator action and the page
+// should tell them what happened.
+export async function resendWorkOrderAction(
+  jobId: string,
+  assignmentId: string,
+): Promise<ResendWorkOrderState> {
+  const ctx = await requireTenant();
+  const result = await resendWorkOrder({
+    tenantId: ctx.activeTenant.tenantId,
+    assignmentId,
+    actorUserId: ctx.user.id,
+  });
+
+  if (result.sent) {
+    revalidatePath(`/jobs/${jobId}/dispatch/${assignmentId}`);
+    revalidatePath(`/jobs/${jobId}`);
+    return { info: `Work order re-sent to ${result.recipientEmail}.` };
+  }
+
+  switch (result.reason) {
+    case "assignment_not_found":
+      return { error: "This dispatch no longer exists." };
+    case "no_vendor_email":
+      return { error: "No email on file for this vendor or contact — nothing was sent." };
+    case "work_order_not_renderable":
+      return { error: "The work order could not be produced, so nothing was sent." };
+    case "cooldown":
+      return { info: "That work order was just sent — give it a moment before resending." };
+    default:
+      return { error: "The work order could not be emailed. Please try again." };
+  }
+}
 
 // Operator mints + emails a fresh magic link to the assignment's vendor contact. Recipient is
 // checked before minting (no orphan token on a missing email). Bound with (jobId, assignmentId).
