@@ -2540,3 +2540,21 @@ VERIFIED END TO END 2026-08-19 against `pm_sandbox` (after applying migration 00
 whole company-profile batch): 200 with `$1,200.00` and both city lines in the bytes, 403 for a tenant member without
 a financial role, 307 unauthenticated, 404 for an unknown id, 409 for a cost-plus invoice. Migration 0006 is applied
 to sandbox and to local `pm`; ★ NOT YET TO NEON.
+
+---
+
+## Shipped: invoice PDF + shared-formatters + B slices 1-2 + 515-test suite (deployed affcf06)
+
+origin/main moved 2478152 -> affcf06 (22 commits) — first deploy in this arc. Shipped: invoice PDF export (per-tenant
+numbering mirroring tenant_job_sequences, @react-pdf renderer, on-demand stream download, cost_plus 409 guard until B),
+shared formatters (6 pure display modules wired into 33 files, 5 local duplicates deleted), vitest + 515-test suite,
+B slice 1 (line-item type DEFINITIONS as data, per-tenant, inert), B slice 2 (pure core: tenant rows resolve OVER
+built-in defaults, inert — no runtime reader yet), 0007 prod-apply SQL + audited company-profile setter.
+
+Neon prod: migrations 0006 (invoice numbering + 10 company-profile columns) + 0007 (line_item_pricing_model enum +
+tenant_line_item_types) both APPLIED via direct DDL (neondb-confirmed, ON_ERROR_STOP). Schema ahead of code by design
+(both additive, inert). G7 confirmed: RESEND_API_KEY set in Vercel prod env (email transmits, not captures).
+
+Foundation status: G6 CLOSED (free-text jobs.scopeOfWork is the accepted non-AI scope mode — dispatches via
+approvedScopeOfWork ?? scopeOfWork; no build). G7 CLOSED (RESEND live in prod). G1 NEXT (invoice email delivery).
+Deferred prod data: rose-analytics company profile columns still NULL (PDF renders name-only until populated).
