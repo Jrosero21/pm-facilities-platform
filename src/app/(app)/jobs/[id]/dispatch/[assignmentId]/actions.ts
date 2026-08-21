@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
 import { sendDispatch, setAssignmentStatus } from "@/server/dispatch";
 import { notifyVendorOfDispatch } from "@/server/dispatch-notify";
@@ -14,6 +15,7 @@ import {
   operatorRecordEta,
 } from "@/server/operator-presence";
 import { canSeeOperations } from "@/server/role-predicates";
+import { operatorRedispatchAfterCancellation } from "@/server/redispatch-cancellation";
 
 export type SendDispatchState = { error: string } | null;
 export type LinkControlState = { error?: string; info?: string } | null;
@@ -314,4 +316,61 @@ export async function recordVendorPresenceAction(
     }
     throw err;
   }
+}
+
+export type VendorCancelledState = { error?: string } | null;
+
+// ── FOUNDATION Gap 5 — choreography outcome 1(c) ──────────────────────────────────────
+// "The vendor phoned and cancelled." Closes the assignment as DECLINED (the honest word — they
+// responded and said no), opens the linked replacement DRAFT, and REDIRECTS the operator to the
+// pre-filled dispatch form to pick the new vendor.
+//
+// Distinct from the exceptions queue's SuggestReplacement, which is for jobs the SYSTEM flagged as
+// stuck (vendor went silent). This one is operator-initiated on a KNOWN cancellation, and it must
+// never close the old assignment as GHOSTED — see redispatch-cancellation-rules.ts.
+export async function vendorCancelledRedispatchAction(
+  jobId: string,
+  assignmentId: string,
+  _prev: VendorCancelledState,
+  formData: FormData,
+): Promise<VendorCancelledState> {
+  const ctx = await requireTenant();
+  if (!canSeeOperations(ctx)) return { error: "You don't have access to dispatch actions." };
+
+  const rawReason = formData.get("reason");
+  const reason = typeof rawReason === "string" && rawReason.trim() !== "" ? rawReason.trim() : null;
+
+  let replacementId: string;
+  try {
+    const result = await operatorRedispatchAfterCancellation({
+      tenantId: ctx.activeTenant.tenantId,
+      assignmentId,
+      reason,
+      actorUserId: ctx.user.id,
+    });
+    replacementId = result.replacementAssignmentId;
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "ASSIGNMENT_NOT_FOUND":
+          return { error: "This dispatch no longer exists." };
+        case "ASSIGNMENT_NOT_CANCELLABLE":
+          return {
+            error:
+              "This dispatch can't be cancelled from its current state — it's already closed, or the vendor is on site.",
+          };
+        case "CANCELLATION_NOTE_TOO_LONG":
+          return { error: "That reason is too long — keep it under 500 characters." };
+        case "VENDOR_NOT_FOUND":
+        case "JOB_NOT_FOUND":
+          return { error: "Could not open a replacement dispatch — please reload and try again." };
+      }
+    }
+    throw err;
+  }
+
+  revalidatePath(`/jobs/${jobId}`);
+  revalidatePath(`/jobs/${jobId}/dispatch/${assignmentId}`);
+  // Land the operator on the linked replacement DRAFT so they can change the vendor and send.
+  redirect(`/jobs/${jobId}/dispatch/${replacementId}`);
 }

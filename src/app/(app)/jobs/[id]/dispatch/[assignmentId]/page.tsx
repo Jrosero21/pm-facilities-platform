@@ -8,6 +8,8 @@ import { SendDispatchButton } from "@/components/send-dispatch-button";
 import { ApproveRedispatchButton } from "@/components/approve-redispatch-button";
 import { WorkOrderActions } from "@/components/work-order-actions";
 import { RecordVendorPresence } from "@/components/record-vendor-presence";
+import { VendorCancelledButton } from "@/components/vendor-cancelled-button";
+import { CANCELLABLE_ASSIGNMENT_STATUSES } from "@/server/redispatch-cancellation-rules";
 import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
@@ -109,8 +111,17 @@ export default async function AssignmentDetailPage({
           facet snapshot which is read-only history. */}
       <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
         <p className="text-xs uppercase tracking-wide text-neutral-500">Vendor updates</p>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-start gap-3">
           <RecordVendorPresence jobId={a.jobId} assignmentId={a.id} />
+          {/* Gap 5 — outcome 1(c). Only while the dispatch is live: a cancellation cannot be
+              recorded against something already closed, or against a vendor already on site. */}
+          {(CANCELLABLE_ASSIGNMENT_STATUSES as readonly string[]).includes(a.statusCode) && (
+            <VendorCancelledButton
+              jobId={a.jobId}
+              assignmentId={a.id}
+              vendorName={a.vendorName}
+            />
+          )}
         </div>
       </div>
 
