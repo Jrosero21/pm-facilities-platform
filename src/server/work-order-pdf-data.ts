@@ -138,7 +138,7 @@ export async function loadWorkOrderPdfData(
       : Promise.resolve(null),
     job.clientLocationId ? getLocation(tenantId, job.clientLocationId) : Promise.resolve(null),
     // Batch 2 — the token context AND the client/tenant template resolution in one call.
-    assembleDispatchContext(tenantId, assignment.jobId),
+    assembleDispatchContext(tenantId, assignment.jobId, assignment.id),
   ]);
 
   // Substitute the tokens. A job with no configured template yields an empty string, which the

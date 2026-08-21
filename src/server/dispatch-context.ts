@@ -6,9 +6,11 @@ import { tenants } from "@/server/schema";
 import { getJobDetail } from "@/server/jobs";
 import { getLocation } from "@/server/client-locations";
 import { getJobCoordinator } from "@/server/job-coordinator";
+import { getAssignmentDetail } from "@/server/dispatch";
 import { resolveDispatchInstructions } from "@/server/dispatch-instructions";
 import {
   renderDispatchTemplate,
+  resolveTemplateNte,
   siteAddressLine,
   type DispatchTemplateContext,
   type RenderedDispatchTemplate,
@@ -50,15 +52,24 @@ export type AssembledDispatchContext = {
 export async function assembleDispatchContext(
   tenantId: string,
   jobId: string,
+  /**
+   * ★ THE VENDOR'S OWN CEILING. When a work order is being rendered FOR an assignment, {nte}/{dne}
+   * must resolve to that assignment's agreed NTE — the figure this vendor accepted and the same one
+   * the PDF's NTE box prints. Without it the token fell back to jobs.not_to_exceed_amount, so a
+   * template saying "NTE: {nte}" could render blank (or, worse, a DIFFERENT number) beside a box
+   * showing the real ceiling. The job's NTE remains the answer when no assignment is in scope.
+   */
+  assignmentId?: string,
 ): Promise<AssembledDispatchContext | null> {
   const job = await getJobDetail(tenantId, jobId);
   if (!job) return null;
 
-  const [location, coordinator, tenantRows, instructions] = await Promise.all([
+  const [location, coordinator, tenantRows, instructions, assignment] = await Promise.all([
     job.clientLocationId ? getLocation(tenantId, job.clientLocationId) : Promise.resolve(null),
     getJobCoordinator(tenantId, jobId),
     db.select({ phone: tenants.phone }).from(tenants).where(eq(tenants.id, tenantId)).limit(1),
     resolveDispatchInstructions(tenantId, job.clientId),
+    assignmentId ? getAssignmentDetail(tenantId, assignmentId) : Promise.resolve(null),
   ]);
 
   const context: DispatchTemplateContext = {
@@ -70,7 +81,8 @@ export async function assembleDispatchContext(
     priorityName: job.priorityName ?? null,
     // The SAME fallback order createDispatch uses, so the token and the dispatch agree.
     scope: job.approvedScopeOfWork ?? job.scopeOfWork ?? null,
-    notToExceedAmount: job.notToExceedAmount ?? null,
+    // The precedence rule is PURE and unit-tested — see resolveTemplateNte.
+    notToExceedAmount: resolveTemplateNte(assignment?.agreedNteAmount, job.notToExceedAmount),
     coordinatorName: coordinator?.name ?? null,
     coordinatorEmail: coordinator?.email ?? null,
     coordinatorPhone: tenantRows[0]?.phone ?? null,
@@ -98,8 +110,15 @@ export type RenderedDispatchInstructions = RenderedDispatchTemplate & {
 export async function renderDispatchInstructionsForJob(
   tenantId: string,
   jobId: string,
+  /**
+   * Optional, and threaded for the SAME reason the assembler takes it: {nte}/{dne} must resolve
+   * the vendor's agreed ceiling whichever entry point renders the template. Without this a
+   * job-level preview would show a blank NTE while the work order for the same job showed
+   * $1,200 — the two entry points disagreeing about the one number that caps spend.
+   */
+  assignmentId?: string,
 ): Promise<RenderedDispatchInstructions | null> {
-  const assembled = await assembleDispatchContext(tenantId, jobId);
+  const assembled = await assembleDispatchContext(tenantId, jobId, assignmentId);
   if (!assembled) return null;
   const rendered = renderDispatchTemplate(assembled.rawTemplate, assembled.context);
   return {

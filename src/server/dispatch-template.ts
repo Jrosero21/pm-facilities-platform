@@ -208,6 +208,39 @@ export function renderDispatchTemplate(
   };
 }
 
+/**
+ * ★ WHICH NTE A TEMPLATE MEANS. Pure, and extracted here rather than left inline in the DB
+ * assembler so the precedence is unit-testable — the rule is the fix, and a rule nothing asserts
+ * is a rule that silently regresses.
+ *
+ * On a work order "the NTE" is the ASSIGNMENT's agreed ceiling: the figure this vendor accepted,
+ * and the same one the PDF's NTE box prints. The job's not_to_exceed_amount is the internal
+ * authorisation and answers only when no assignment is in scope (a job-level preview before any
+ * dispatch exists). Reading the job's value while an assignment existed is what let a template say
+ * "NTE: " blank — or worse, a DIFFERENT number — beside a box showing the real ceiling.
+ */
+export function resolveTemplateNte(
+  assignmentAgreedNte: string | null | undefined,
+  jobNotToExceed: string | null | undefined,
+): string | null {
+  return assignmentAgreedNte ?? jobNotToExceed ?? null;
+}
+
+// ── PARTIAL-LINE LIMITATION (accepted, documented, deliberately not parsed) ───────────
+// A token that resolves EMPTY *mid-line* can leave a dangling connective — "contact {coordinator}
+// at {coordinatoremail} or {coordinatorphone}." renders as "...at a@b or ." when no phone exists.
+// The line-drop rule above does not catch it, by design: some tokens on that line DID resolve, so
+// the line still carries real facts and must not be discarded.
+//
+// NOT FIXED BY A PARSER, deliberately. Trimming a trailing "or"/"and" plus orphaned punctuation
+// would be English-only, end-of-line-only, and would have to be right about prose it cannot see —
+// more machinery than a rare cosmetic case justifies, and a new rule that can itself be wrong.
+//
+// MITIGATED INSTEAD BY DATA: the case only arises when a referenced value is absent, so keeping
+// tenants.phone populated (prod is; local now matches) removes it in practice. Template authors
+// can also structure contact lines to tolerate an absent value — put each contact method on its
+// own line, and the existing line-drop rule handles it cleanly.
+
 /** Build the one-line site address from location parts. Exported so the assembler and any future
  *  caller format it identically (it is the shared formatter, not a local variant). */
 export function siteAddressLine(parts: {

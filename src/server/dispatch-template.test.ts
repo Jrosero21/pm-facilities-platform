@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DISPATCH_TOKENS,
   renderDispatchTemplate,
+  resolveTemplateNte,
   siteAddressLine,
   type DispatchTemplateContext,
 } from "@/server/dispatch-template";
@@ -226,5 +227,108 @@ describe("siteAddressLine", () => {
         postalCode: null,
       }),
     ).toBeNull();
+  });
+});
+
+// ── FIX 1 REGRESSION GUARD — which NTE a template means ───────────────────────────────
+// The bug this locks: {nte} read jobs.not_to_exceed_amount while the work order's NTE box read
+// assignment.agreed_nte_amount, so a template saying "NTE: {nte}" rendered BLANK beside a box
+// showing $1,200.00 — the two disagreeing about the one number that caps a vendor's spend.
+describe("resolveTemplateNte — the assignment's ceiling wins", () => {
+  it("prefers the assignment's agreed NTE over the job's", () => {
+    expect(resolveTemplateNte("1200.00", "5000.00")).toBe("1200.00");
+  });
+
+  it("uses the assignment's NTE even when the job has none — the original bug", () => {
+    expect(resolveTemplateNte("1200.00", null)).toBe("1200.00");
+  });
+
+  it("falls back to the job's NTE only when no assignment is in scope", () => {
+    expect(resolveTemplateNte(null, "5000.00")).toBe("5000.00");
+    expect(resolveTemplateNte(undefined, "5000.00")).toBe("5000.00");
+  });
+
+  it("is null when neither exists", () => {
+    expect(resolveTemplateNte(null, null)).toBeNull();
+    expect(resolveTemplateNte(undefined, undefined)).toBeNull();
+  });
+});
+
+describe("{nte}/{dne} render the assignment's agreed NTE", () => {
+  // The end-to-end shape of the fix: the assembler feeds resolveTemplateNte's output into the
+  // context, so a template renders the vendor's own ceiling — never blank while a box shows a figure.
+  const ctx = (over: Partial<DispatchTemplateContext>): DispatchTemplateContext => ({
+    ...EMPTY,
+    ...over,
+  });
+
+  it("renders $1,200.00, not blank, when the assignment carries the ceiling", () => {
+    const c = ctx({ notToExceedAmount: resolveTemplateNte("1200.00", null) });
+    expect(renderDispatchTemplate("NTE: {nte}", c).text).toBe("NTE: $1,200.00");
+    expect(renderDispatchTemplate("NTE: {dne}", c).text).toBe("NTE: $1,200.00");
+  });
+
+  it("does NOT drop the NTE line when an assignment ceiling exists", () => {
+    const c = ctx({ notToExceedAmount: resolveTemplateNte("1200.00", null) });
+    const { text, missing } = renderDispatchTemplate("Site rules apply.\nNTE: {nte}", c);
+    expect(missing).toEqual([]);
+    expect(text).toBe("Site rules apply.\nNTE: $1,200.00");
+  });
+
+  it("never renders the job's NTE while an assignment ceiling exists", () => {
+    const c = ctx({ notToExceedAmount: resolveTemplateNte("1200.00", "5000.00") });
+    const { text } = renderDispatchTemplate("{nte}", c);
+    expect(text).toBe("$1,200.00");
+    expect(text).not.toContain("5,000");
+  });
+
+  // The pre-fix behaviour, kept explicit: with genuinely no assignment the job's value is correct.
+  it("renders the job's NTE when there is no assignment", () => {
+    const c = ctx({ notToExceedAmount: resolveTemplateNte(null, "5000.00") });
+    expect(renderDispatchTemplate("{nte}", c).text).toBe("$5,000.00");
+  });
+});
+
+// ── FIX 2 — the partial-line limitation, ACCEPTED and pinned rather than parsed ────────
+// A token resolving empty MID-line leaves a dangling connective. This is not fixed by a parser
+// (English-only, end-of-line-only, and it would have to be right about prose it cannot see);
+// it is mitigated by keeping the referenced data populated. These tests pin BOTH halves so the
+// decision is visible in the suite rather than only in a comment.
+describe("partial-line limitation (documented, not parsed)", () => {
+  const CONTACT = "Questions: contact {coordinator} at {coordinatoremail} or {coordinatorphone}.";
+  const withPhone: DispatchTemplateContext = {
+    ...EMPTY,
+    coordinatorName: "Jonny Rosero",
+    coordinatorEmail: "ops@example.test",
+    coordinatorPhone: "4155550142",
+  };
+
+  it("renders cleanly when the referenced data IS populated — the mitigation", () => {
+    const { text, missing } = renderDispatchTemplate(CONTACT, withPhone);
+    expect(missing).toEqual([]);
+    expect(text).toBe(
+      "Questions: contact Jonny Rosero at ops@example.test or 4155550142.",
+    );
+  });
+
+  // Pinned as KNOWN behaviour, not asserted as desirable: with no phone the connective dangles.
+  // If a trimmer is ever built, this expectation is the one that should change.
+  it("leaves a dangling connective when a mid-line token is empty (known limit)", () => {
+    const { text, missing } = renderDispatchTemplate(CONTACT, {
+      ...withPhone,
+      coordinatorPhone: null,
+    });
+    expect(missing).toEqual(["coordinatorphone"]);
+    expect(text).toBe("Questions: contact Jonny Rosero at ops@example.test or .");
+  });
+
+  // The author-side mitigation: one contact method per line lets the existing drop rule work.
+  it("drops the line cleanly when the empty token is alone on its own line", () => {
+    const { text } = renderDispatchTemplate(
+      "Questions: contact {coordinator}\nEmail: {coordinatoremail}\nPhone: {coordinatorphone}",
+      { ...withPhone, coordinatorPhone: null },
+    );
+    expect(text).toBe("Questions: contact Jonny Rosero\nEmail: ops@example.test");
+    expect(text).not.toContain("Phone:");
   });
 });
