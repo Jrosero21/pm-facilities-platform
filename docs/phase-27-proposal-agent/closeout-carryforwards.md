@@ -2762,3 +2762,42 @@ on a client (the audited setter) with real tokens + client SOPs + protective lan
 app and LOOK AT IT (needs the Gate-B local-auth wall resolved, OR prove in prod on a controlled test dispatch);
 (d) test dispatch -> confirm the vendor (operator-controlled email) receives the WO PDF with filled tokens; (e) test
 resend after a scope/NTE change. Only after (c)+(d) does this touch a real vendor.
+
+---
+
+## VENDOR WORK ORDER — STATUS UPDATE: DONE + PROVEN + READY TO SHIP (supersedes the "unproven" status above)
+
+The vendor WO feature is now COMPLETE on branch vendor-work-order (7 commits ahead of main, 1 BEHIND — see the
+merge note in the ship gates below; it is no longer a clean fast-forward):
+- BUILT — 5 batches (59ecc30 b0 -> c86bf24 b4), see the full entry above.
+- SEEN — Jonny viewed the rendered WO PDF (WO-1, Bay Area HVAC, Acme Retail Co) in the local app. Layout confirmed
+  professional: letterhead, ISSUED TO / SERVICE LOCATION two-column blocks, shaded SCOPE box, bordered NOT TO EXCEED
+  box with protective language in red, DISPATCH INSTRUCTIONS section (client SOP + protective language), clean
+  page-break across 2 pages with footer. The confidentiality mirror HOLDS — only money on the doc is the vendor's
+  agreed NTE ($1,200); no client pricing/markup.
+- FIXED — Fix 1 (7de5821): {nte}/{dne} now resolve from assignment.agreedNteAmount (was jobs.not_to_exceed_amount),
+  extracted to pure resolveTemplateNte, so the token matches the PDF's NTE box; both entry points threaded; 9 tests.
+  Fix 2: chose (b) — no connective-parser; documented the partial-line limit + pinned it with a known-behavior test.
+- PHONE CLOSED — tenants.phone = (949) 264-2223 set on BOTH prod (neondb, audited, one-field PATCH, audit row
+  {"changedFields":["phone"]}) and local, so {coordinatorphone} resolves and the dangling " or ." no longer arises.
+  (Earlier brief premise "prod phone populated" was FALSE — prod was null from Gate A; now fixed.)
+- TESTED — 611/611 green (tsc 0, lint 0, build 0).
+
+★ REMAINING TO SHIP (the prod gates — a FRESH, careful sequence next session):
+  1. Apply Neon migrations 0008 (+ its SEPARATE data backfill — a DATA write, confirm-target discipline) + 0009 (both
+     additive) — a prod gate, neondb-confirmed, ON_ERROR_STOP.
+  2. Merge vendor-work-order -> main + push (deploy; 7 commits). ★ NOT a clean fast-forward any more: main moved ahead
+     by 31f7286 (the per-user-phone bank entry, committed straight to main), so the branch is 7 ahead / 1 behind.
+     Rebase onto main or take a merge commit — decide deliberately; both touch the SAME bank file
+     (closeout-carryforwards.md), so expect a conflict there and resolve by keeping BOTH entries.
+  3. Set a real client dispatch template in prod (the audited setter) + confirm the WO renders live.
+  Only after those does the WO reach a real vendor. Do the migrations FRESH, not at the tail of a long session.
+
+BANKED FOR LATER (not ship-blocking): per-user {coordinatorphone} (users.phone + extension + profile surface,
+tenants.phone as fallback) + applying formatPhone in the token resolver (currently renders raw; agrees with the
+COORDINATOR block only by stored-format luck) — do together, see 31f7286 (that entry is on MAIN, not on this branch
+yet). Also: set-company-profile.ts can't do a partial patch (needed a scratch shim, since deleted) — worth adding
+partial-patch support next time a single field needs updating. Reassignment UI still unbuilt (assigned_user_id
+defaults to creator; when reassignment lands it MUST write an event). Neither template-styling nor template-authoring
+dedup (the "DISPATCH INSTRUCTIONS" header repeat, site/scope duplication) touched — template-authoring is Jonny's
+lever; Option A (free-form) vs B (template = policy only, system renders fields) still open.
