@@ -2801,3 +2801,48 @@ partial-patch support next time a single field needs updating. Reassignment UI s
 defaults to creator; when reassignment lands it MUST write an event). Neither template-styling nor template-authoring
 dedup (the "DISPATCH INSTRUCTIONS" header repeat, site/scope duplication) touched — template-authoring is Jonny's
 lever; Option A (free-form) vs B (template = policy only, system renders fields) still open.
+
+---
+
+## ★★ NON-AI FOUNDATION PROVEN — structurally + dynamically (the fallback thesis, demonstrated)
+
+STRUCTURAL PROOF (import-graph audit): zero hard-AI dependencies on the manual work-order path. Every lifecycle step
+(create/scope/dispatch/vendor-rank/status+auto-follow/WO-PDF/vendor-invoice/client-invoice/close) has 0 @/server/agents
+imports, verified by import graph not keywords. All 7 agent_run_id-NOT-NULL columns sit in AGENT-OWNED tables (proposal/
+invoice/rewriter/substrate/vendor-followup/scope-generation) — NONE on core lifecycle tables (jobs, assignments,
+invoices, statuses have no agent FK). "Every agent surface is a parallel draft lane hanging off the spine, never a step
+in it." G6 scope-gen (the one hard-AI path) bypassed by dispatch.ts:266 approvedScopeOfWork ?? scopeOfWork. Vendor
+ranking is deterministic SQL (trade/geo/compliance/MIN-priority), not an LLM. Auto-follow is a static lookup table
+(DISPATCH_TO_JOB_ADVANCE), not inference.
+
+DYNAMIC PROOF (Chrome-agent A-Z dry run in PROD, Job #6 01a024d2..., zero AI used): create → dispatch → send → vendor
+statuses → vendor invoice → client invoice → close, ALL completed live. ★ Auto-follow fired as designed: send→
+Dispatched, ON_SITE→In Progress, WORK_COMPLETE→Pending Invoice, close→Closed(Billed). Margin AR $600 − AP $450 = +$150.
+The platform runs a complete work order with a human at every step and NO AI. THE FALLBACK THESIS IS PROVEN BOTH WAYS.
+
+★ DYNAMIC PROOF INDEPENDENTLY RE-VERIFIED AGAINST neondb AFTER THE RUN (read-only, machine-checked, not taken on
+report): job #6 = 01a024d2-2737-761c-aa49-125db4378848, status CLOSED_BILLED, client Client A. job_status_history
+carries EXACTLY the claimed chain, five rows in order — NEW 14:55:47 → DISPATCHED 16:01:34 → IN_PROGRESS 16:05:35 →
+PENDING_INVOICE 16:06:16 → CLOSED_BILLED 16:17:10. AR: TEST-CI-001, status sent, subtotal 600.00 / total 600.00.
+AP: status approved, total 450.00 → margin +150.00 confirmed by arithmetic on the live rows. Two assignments on the
+job: 01a0250e... WORK_COMPLETE (the real one) and 01a024d7... DRAFT (the F2 orphan, still present).
+
+FINDINGS from the dry run (5):
+  ★ F1 (REAL BUG) — dispatch/invoice send reads only CONTACT RECORDS, ignores the entity's MAIN email. Mr Nice Guy had
+    a main email (jonny@roseaandd.com) the dispatch flow ignored; Client A had no contact → no recipient. A vendor/
+    client with a main email but no contact record gets NO notification. FIX: fall back to main email when no contact.
+    ★ CODE NOTE: dispatch-notify.ts ALREADY has this fallback (contact email ?? vendor.mainEmail) — so F1 is NOT
+    uniformly true and needs narrowing before the fix. The gap is on the CLIENT side (notifyClientOfInvoice resolves
+    ONLY via listClientContacts; clients have no main-email column at all) and in whatever surface reported no vendor
+    recipient. Re-diagnose per-path rather than applying one blanket fix.
+  ★ F2 (design gap) — vendor/client contact is SNAPSHOTTED at dispatch creation; adding a contact after doesn't fix an
+    existing dispatch (had to re-dispatch). Left an orphan DRAFT dispatch on Job #6 (01a024d7...) to clean up. DECIDE:
+    intended (dispatch captures who it went to) or should recipient re-resolve?
+  ★ F3 (REAL UX BUG) — "Send (issue)" did NOTHING on the first 2 clicks (no error/spinner, stayed draft), fired on the
+    3rd; "Create dispatch" hung ~20s. Risk: operator thinks it's broken, double-submits. INVESTIGATE (slow server
+    action / missing loading state / race). ★ NOTE: the resend cooldown built for the WO (60s, server-side) exists
+    precisely for this class of double-submit; the AR/dispatch sends have no equivalent guard.
+  F4 (minor) — vendor-invoice timeline event shows $0.00 because line items are added AFTER create (create form has no
+    amount field). Cosmetic.
+  F5 (not a gap) — Chrome couldn't render PDFs in-browser (they download as attachments). WO PDF render already proven
+    separately (prod WO verification: all tokens filled, no dangling connective). Optionally eyeball the download.
