@@ -2671,3 +2671,25 @@ of whether the email left).
      prod invoke against a stuck-assignment state).
 
 Green: tsc 0, 573/573 (554 + 19 new), lint clean, build 0.
+
+---
+
+★ {coordinatorphone} SHOULD be per-USER, not the tenant company line (operator-articulated). The coordinator is a
+PERSON (the assigned operator); each has their own phone / extension / mobile. Current state: users has no phone, so
+{coordinatorphone} resolves from tenants.phone (company line) — an INTERIM fallback, not the right model. RIGHT
+END-STATE: add users.phone (+ phone_extension, + a "use mobile" notion), a user-profile settings surface for each
+operator to set their own, and resolve {coordinatorphone} as: coordinator's own phone (w/ extension) -> fall back to
+tenants.phone. This is a USER-PROFILE enrichment, connects to the deferred tenant/user-settings surface (CF-23.1).
+Interim prod value: tenants.phone = 949-264-2223 set for rose-analytics. Not WO-ship-blocking (company line works as
+fallback); build per-user phone deliberately as its own scoped work.
+
+TWO IMPLEMENTATION NOTES FOUND WHILE SETTING THE INTERIM VALUE:
+  1. lib/phone.ts formatPhone ALREADY parses a trailing extension ("5551234567 x89", "555-123-4567 ext 200") and
+     renders it as " x89". So the per-user extension has a display path already — the gap is storage + a settings
+     surface, not formatting.
+  2. ★ THE {coordinatorphone} TOKEN RENDERS THE RAW STORED VALUE — the registry resolves c.coordinatorPhone directly
+     with no formatPhone, unlike the WO PDF's COORDINATOR block which does format it. So a digits-only stored value
+     renders as "4155550100" inside dispatch instructions while the same number reads "(415) 555-0100" in the
+     coordinator block of the same document. Interim mitigation: store an already-formatted value ("(949) 264-2223").
+     PROPER FIX (small, do with the per-user work): apply formatPhone in the token resolver so storage format stops
+     mattering.
