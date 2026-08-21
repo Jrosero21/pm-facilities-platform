@@ -7,6 +7,7 @@ import { DispatchStatusBadge } from "@/components/dispatch-status-badge";
 import { SendDispatchButton } from "@/components/send-dispatch-button";
 import { ApproveRedispatchButton } from "@/components/approve-redispatch-button";
 import { WorkOrderActions } from "@/components/work-order-actions";
+import { RecordVendorPresence } from "@/components/record-vendor-presence";
 import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
@@ -102,6 +103,16 @@ export default async function AssignmentDetailPage({
           </div>
         ))}
       </dl>
+
+      {/* FOUNDATION Gap 1 — record what the vendor said when they phone the coordinator. Sits
+          beside the work order because both are things an operator DOES here, and above the
+          facet snapshot which is read-only history. */}
+      <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+        <p className="text-xs uppercase tracking-wide text-neutral-500">Vendor updates</p>
+        <div className="mt-2">
+          <RecordVendorPresence jobId={a.jobId} assignmentId={a.id} />
+        </div>
+      </div>
 
       {/* vendor-WO batch 4 — the work order for THIS assignment: view it, or re-send it to the
           vendor. Placed directly under the facts because those are the values the document

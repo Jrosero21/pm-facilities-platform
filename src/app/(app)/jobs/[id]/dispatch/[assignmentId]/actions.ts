@@ -8,6 +8,12 @@ import { approveRedispatch } from "@/server/redispatch-suggestion";
 import { sendAssignmentLink } from "@/server/magic-links/send-link";
 import { revokeToken } from "@/server/magic-links/token-core";
 import { resendWorkOrder } from "@/server/work-order-resend";
+import {
+  operatorRecordCheckIn,
+  operatorRecordCheckOut,
+  operatorRecordEta,
+} from "@/server/operator-presence";
+import { canSeeOperations } from "@/server/role-predicates";
 
 export type SendDispatchState = { error: string } | null;
 export type LinkControlState = { error?: string; info?: string } | null;
@@ -227,6 +233,83 @@ export async function approveRedispatchAction(
         case "JOB_NOT_FOUND":
         case "STATUS_NOT_FOUND":
           return { error: "Could not approve the re-dispatch — please reload and try again." };
+      }
+    }
+    throw err;
+  }
+}
+
+export type PresenceState = { error?: string; info?: string } | null;
+
+// ── FOUNDATION Gap 1 — the operator presence door ─────────────────────────────────────
+// One action for all three kinds; the form's `kind` field selects. Bound with (jobId,
+// assignmentId). Gated canSeeOperations — recording what a vendor said on the phone is ordinary
+// dispatch work, the same tier as advancing the assignment status, and carries no money.
+//
+// ★ These RECORD only. None of them advances the assignment status — that stays the
+// DispatchStatusPicker's job (see operator-presence.ts for why the two are kept separable).
+// The single exception is the ETA form's "also update the scheduled time" checkbox, which is
+// opt-in and touches scheduledStartAt, not status.
+export async function recordVendorPresenceAction(
+  jobId: string,
+  assignmentId: string,
+  _prev: PresenceState,
+  formData: FormData,
+): Promise<PresenceState> {
+  const ctx = await requireTenant();
+  if (!canSeeOperations(ctx)) return { error: "You don't have access to dispatch actions." };
+
+  const tenantId = ctx.activeTenant.tenantId;
+  const kind = String(formData.get("kind") ?? "");
+  const rawNote = formData.get("note");
+  const note = typeof rawNote === "string" && rawNote.trim() !== "" ? rawNote.trim() : null;
+
+  // datetime-local yields "YYYY-MM-DDTHH:mm" (browser wall clock). Blank ⇒ the server default.
+  const rawWhen = formData.get("occurredAt");
+  const when =
+    typeof rawWhen === "string" && rawWhen.trim() !== "" ? new Date(rawWhen) : undefined;
+
+  try {
+    if (kind === "eta") {
+      if (!when) return { error: "An ETA needs a date and time." };
+      const rawEnd = formData.get("etaEndAt");
+      const end = typeof rawEnd === "string" && rawEnd.trim() !== "" ? new Date(rawEnd) : null;
+      const updateSchedule = formData.get("updateSchedule") === "on";
+      await operatorRecordEta({
+        tenantId, assignmentId, etaStartAt: when, etaEndAt: end, note,
+        updateSchedule, actorUserId: ctx.user.id,
+      });
+      revalidatePath(`/jobs/${jobId}/dispatch/${assignmentId}`);
+      revalidatePath(`/jobs/${jobId}`);
+      return {
+        info: updateSchedule
+          ? "ETA recorded and the scheduled time updated."
+          : "ETA recorded.",
+      };
+    }
+
+    if (kind === "check_in" || kind === "check_out") {
+      const fn = kind === "check_in" ? operatorRecordCheckIn : operatorRecordCheckOut;
+      await fn({ tenantId, assignmentId, occurredAt: when, note, actorUserId: ctx.user.id });
+      revalidatePath(`/jobs/${jobId}/dispatch/${assignmentId}`);
+      revalidatePath(`/jobs/${jobId}`);
+      return { info: kind === "check_in" ? "Check-in recorded." : "Check-out recorded." };
+    }
+
+    return { error: "Pick what you're recording." };
+  } catch (err) {
+    if (err instanceof Error) {
+      switch (err.message) {
+        case "ASSIGNMENT_NOT_FOUND":
+          return { error: "This dispatch no longer exists." };
+        case "PRESENCE_OCCURRED_AT_INVALID":
+          return { error: "That date and time couldn't be read." };
+        case "PRESENCE_OCCURRED_AT_FUTURE":
+          return { error: "A check-in or check-out can't be in the future — use an ETA for that." };
+        case "PRESENCE_ETA_END_BEFORE_START":
+          return { error: "The ETA window ends before it starts." };
+        case "PRESENCE_NOTE_TOO_LONG":
+          return { error: "That note is too long — keep it under 500 characters." };
       }
     }
     throw err;
