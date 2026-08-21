@@ -2846,3 +2846,59 @@ FINDINGS from the dry run (5):
     amount field). Cosmetic.
   F5 (not a gap) — Chrome couldn't render PDFs in-browser (they download as attachments). WO PDF render already proven
     separately (prod WO verification: all tokens filled, no dangling connective). Optionally eyeball the download.
+
+---
+
+## ★ COORDINATOR CHOREOGRAPHY — the real smooth-path workflow (mapped) + Gap 1 built
+
+Testing the A-Z dry run surfaced that the STATUS SPINE is the skeleton but the real coordinator work is the
+CHOREOGRAPHY between statuses — the manual touchpoints on every job. Mapped in three artifacts (in /outputs, not
+committed to repo): the full lifecycle+decision map, and the coordinator-choreography map (the smooth-path daily
+workflow). Jonny's framing: these touchpoints BELONG in the foundational architecture — the foundation isn't done at
+the mechanical A-Z; it's done when a coordinator can run their ACTUAL DAY manually.
+
+THE SMOOTH-PATH CHOREOGRAPHY (every job, ~6 touchpoints):
+  1. Day-of follow-up call to tech. Three outcomes: (a) on-time -> note; (b) RUNNING LATE -> update the ETA + note,
+     stay on this dispatch (vendor still coming); (c) CAN'T MAKE IT / CANCELS -> vendor is OUT, find a NEW vendor,
+     process RESTARTS at DISPATCH (re-dispatch — same as the ghosted auto-redispatch, but manually triggered).
+  2. Check-in on arrival (tech often phones "I'm on site") -> note, times on-site duration.
+  3. Completion verification: coordinator calls AFTER the job was supposed to be done to verify it actually was
+     (assuming they were there because they said so) — a LAST confirmation before billing.
+
+FOUR FOUNDATION GAPS the choreography needs (the manual floor for the coordinator's real day):
+  ★ GAP 1 (BUILT this session, adf4a4d, branch operator-presence) — the presence layer (vendor_eta_confirmations,
+    vendor_check_ins, vendor_check_outs) EXISTED with writers but was VENDOR-ONLY (vendorScope-guarded, structurally
+    unreachable from the operator console). Same shape as G2's phone_call. Built operator-presence.ts: operatorRecordEta
+    / operatorRecordCheckIn / operatorRecordCheckOut — reuse the tables, tenant+assignment scoped, canSeeOperations,
+    operator-settable occurredAt (default now). ★ DECISIONS: (a) PRESENCE-ONLY, no status coupling (record the fact;
+    operator advances status separately via the picker — the G2 log-a-call precedent; presence tables are occurred_at
+    fact logs, status is a state machine); (b) provenance via AUDIT-ACTION-NAME (.operator_relayed), NO migration —
+    ★ CAVEAT written into the code: presence rows carry NO source column, so vendor-performance.ts CANNOT distinguish
+    operator-relayed from vendor-self-reported and must treat all rows same-weight; a source enum is the analytics-honest
+    end-state, BANKED; (c) check-out records presence only, completion-verify is separate (Gap 3). ★ operatorRecordEta
+    takes updateSchedule?:boolean (default false) — the SOLE operator path to scheduledStartAt (previously only
+    createDispatch + vendor confirmEta wrote it; a phoned-in ETA left the WO printing a STALE "Scheduled start"). Opt-in
+    because recording what the vendor SAID ≠ changing what we COMMITTED to. ETA append-only (revision = new row). Future
+    timestamp allowed for ETA, rejected for check-in/out (arrived-in-the-future is nonsense). Green 632/632. UNPROVEN
+    (writers have no DB execution yet; tables empty everywhere; first use is the proof).
+  GAP 2 — NO SLA MODEL. Clock exists (due_at "SLA seam", clients.timezone) but NO policy: nothing maps client+priority
+    -> a response target, so "are we inside SLA?" can't be computed (operator types due_at by hand). The SLA branch of
+    the choreography depends on it. Bigger — needs an SLA model table. NOT built.
+  GAP 3 — COMPLETION UNVERIFIED. Vendor markWorkComplete does NOT auto-follow the job (docstring: "operator review is
+    the onward-action point"); the operator path (setAssignmentStatus->applyDispatchJobFollow) is what advances to
+    PENDING_INVOICE. But there's no distinct "coordinator-VERIFIED complete" (a judgment: "I accept this as done +
+    billable") vs "vendor-CLAIMED complete". Given the WO's protective language, a verify-before-billing step is the
+    matching control. NOT built — NEXT.
+  GAP 4 — on-site DURATION computable (check-in occurred_at, check-out occurred_at) but uncomputed. Pure-function, no
+    schema change. Trivial, banked.
+
+★ GAP 1 DOES NOT YET COVER CHOREOGRAPHY OUTCOME 1(c). "Vendor can't make it -> find a new vendor -> restart at
+DISPATCH" needs a manual re-dispatch. The machinery EXISTS (createDispatch accepts replacesAssignmentId, the self-FK
+the auto-redispatch sweep already uses) but the OPERATOR path to it is unverified — the assignment workspace has an
+ApproveRedispatchButton for the AGENT's suggestion, not an operator-initiated "this vendor is out, re-dispatch".
+Check before building Gap 3: outcome 1(c) may be a fifth gap, or may already be reachable via /dispatch/new + a manual
+status flip to CANCELLED/DECLINED on the old assignment. Untested either way.
+
+THE AGENTS LAND HERE: the smooth-path touchpoints (day-of confirm+ETA, completion verify, SLA branch) are the
+repetitive rule-driven every-job steps to automate FIRST — but each needs its manual floor (Gaps 1-4) built first, so
+when AI breaks the coordinator can do it by hand. Build the manual door; automate on top.
