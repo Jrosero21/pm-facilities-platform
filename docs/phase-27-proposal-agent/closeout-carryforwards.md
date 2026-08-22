@@ -2902,3 +2902,41 @@ status flip to CANCELLED/DECLINED on the old assignment. Untested either way.
 THE AGENTS LAND HERE: the smooth-path touchpoints (day-of confirm+ETA, completion verify, SLA branch) are the
 repetitive rule-driven every-job steps to automate FIRST — but each needs its manual floor (Gaps 1-4) built first, so
 when AI breaks the coordinator can do it by hand. Build the manual door; automate on top.
+
+---
+
+## Gap 5 FULLY PROVEN (multi-vendor UI) + dead-gate fix + timezone narrowed
+
+Gap 5 (operator re-dispatch after cancellation) proven end-to-end through the UI with 3 local HVAC vendors (Bay Area,
+Golden State, Pacific Coast — added via audited helpers). The multi-candidate PICKER branch — which had NEVER rendered
+in any prior run (local pm had 1 then 2 vendors; 2-1=1 kept hitting the single-candidate locked card) — finally
+exercised. Cancel Bay Area -> 2 remain -> picker with 2 radio cards, cancelled vendor excluded, picked the NON-default
+(Pacific Coast) to prove selection flows through -> replacement created + chain-linked.
+
+BUGS the UI proofs surfaced + fixed across Gap 5 (all found by browser walkthrough, none by unit tests):
+  - The re-dispatch DEAD-END: replacement redirected to the record page, not a vendor-pickable form. Fixed:
+    close-then-redirect to /dispatch/new?replaces={id}, no pre-created draft (killed the orphan-draft artifact;
+    server module lost 57 lines — the two-phase seam became unnecessary).
+  - The chain-link CHAIN-BREAK: replacesAssignmentId hidden input sat INSIDE the single-candidate branch, so any
+    job with >=2 eligible vendors created the replacement UNLINKED (silently breaking analytics + sweep cooldown).
+    Invisible on 1-vendor local pm (always took the single branch). Hoisted to the top of the form.
+  - The DEAD GATE (record page): page computed replacedIsStillSent = isAgentRedispatchSuggestion(...) at line 61 then
+    NEVER READ IT — JSX branched on the raw replacesAssignmentId column (both paths stamp it, can't distinguish). So
+    the ghost button (Approve re-dispatch) showed on operator-cancellation replacement records. Worse than cosmetic:
+    approveRedispatch hard-guards STUCK_NO_LONGER_SENT so clicking it on a DECLINED-replacement would THROW. Fixed:
+    branch on replacedIsStillSent (replaced SENT -> agent Approve; replaced DECLINED -> operator Send). Pinned by a
+    WIRING test (redispatch-gate-wiring.test.ts) asserting the branch reads the gate not the raw column; verified red
+    on pre-fix source (3/7 failed), green restored.
+  - Cancelled vendor now EXCLUDED from the re-dispatch candidate list (filtered at the page, not in the matcher —
+    stays honest for other callers); empty state distinguishes "no vendors match" from "no OTHER vendor matches".
+  - Chain-link now VISIBLE to operators: record shows "Replaces the dispatch to X (vendor declined)" with a link
+    (status rendered from data). First time replaces_assignment_id surfaced outside analytics.
+
+★ TIMEZONE bug NARROWED (was flagged as a 3-way mess): the UI proof showed the instant ROUND-TRIPS INTACT (record
+4:00 PM -> form input 1:00 PM -> replacement record 4:00 PM) — so it's DISPLAY-ONLY, not data corruption. Only the
+datetime-local form INPUT renders in a different basis than formatDateTime (which hardcodes America/New_York,
+format-date.ts:20). Fix is one control's display basis, NOT a storage migration. Still real (operator types 10am reads
+1pm; prints on the WO PDF) but much smaller than a 3-way re-architecture. THE NEXT ITEM.
+
+STANDING: local pm needs >=3 HVAC vendors so the multi-candidate picker path is always exercisable (1 vendor hid an
+entire branch + its chain-link bug). The UI proof caught 3 distinct bugs unit tests structurally could not.
