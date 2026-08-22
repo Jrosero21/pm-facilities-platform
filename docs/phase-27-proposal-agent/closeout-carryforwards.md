@@ -2940,3 +2940,33 @@ format-date.ts:20). Fix is one control's display basis, NOT a storage migration.
 
 STANDING: local pm needs >=3 HVAC vendors so the multi-candidate picker path is always exercisable (1 vendor hid an
 entire branch + its chain-link bug). The UI proof caught 3 distinct bugs unit tests structurally could not.
+
+---
+
+## DEPLOYED + PROVEN IN PROD — Gap 1, Gap 5, timezone fix (main @ 1118056)
+
+The operator-presence branch (8 commits) merged to main (ff), pushed, deployed to Vercel prod (1118056, READY),
+prod timezone backfill applied, and re-proven live. Four gates, each explicit:
+  1. ff-merge operator-presence -> main (36e3622 ancestor, clean ff, no merge commit).
+  2. push origin main (9 commits incl. the earlier non-AI-foundation bank; Vercel READY at 1118056; code-only, no
+     migration — schema untouched).
+  3. PROD BACKFILL (gated DB write): client_locations.timezone for the 4 prod locations (2 NY -> America/New_York,
+     2 CA -> America/Los_Angeles, source=looked_up). Ran the VERIFIED backfillLocationTimezones via a one-shot runner
+     that re-confirmed current_database()=neondb then self-deleted — the script's pm-only guard left INTACT (not
+     weakened). One system-actor audit row (user_id NULL, actor_label set). Idempotency PROVEN (re-ran -> updated=0).
+  4. RE-PROVEN in prod (browser): CA site renders PDT ("Jul 6 2026 2:00 AM PDT"), NY site EDT ("5:00 AM EDT") — same
+     instant each in its own site zone; the vendor-facing WO PDF shows PDT labeled ("Scheduled start Jul 6 2026 2:00 AM
+     PDT"). Zero bare times, no Eastern leakage on any CA record.
+
+SHIPPED: Gap 1 (operator presence door — record vendor ETA/check-in/check-out when they phone in; presence-only,
+provenance via audit action, updateSchedule opt-in the sole operator reschedule path). Gap 5 (operator re-dispatch
+after cancellation — closes DECLINED not GHOSTED; 3 UI bugs caught by browser proof + fixed: dead-end redirect,
+chain-link stuck in single-candidate branch, dead-wired record-page gate; cancelled vendor excluded; chain-link
+visible). Timezone (site-local display labeled "short"; tz-aware forms fixing the nondeterministic browser-TZ basis;
+2 extra UTC-day bugs swept; state-derived backfill NULL-honest).
+
+STILL OPEN (banked, not blocking): the ~40 non-schedule-bearing formatter calls (audit/timeline stamps) render the
+labeled Eastern fallback until threaded (follow-up pass). The 3 minor UI findings from the Gap 1/5 proofs: write-only
+"Vendor updates" card (no read-back), mode/body form desync, clear-on-error. Choreography Gaps 2 (SLA model), 3
+(completion verification), 4 (on-site duration) not yet built. ZZ TEST Location still in prod (drop when cleaning test
+data). VENDOR_CANCELLED distinct status + presence source-column (analytics precision) still banked.
