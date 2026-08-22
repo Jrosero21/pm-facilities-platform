@@ -39,6 +39,8 @@ export function NewDispatchForm({
   scopeFromProblem,
   noApprovedScope,
   defaultScheduledStart,
+  defaultNte,
+  replacesAssignmentId,
 }: {
   jobId: string;
   tradeName: string;
@@ -47,6 +49,10 @@ export function NewDispatchForm({
   scopeFromProblem: boolean;
   noApprovedScope: boolean;
   defaultScheduledStart: string;
+  /** Pre-filled from the replaced assignment on a re-dispatch. */
+  defaultNte?: string;
+  /** Gap 5: set when this dispatch replaces a cancelled one — carries the chain link. */
+  replacesAssignmentId?: string | null;
 }) {
   const action = createDispatchAction.bind(null, jobId);
   const [state, formAction, pending] = useActionState<CreateDispatchState, FormData>(
@@ -81,6 +87,10 @@ export function NewDispatchForm({
         {single ? (
           <>
             <input type="hidden" name="vendorId" value={selectedVendorId} />
+            {/* Gap 5 — the chain link. Only present on a re-dispatch; createDispatchAction reads it. */}
+            {replacesAssignmentId ? (
+              <input type="hidden" name="replacesAssignmentId" value={replacesAssignmentId} />
+            ) : null}
             <div className="mt-1 rounded-md border border-neutral-300 bg-neutral-50 p-3">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-medium text-neutral-900">
@@ -229,6 +239,7 @@ export function NewDispatchForm({
         <input
           type="number"
           name="agreedNteAmount"
+          defaultValue={defaultNte ?? ""}
           step="0.01"
           min="0"
           placeholder="0.00"

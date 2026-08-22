@@ -86,3 +86,24 @@ export function buildCancellationNote(reason?: string | null): string {
     ? `Vendor cancelled (recorded by coordinator): ${trimmed}`
     : "Vendor cancelled (recorded by coordinator).";
 }
+
+/**
+ * ★ AGENT SUGGESTION vs OPERATOR CANCELLATION REPLACEMENT — the discriminator.
+ *
+ * Both paths stamp replaces_assignment_id, so that field alone cannot tell a DRAFT created by
+ * prepareRedispatchSuggestion (agent, replacing a SILENT vendor) from one created after an operator
+ * recorded a cancellation. The distinguishing fact is the REPLACED assignment's state:
+ *
+ *   still SENT      → the vendor never answered → the agent's ghost-flow applies
+ *   anything else   → an operator already closed it (DECLINED) → ordinary dispatch controls
+ *
+ * This is not a convention chosen for convenience: approveRedispatch hard-guards
+ * STUCK_NO_LONGER_SENT, so SENT is precisely the condition under which that button can succeed.
+ * Gating on it also fixes a PRE-EXISTING latent bug — the approve button used to render for any
+ * replacement draft, including ones where clicking it would throw.
+ */
+export function isAgentRedispatchSuggestion(
+  replacedStatusCode: string | null | undefined,
+): boolean {
+  return replacedStatusCode === "SENT";
+}

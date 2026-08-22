@@ -29,6 +29,11 @@ export async function createDispatchAction(
   const scheduledStartAt = parseDateTime(String(formData.get("scheduledStartAt") ?? ""));
   const scheduledEndAt = parseDateTime(String(formData.get("scheduledEndAt") ?? ""));
   const dispatchScope = String(formData.get("dispatchScope") ?? "").trim() || null;
+  // Gap 5 — the chain link, present only on a re-dispatch after a cancellation. Stamping it here
+  // means a manually re-dispatched job produces the SAME linked structure as the agent path, which
+  // vendor-performance analytics and the sweep's cooldown lookup both read.
+  const replacesAssignmentId =
+    String(formData.get("replacesAssignmentId") ?? "").trim() || null;
 
   // The vendor is the only required field — everything else is optional/pre-filled.
   if (!vendorId) return { error: "Select a vendor to dispatch." };
@@ -45,6 +50,7 @@ export async function createDispatchAction(
       scheduledStartAt,
       scheduledEndAt,
       dispatchScope,
+      replacesAssignmentId,
       createdByUserId: ctx.user.id,
       // Manual dispatch = the operator may pick an out-of-area vendor (the form shows them). Pass
       // "search" so the write-gate doesn't reject it; an out-of-area pick is audited (dispatch.geo_override).

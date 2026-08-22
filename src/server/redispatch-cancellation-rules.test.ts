@@ -5,6 +5,7 @@ import {
   CANCELLATION_FORBIDDEN_CLOSE_STATUS,
   CANCELLATION_NOTE_MAX,
   buildCancellationNote,
+  isAgentRedispatchSuggestion,
   isCancellableStatus,
   validateRedispatchCancellation,
 } from "@/server/redispatch-cancellation-rules";
@@ -134,5 +135,33 @@ describe("buildCancellationNote", () => {
       expect(note).not.toContain("ghost");
       expect(note).not.toContain("no response");
     }
+  });
+});
+
+// ★ The gate that stops an operator's cancellation replacement inheriting the AGENT's ghost-flow
+// button — a button whose caption says it will "ghost the unresponsive vendor", on a record created
+// specifically to say the vendor DID respond. Both paths set replaces_assignment_id, so the
+// replaced assignment's STATE is the only honest discriminator.
+describe("isAgentRedispatchSuggestion — which controls a replacement DRAFT shows", () => {
+  it("is an agent suggestion while the replaced assignment is still SENT", () => {
+    expect(isAgentRedispatchSuggestion("SENT")).toBe(true);
+  });
+
+  // The operator path closes the old assignment as DECLINED BEFORE the replacement exists, so this
+  // is the case that must fall through to the ordinary Send controls.
+  it("is NOT an agent suggestion once an operator closed the replaced assignment", () => {
+    expect(isAgentRedispatchSuggestion("DECLINED")).toBe(false);
+  });
+
+  it("is not an agent suggestion for any other replaced state", () => {
+    for (const code of ["ACCEPTED", "SCHEDULED", "CONFIRMED", "ON_SITE", "WORK_COMPLETE", "CANCELLED", "GHOSTED", "DRAFT"]) {
+      expect(isAgentRedispatchSuggestion(code)).toBe(false);
+    }
+  });
+
+  // A dispatch that replaces nothing has no replaced status at all.
+  it("is not an agent suggestion when there is no replaced assignment", () => {
+    expect(isAgentRedispatchSuggestion(null)).toBe(false);
+    expect(isAgentRedispatchSuggestion(undefined)).toBe(false);
   });
 });

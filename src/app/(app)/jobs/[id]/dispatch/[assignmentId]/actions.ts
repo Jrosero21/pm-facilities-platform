@@ -340,15 +340,13 @@ export async function vendorCancelledRedispatchAction(
   const rawReason = formData.get("reason");
   const reason = typeof rawReason === "string" && rawReason.trim() !== "" ? rawReason.trim() : null;
 
-  let replacementId: string;
   try {
-    const result = await operatorRedispatchAfterCancellation({
+    await operatorRedispatchAfterCancellation({
       tenantId: ctx.activeTenant.tenantId,
       assignmentId,
       reason,
       actorUserId: ctx.user.id,
     });
-    replacementId = result.replacementAssignmentId;
   } catch (err) {
     if (err instanceof Error) {
       switch (err.message) {
@@ -371,6 +369,8 @@ export async function vendorCancelledRedispatchAction(
 
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath(`/jobs/${jobId}/dispatch/${assignmentId}`);
-  // Land the operator on the linked replacement DRAFT so they can change the vendor and send.
-  redirect(`/jobs/${jobId}/dispatch/${replacementId}`);
+  // ★ Land on the REAL dispatch form, carrying the replaced id. The form re-derives scope/NTE/
+  // schedule from it and leaves the vendor empty — nothing is created until the operator submits,
+  // so an abandoned cancellation strands no draft.
+  redirect(`/jobs/${jobId}/dispatch/new?replaces=${assignmentId}`);
 }

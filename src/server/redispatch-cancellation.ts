@@ -3,7 +3,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { dispatchAssignmentStatuses, jobEvents } from "@/server/schema";
-import { createDispatch, getAssignment, setAssignmentStatus } from "@/server/dispatch";
+import { getAssignment, setAssignmentStatus } from "@/server/dispatch";
 import { writeAuditLog } from "@/server/audit";
 import {
   CANCELLATION_CLOSE_STATUS,
@@ -26,25 +26,31 @@ import {
 //      that is false, and GHOSTED is the strongest negative reliability signal the platform has.
 // This module keeps the linked structure and fixes the description.
 //
-// ★ IT DOES NOT CHOOSE THE REPLACEMENT VENDOR. It creates the linked DRAFT and hands the operator
-// back to the normal dispatch form. The coordinator is usually on the phone and already knows who
-// is free; a ranker's opinion is not what is missing at that moment.
+// ★ IT CLOSES, IT DOES NOT CREATE. An earlier shape pre-created the replacement DRAFT here and
+// redirected to its record page. That was wrong twice over: the record page has no vendor picker,
+// so the operator could not actually do the one thing the flow promised; and every abandoned
+// cancellation left a stranded DRAFT behind. Now this closes the old assignment and the CALLER
+// redirects to /dispatch/new?replaces={id} — the real dispatch form, where the vendor is chosen and
+// the draft is only created on submit. No orphan is possible, because nothing is created until the
+// operator commits.
+//
+// The replaced assignment id travels in the URL, and /dispatch/new RE-DERIVES scope, NTE and
+// schedule from it rather than carrying them as query params: one source of truth, nothing to
+// tamper with in the address bar, and no stale values if the assignment changed in between.
 
 export type RedispatchAfterCancellationResult = {
-  /** The assignment just closed as DECLINED. */
+  /** The assignment just closed as DECLINED. Becomes ?replaces= on the dispatch form. */
   cancelledAssignmentId: string;
-  /** The new DRAFT, already linked via replacesAssignmentId. */
-  replacementAssignmentId: string;
   jobId: string;
 };
 
 /**
  * Record that the assigned vendor cancelled, and open a linked replacement dispatch.
  *
- * Two phases, mirroring approveRedispatch's ordered-with-recovery seam: close first, then create.
- * If the create throws after the close committed, the old assignment is correctly DECLINED and the
- * job simply has no live dispatch — a state the exceptions queue already surfaces and the operator
- * can dispatch from normally. The reverse order would risk two live assignments on one job.
+ * ONE write: the close. There is no second phase to fail, and no draft to strand — a considerable
+ * simplification over the earlier close-then-create shape. If the operator abandons the dispatch
+ * form afterwards, the job simply has no live dispatch, which the exceptions queue already
+ * surfaces and any operator can dispatch from normally.
  *
  * Throws: ASSIGNMENT_NOT_FOUND, ASSIGNMENT_NOT_CANCELLABLE, CANCELLATION_NOTE_TOO_LONG.
  */
@@ -84,24 +90,9 @@ export async function operatorRedispatchAfterCancellation(input: {
     note,
   });
 
-  // ── PHASE 2: open the linked replacement DRAFT ──
-  // Carries forward the operational facts the coordinator already agreed (scope, NTE, schedule) so
-  // the pre-filled form is a starting point rather than a blank one. The VENDOR is deliberately
-  // NOT carried forward — that is the whole point of a re-dispatch.
-  const replacement = await createDispatch({
-    tenantId: input.tenantId,
-    jobId: old.jobId,
-    vendorId: old.vendorId, // placeholder; the operator changes it on the pre-filled form
-    agreedNteAmount: old.agreedNteAmount ?? null,
-    scheduledStartAt: old.scheduledStartAt ?? null,
-    scheduledEndAt: old.scheduledEndAt ?? null,
-    dispatchScope: old.dispatchScope ?? null,
-    // ★ THE CHAIN LINK — the same self-FK the agent path stamps, so manual and automatic
-    // re-dispatch produce an identical structure for analytics and the sweep's cooldown lookup.
-    replacesAssignmentId: input.assignmentId,
-    createdByUserId: input.actorUserId,
-    geoMode: "search", // the operator is choosing by hand; do not hard-reject out-of-area
-  });
+  // The chain link is stamped when the operator submits the dispatch form, which carries
+  // ?replaces={id} through to createDispatch — the same self-FK the agent path uses, so manual and
+  // automatic re-dispatch still produce an identical structure for analytics and the sweep.
 
   await db.insert(jobEvents).values({
     tenantId: input.tenantId,
@@ -111,7 +102,6 @@ export async function operatorRedispatchAfterCancellation(input: {
     summary: note,
     metadata: {
       cancelledAssignmentId: input.assignmentId,
-      replacementAssignmentId: replacement.id,
       vendorId: old.vendorId,
       fromStatus: status.code,
       closedAs: CANCELLATION_CLOSE_STATUS,
@@ -129,13 +119,8 @@ export async function operatorRedispatchAfterCancellation(input: {
       vendorId: old.vendorId,
       fromStatus: status.code,
       closedAs: CANCELLATION_CLOSE_STATUS,
-      replacementAssignmentId: replacement.id,
     },
   });
 
-  return {
-    cancelledAssignmentId: input.assignmentId,
-    replacementAssignmentId: replacement.id,
-    jobId: old.jobId,
-  };
+  return { cancelledAssignmentId: input.assignmentId, jobId: old.jobId };
 }

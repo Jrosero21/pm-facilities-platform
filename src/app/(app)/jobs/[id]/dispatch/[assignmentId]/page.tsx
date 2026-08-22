@@ -9,7 +9,10 @@ import { ApproveRedispatchButton } from "@/components/approve-redispatch-button"
 import { WorkOrderActions } from "@/components/work-order-actions";
 import { RecordVendorPresence } from "@/components/record-vendor-presence";
 import { VendorCancelledButton } from "@/components/vendor-cancelled-button";
-import { CANCELLABLE_ASSIGNMENT_STATUSES } from "@/server/redispatch-cancellation-rules";
+import {
+  CANCELLABLE_ASSIGNMENT_STATUSES,
+  isAgentRedispatchSuggestion,
+} from "@/server/redispatch-cancellation-rules";
 import { DispatchStatusPicker } from "@/components/dispatch-status-picker";
 import { VendorLinkSection } from "@/components/vendor-link-section";
 import { getVendorContact } from "@/server/vendor-contacts";
@@ -48,6 +51,14 @@ export default async function AssignmentDetailPage({
   const a = await getAssignmentDetail(tenantId, assignmentId);
   // Guard: assignment must exist AND belong to the job in the URL.
   if (!a || a.jobId !== id) notFound();
+
+  // Gap 5 — is this DRAFT an AGENT re-dispatch suggestion (replaced assignment still SENT), or an
+  // operator cancellation replacement (replaced already DECLINED)? One extra read decides which
+  // control set to show. See the note at the DRAFT block below.
+  const replacedAssignment = a.replacesAssignmentId
+    ? await getAssignmentDetail(tenantId, a.replacesAssignmentId)
+    : null;
+  const replacedIsStillSent = isAgentRedispatchSuggestion(replacedAssignment?.statusCode);
 
   // Vendor-link controls: is there a deliverable recipient email, and the existing tokens.
   const recipientEmail = a.vendorContactId

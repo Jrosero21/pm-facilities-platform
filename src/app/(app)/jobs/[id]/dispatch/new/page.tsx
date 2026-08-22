@@ -6,6 +6,13 @@ import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { listVendorLocations } from "@/server/vendor-locations";
 import { listVendorContacts } from "@/server/vendor-contacts";
 import { NewDispatchForm, type DispatchCandidate } from "@/components/new-dispatch-form";
+import { getAssignmentDetail } from "@/server/dispatch";
+
+/** A Date → the "YYYY-MM-DDTHH:mm" a datetime-local input expects. */
+function toDateTimeLocal(d: Date): string {
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function tomorrowAt9(): string {
   const d = new Date();
@@ -16,12 +23,24 @@ function tomorrowAt9(): string {
 
 export default async function NewDispatchPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** Gap 5: ?replaces={assignmentId} arrives here after a vendor cancellation. */
+  searchParams: Promise<{ replaces?: string }>;
 }) {
   const { id } = await params;
+  const { replaces } = await searchParams;
   const ctx = await requireTenant();
   const tenantId = ctx.activeTenant.tenantId;
+
+  // ── Gap 5 — RE-DERIVE the carry-forward from the replaced assignment ────────────────
+  // Deliberately re-read rather than accepting scope/NTE/schedule as query params: one source of
+  // truth, nothing an operator can accidentally (or deliberately) edit in the address bar, and no
+  // stale values if the assignment changed between the cancellation and this page loading.
+  // Scoped by tenant, so a replaces= id from another tenant simply resolves to null and the form
+  // renders as an ordinary new dispatch.
+  const replaced = replaces ? await getAssignmentDetail(tenantId, replaces) : null;
 
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
@@ -132,10 +151,16 @@ export default async function NewDispatchPage({
           jobId={id}
           tradeName={job.tradeName ?? ""}
           candidates={enriched}
-          defaultScope={defaultScope}
+          defaultScope={replaced?.dispatchScope ?? defaultScope}
           scopeFromProblem={scopeFromProblem}
           noApprovedScope={noApprovedScope}
-          defaultScheduledStart={tomorrowAt9()}
+          defaultScheduledStart={
+            replaced?.scheduledStartAt
+              ? toDateTimeLocal(replaced.scheduledStartAt)
+              : tomorrowAt9()
+          }
+          defaultNte={replaced?.agreedNteAmount ?? undefined}
+          replacesAssignmentId={replaced ? replaced.id : null}
         />
       </div>
     </div>
