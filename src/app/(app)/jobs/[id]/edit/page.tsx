@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 import { getJobDetail, hasActiveAssignment } from "@/server/jobs";
 import { listClients } from "@/server/clients";
 import { listClientLocationsForTenant } from "@/server/client-locations";
@@ -15,6 +16,9 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
 
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
+
+  // The follow-up input renders and parses in the site's zone — jobs/actions resolves the same one.
+  const siteTimeZone = await getJobSiteTimeZone(tenantId, id);
 
   const [clients, locations, trades, priorities, activeAssignment] = await Promise.all([
     listClients(tenantId),
@@ -35,6 +39,7 @@ export default async function EditJobPage({ params }: { params: Promise<{ id: st
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">Edit job #{job.jobNumber}</h1>
       <div className="mt-6">
         <JobEditForm
+          siteTimeZone={siteTimeZone}
           jobId={id}
           sourceType={job.sourceType}
           current={{

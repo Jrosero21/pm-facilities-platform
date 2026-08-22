@@ -1,5 +1,6 @@
 "use client";
 
+import { timeZoneAbbreviation } from "@/lib/format-date";
 import { useActionState } from "react";
 import { confirmEtaAction } from "@/app/(vendor)/vendor/jobs/actions";
 
@@ -16,7 +17,14 @@ const inputClass =
  *
  * Phase 10 batch 10k-ui.
  */
-export function VendorEtaForm({ assignmentId }: { assignmentId: string }) {
+export function VendorEtaForm({
+  assignmentId,
+  siteTimeZone,
+}: {
+  assignmentId: string;
+  /** The SITE's IANA zone — an arrival time means the clock at the site, not the vendor's. */
+  siteTimeZone: string;
+}) {
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     async (_prev, formData) => {
       const start = formData.get("etaStartAt");
@@ -36,7 +44,10 @@ export function VendorEtaForm({ assignmentId }: { assignmentId: string }) {
     <form action={formAction} className="max-w-md space-y-3">
       <div>
         <label className="block text-sm font-medium text-neutral-700">
-          ETA start (required)
+          ETA start (required){" "}
+          <span className="font-normal text-neutral-500">
+            ({timeZoneAbbreviation(siteTimeZone)} — site time)
+          </span>
         </label>
         <input
           type="datetime-local"

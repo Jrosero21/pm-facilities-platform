@@ -95,10 +95,12 @@ function cityLine(p: { city: string | null; stateProvince: string | null; postal
   })[0] ?? "";
 }
 
-/** Stored as-is, formatted UTC so the output is deterministic across machines.
+/** Rendered in the SITE's zone — deterministic across machines (it is an explicit zone, not the
+ *  host's) and it prints the day the client actually keeps, unlike the previous UTC basis which
+ *  rolled over mid-evening Pacific.
  *  "n/a" (not the em dash the screens use) is kept deliberately: this string reaches a client. */
-function fmtDate(d: Date | null): string {
-  return d ? formatDate(d, "UTC") : "n/a";
+function fmtDate(d: Date | null, timeZone: string): string {
+  return d ? formatDate(d, timeZone) : "n/a";
 }
 
 // USD goes through the shared formatter (thousands separators, negatives as -$X). Any other
@@ -167,11 +169,11 @@ export function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={styles.sectionLabel}>DETAILS</Text>
             <View style={styles.metaRow}>
               <Text style={styles.metaKey}>Issued</Text>
-              <Text style={styles.metaVal}>{fmtDate(data.issuedAt)}</Text>
+              <Text style={styles.metaVal}>{fmtDate(data.issuedAt, data.siteTimeZone)}</Text>
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaKey}>Due</Text>
-              <Text style={styles.metaVal}>{fmtDate(data.dueAt)}</Text>
+              <Text style={styles.metaVal}>{fmtDate(data.dueAt, data.siteTimeZone)}</Text>
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaKey}>Terms</Text>

@@ -1,5 +1,6 @@
 "use client";
 
+import { timeZoneAbbreviation } from "@/lib/format-date";
 import { useActionState, useState } from "react";
 import { logContactAction, type LogContactState } from "@/app/(app)/jobs/contact-log-actions";
 
@@ -16,9 +17,12 @@ export type CallContactOption = { id: string; name: string; party: "client" | "v
 export function LogACallForm({
   jobId,
   contacts,
+  siteTimeZone,
 }: {
   jobId: string;
   contacts: CallContactOption[];
+  /** The site's IANA zone — the basis contact-log-actions parses in. */
+  siteTimeZone: string;
 }) {
   const action = logContactAction.bind(null, jobId);
   const [state, formAction, pending] = useActionState<LogContactState, FormData>(action, null);
@@ -104,7 +108,12 @@ export function LogACallForm({
         </label>
 
         <label className="block text-sm">
-          <span className="text-neutral-700">When (blank = now)</span>
+          <span className="text-neutral-700">
+            When (blank = now){" "}
+            <span className="text-neutral-500">
+              ({timeZoneAbbreviation(siteTimeZone)} — site time)
+            </span>
+          </span>
           <input
             type="datetime-local"
             name="occurredAt"

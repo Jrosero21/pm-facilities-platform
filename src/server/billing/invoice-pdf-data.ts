@@ -3,6 +3,8 @@ import "server-only";
 import { getClientInvoice, listClientInvoiceLineItems } from "@/server/billing/client-invoices";
 import { getClient } from "@/server/clients";
 import { getLocation, listLocations } from "@/server/client-locations";
+import { DEFAULT_DISPLAY_TIME_ZONE } from "@/lib/format-date";
+import { isValidTimeZone } from "@/lib/datetime";
 import { getJob } from "@/server/jobs";
 import { getTenantCompanyProfile } from "@/server/tenant-settings";
 
@@ -75,6 +77,16 @@ export type InvoicePdfData = {
   jobNumber: number | null;
   issuedAt: Date | null;
   dueAt: Date | null;
+
+  /**
+   * ★ The site's IANA timezone — which calendar day the invoice dates print as.
+   *
+   * Previously these rendered in UTC "so the output is deterministic across machines". Determinism
+   * was the right instinct, but UTC was a THIRD basis alongside the screens' Eastern default and
+   * the forms' browser zone, and it shifts the printed day for anything issued after 5pm Pacific.
+   * The site zone is both deterministic AND the one the client reading the invoice keeps.
+   */
+  siteTimeZone: string;
   paymentTermsDays: number | null;
   currency: string;
   company: InvoicePdfCompany;
@@ -169,6 +181,10 @@ export async function loadInvoicePdfData(
       phone: company?.phone ?? null,
       email: company?.email ?? null,
     },
+    siteTimeZone:
+      location?.timezone && isValidTimeZone(location.timezone)
+        ? location.timezone
+        : DEFAULT_DISPLAY_TIME_ZONE,
     billTo: {
       clientName: client?.name ?? "(client)",
       locationName: location?.name ?? null,

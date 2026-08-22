@@ -1,5 +1,6 @@
 "use client";
 
+import { timeZoneAbbreviation } from "@/lib/format-date";
 import { useActionState, useState } from "react";
 import {
   recordVendorPresenceAction,
@@ -25,9 +26,12 @@ const MODES: { value: Mode; label: string; help: string }[] = [
 export function RecordVendorPresence({
   jobId,
   assignmentId,
+  siteTimeZone,
 }: {
   jobId: string;
   assignmentId: string;
+  /** The site's IANA zone — the basis both this form and its action use. */
+  siteTimeZone: string;
 }) {
   const action = recordVendorPresenceAction.bind(null, jobId, assignmentId);
   const [state, formAction, pending] = useActionState<PresenceState, FormData>(action, null);
@@ -87,7 +91,12 @@ export function RecordVendorPresence({
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="text-neutral-700">
-            {isEta ? "Expected arrival" : "When (blank = now)"}
+            {isEta ? "Expected arrival" : "When (blank = now)"}{" "}
+            {/* The input carries no zone, so the basis is stated. Without it an operator reads the
+                field as their own local time — the assumption that hid the old browser-zone bug. */}
+            <span className="text-neutral-500">
+              ({timeZoneAbbreviation(siteTimeZone)} — site time)
+            </span>
           </span>
           <input
             type="datetime-local"

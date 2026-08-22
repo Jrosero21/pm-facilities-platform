@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/server/auth-context";
+import { parseZonedDateTime } from "@/lib/datetime";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 import { logContact } from "@/server/contact-log";
 import type { ContactDirection, ContactParty } from "@/server/contact-log-content";
 
@@ -28,12 +30,15 @@ export async function logContactAction(
     typeof contactIdRaw === "string" && contactIdRaw.trim() !== "" ? contactIdRaw.trim() : null;
   const notes = typeof formData.get("notes") === "string" ? String(formData.get("notes")) : "";
 
-  // datetime-local yields "YYYY-MM-DDTHH:mm" with no zone — the browser's wall clock. Blank ⇒ now,
-  // so the common case (logging a call right after hanging up) needs no typing.
+  // datetime-local yields "YYYY-MM-DDTHH:mm" with no zone. It is read as the SITE's wall clock —
+  // the zone the form renders and labels — rather than the runtime's, so a logged call time does
+  // not depend on where the server runs. Blank ⇒ now, so the common case (logging a call right
+  // after hanging up) needs no typing.
+  const siteTimeZone = await getJobSiteTimeZone(ctx.activeTenant.tenantId, jobId);
   const occurredRaw = formData.get("occurredAt");
   const occurredAt =
     typeof occurredRaw === "string" && occurredRaw.trim() !== ""
-      ? new Date(occurredRaw)
+      ? parseZonedDateTime(occurredRaw, siteTimeZone) ?? new Date()
       : new Date();
 
   try {

@@ -63,6 +63,7 @@ import { listJobPhotos, getJobPhotoUrl } from "@/server/job-attachments";
 import { JobPhotosPanel, type JobPhotoTile } from "@/components/job-photos-panel";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format-date";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 
 const sourceLabel: Record<string, string> = {
   manual: "Manual",
@@ -86,6 +87,11 @@ export default async function JobDetailPage({
 
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
+
+  // ★ Every time on this page renders in the SITE's zone, labeled. Threaded through the history
+  // rows too, not just the schedule fields: two bases inside one page — a scheduled start in site
+  // time next to a "created" stamp in the fallback — is harder to read than either basis alone.
+  const siteTimeZone = await getJobSiteTimeZone(tenantId, id);
 
   const [contacts, notes, events, assignments, communications, drafts, scopeDrafts, scopeSteps, aging] =
     await Promise.all([
@@ -258,17 +264,17 @@ export default async function JobDetailPage({
 
       <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {[
-          { label: "Scheduled start", value: formatDateTime(job.scheduledStartAt) },
-          { label: "Scheduled end", value: formatDateTime(job.scheduledEndAt) },
-          { label: "Due", value: formatDateTime(job.dueAt) },
-          { label: "Follow-up", value: formatDateTime(job.followUpAt) },
+          { label: "Scheduled start", value: formatDateTime(job.scheduledStartAt, siteTimeZone) },
+          { label: "Scheduled end", value: formatDateTime(job.scheduledEndAt, siteTimeZone) },
+          { label: "Due", value: formatDateTime(job.dueAt, siteTimeZone) },
+          { label: "Follow-up", value: formatDateTime(job.followUpAt, siteTimeZone) },
           {
             label: "Follow-up type",
             value: job.followUpAt && job.followUpCategory ? FOLLOW_UP_CATEGORY_LABELS[job.followUpCategory] : "—",
           },
-          { label: "Completed", value: formatDateTime(job.completedAt) },
-          { label: "Closed", value: formatDateTime(job.closedAt) },
-          { label: "Created", value: formatDateTime(job.createdAt) },
+          { label: "Completed", value: formatDateTime(job.completedAt, siteTimeZone) },
+          { label: "Closed", value: formatDateTime(job.closedAt, siteTimeZone) },
+          { label: "Created", value: formatDateTime(job.createdAt, siteTimeZone) },
         ].map((f) => (
           <div key={f.label} className="rounded-lg border border-neutral-200 bg-white p-4">
             <dt className="text-xs uppercase tracking-wide text-neutral-500">{f.label}</dt>
@@ -361,7 +367,7 @@ export default async function JobDetailPage({
                   {[
                     a.vendorLocationName ?? "Vendor-wide",
                     a.scheduledStartAt
-                      ? `Scheduled ${formatDateTime(a.scheduledStartAt)}`
+                      ? `Scheduled ${formatDateTime(a.scheduledStartAt, siteTimeZone)}`
                       : null,
                     a.agreedNteAmount ? `NTE ${formatMoney(a.agreedNteAmount)}` : null,
                   ]
@@ -417,7 +423,7 @@ export default async function JobDetailPage({
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-neutral-800">{n.body}</p>
                 <p className="mt-1 text-xs text-neutral-500">
-                  {formatDateTime(n.createdAt)}
+                  {formatDateTime(n.createdAt, siteTimeZone)}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <DraftClientUpdateButton jobId={job.id} noteId={n.id} />
@@ -458,7 +464,7 @@ export default async function JobDetailPage({
         <h2 className="text-sm font-semibold text-neutral-900">Communications</h2>
         {/* G2 — log an off-system contact. Sits at the TOP of the section because it is the one
             thing here an operator comes to WRITE; everything below it is a read surface. */}
-        <LogACallForm jobId={id} contacts={callContacts} />
+        <LogACallForm siteTimeZone={siteTimeZone} jobId={id} contacts={callContacts} />
         {communications.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-600">
             No communications yet. Share a client- or vendor-visible note above, or log a call.
@@ -486,7 +492,7 @@ export default async function JobDetailPage({
                 </p>
                 <p className="mt-1 text-xs text-neutral-500">
                   {c.recipientEmail ? `To ${c.recipientEmail} · ` : ""}
-                  {c.sentByName ?? "System"} · {formatDateTime(c.createdAt)}
+                  {c.sentByName ?? "System"} · {formatDateTime(c.createdAt, siteTimeZone)}
                 </p>
                 <div className="mt-2">
                   <DeliveryTransitionButtons

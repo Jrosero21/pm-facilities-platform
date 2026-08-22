@@ -6,19 +6,24 @@ import { findCandidateVendorsForJob } from "@/server/vendor-matching";
 import { listVendorLocations } from "@/server/vendor-locations";
 import { listVendorContacts } from "@/server/vendor-contacts";
 import { NewDispatchForm, type DispatchCandidate } from "@/components/new-dispatch-form";
+import { toZonedInputValue } from "@/lib/datetime";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 import { getAssignmentDetail } from "@/server/dispatch";
 
-/** A Date → the "YYYY-MM-DDTHH:mm" a datetime-local input expects. */
-function toDateTimeLocal(d: Date): string {
+/**
+ * "Tomorrow at 9am AT THE SITE" as a datetime-local value.
+ *
+ * The previous version used the host's date getters, which on the server is the deploy region's
+ * zone (UTC on Vercel) — so "tomorrow" could already be today, or two days out, depending on the
+ * hour the page was rendered. Deriving the date from the site's own wall clock makes the default
+ * mean what it says wherever it runs.
+ */
+function tomorrowAt9(timeZone: string): string {
+  const todayAtSite = toZonedInputValue(new Date(), timeZone).slice(0, 10); // YYYY-MM-DD
+  const [y, m, d] = todayAtSite.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)); // UTC arithmetic on a bare calendar date
   const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function tomorrowAt9(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T09:00`;
+  return `${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}T09:00`;
 }
 
 export default async function NewDispatchPage({
@@ -44,6 +49,10 @@ export default async function NewDispatchPage({
 
   const job = await getJobDetail(tenantId, id);
   if (!job) notFound();
+
+  // The zone the form renders AND parses in — createDispatchAction resolves the same value
+  // server-side, so the typed wall clock means the same instant on both ends.
+  const siteTimeZone = await getJobSiteTimeZone(tenantId, id);
 
   const crumb = (
     <div className="text-sm text-neutral-500">
@@ -183,9 +192,10 @@ export default async function NewDispatchPage({
           noApprovedScope={noApprovedScope}
           defaultScheduledStart={
             replaced?.scheduledStartAt
-              ? toDateTimeLocal(replaced.scheduledStartAt)
-              : tomorrowAt9()
+              ? toZonedInputValue(replaced.scheduledStartAt, siteTimeZone)
+              : tomorrowAt9(siteTimeZone)
           }
+          siteTimeZone={siteTimeZone}
           defaultNte={replaced?.agreedNteAmount ?? undefined}
           replacesAssignmentId={replaced ? replaced.id : null}
         />

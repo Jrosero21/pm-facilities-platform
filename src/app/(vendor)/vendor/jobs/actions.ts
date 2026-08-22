@@ -1,5 +1,7 @@
 "use server";
 
+import { parseZonedDateTime } from "@/lib/datetime";
+import { getAssignmentSiteTimeZone } from "@/server/site-timezone";
 import { revalidatePath } from "next/cache";
 import { requireVendor } from "@/server/auth-context";
 import {
@@ -80,11 +82,16 @@ export async function confirmEtaAction(
   note?: string | null,
 ): Promise<VendorActionResult> {
   const ctx = await requireVendor();
-  const start = new Date(etaStartAt);
-  if (Number.isNaN(start.getTime())) return { error: "INVALID_ETA_START" };
+  // ★ The vendor types the ETA as the wall clock AT THE SITE they are driving to — which is the
+  // only reading that makes sense for an arrival time, and is not necessarily the vendor's own
+  // zone: a vendor near a state line, or a dispatcher booking from another office, would otherwise
+  // have their "9am" stored as 9am somewhere else. The form labels the zone so the basis is stated.
+  const siteTimeZone = await getAssignmentSiteTimeZone(ctx.activeTenant.tenantId, assignmentId);
+  const start = parseZonedDateTime(etaStartAt, siteTimeZone);
+  if (start === null) return { error: "INVALID_ETA_START" };
   const end =
-    etaEndAt != null && etaEndAt !== "" ? new Date(etaEndAt) : null;
-  if (end !== null && Number.isNaN(end.getTime()))
+    etaEndAt != null && etaEndAt !== "" ? parseZonedDateTime(etaEndAt, siteTimeZone) : null;
+  if (etaEndAt != null && etaEndAt !== "" && end === null)
     return { error: "INVALID_ETA_END" };
   try {
     await confirmEta({

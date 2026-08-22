@@ -8,7 +8,8 @@ import { createJob, updateJob, markJobReadyToBill, setJobStatus, type JobPatch }
 // canonicalizeNte lives in the pure money util (NOT here) — every export of a "use server" module
 // must be an async function, so a sync helper cannot be exported from this file (v2.11.0 fix).
 import { canonicalizeNte } from "@/server/billing/money";
-import { parseDateTime } from "@/lib/datetime";
+import { parseZonedDateTime } from "@/lib/datetime";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 import { isFollowUpCategory } from "@/lib/follow-up";
 
 export type CreateJobState = { error: string } | null;
@@ -135,7 +136,12 @@ export async function updateJobAction(
   // of the four categories (the pairing rule from the schema). A cleared date drops any posted
   // category, and the writer re-forces category null on a date-clear regardless.
   if (formData.has("followUpAt")) {
-    const followUpAt = parseDateTime(String(formData.get("followUpAt") ?? ""));
+    // Parsed in the SITE's zone, matching the render in job-edit-form — a follow-up date typed as
+    // "9am" must mean 9am at the site, not 9am wherever the server or the browser happens to be.
+    const followUpAt = parseZonedDateTime(
+      String(formData.get("followUpAt") ?? ""),
+      await getJobSiteTimeZone(ctx.activeTenant.tenantId, jobId),
+    );
     if (followUpAt === null) {
       patch.followUpAt = null;
       patch.followUpCategory = null; // clearing the date clears the type

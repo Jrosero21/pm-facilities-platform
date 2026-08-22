@@ -5,6 +5,8 @@ import { getJobDetail } from "@/server/jobs";
 import { getVendor } from "@/server/vendors";
 import { getVendorContact } from "@/server/vendor-contacts";
 import { getLocation } from "@/server/client-locations";
+import { DEFAULT_DISPLAY_TIME_ZONE } from "@/lib/format-date";
+import { isValidTimeZone } from "@/lib/datetime";
 import { getTenantCompanyProfile } from "@/server/tenant-settings";
 import { assembleDispatchContext } from "@/server/dispatch-context";
 import { renderDispatchTemplate } from "@/server/dispatch-template";
@@ -82,6 +84,17 @@ export type WorkOrderPdfData = {
   priorityName: string | null;
   scheduledStartAt: Date | null;
   issuedAt: Date | null;
+
+  /**
+   * ★ The SITE's IANA timezone — the zone every time on this document is rendered and labeled in.
+   *
+   * A work order is the most timezone-sensitive surface in the product: the vendor reading it is
+   * often in a different zone from the coordinator who wrote it, and an unlabeled "4:00 PM" that
+   * silently meant Eastern is a missed appointment and a wasted truck roll. Falls back to
+   * DEFAULT_DISPLAY_TIME_ZONE when the location has none, and the render labels the fallback so the
+   * assumption is visible rather than implied.
+   */
+  siteTimeZone: string;
 
   /**
    * The scope snapshot the vendor was dispatched against (assignment.dispatchScope), falling back
@@ -191,6 +204,12 @@ export async function loadWorkOrderPdfData(
       priorityName: job.priorityName ?? null,
       scheduledStartAt: assignment.scheduledStartAt ?? null,
       issuedAt: assignment.sentAt ?? null,
+      // getLocation is an unprojected .select(), so the timezone column is already in memory here —
+      // no extra query, it was simply never read.
+      siteTimeZone:
+        location?.timezone && isValidTimeZone(location.timezone)
+          ? location.timezone
+          : DEFAULT_DISPLAY_TIME_ZONE,
       scope: assignment.dispatchScope ?? job.approvedScopeOfWork ?? job.scopeOfWork ?? null,
       agreedNteAmount: assignment.agreedNteAmount ?? null,
       instructions,

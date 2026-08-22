@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireVendor } from "@/server/auth-context";
+import { getAssignmentSiteTimeZone } from "@/server/site-timezone";
 import { getVendorAssignmentDetail } from "@/server/vendor/get-vendor-assignment-detail";
 import { listVendorAssignmentNotes } from "@/server/vendor/list-assignment-notes";
 import { listVendorAssignmentAttachments } from "@/server/vendor/list-assignment-attachments";
@@ -53,6 +54,10 @@ export default async function VendorAssignmentDetailPage({
   );
   if (!detail) notFound();
 
+  // The zone every time on this vendor-facing page is shown in, and the one confirmEtaAction parses
+  // the submitted ETA with. A vendor is not necessarily in the site's zone.
+  const siteTimeZone = await getAssignmentSiteTimeZone(ctx.activeTenant.tenantId, detail.id);
+
   const notes = await listVendorAssignmentNotes(
     ctx.activeTenant.tenantId,
     detail.id,
@@ -104,7 +109,7 @@ export default async function VendorAssignmentDetailPage({
         <p className="mt-1 text-sm text-neutral-600">
           {detail.matchedTradeName}
           {detail.scheduledStartAt
-            ? ` · Scheduled ${formatDateTime(new Date(detail.scheduledStartAt))}`
+            ? ` · Scheduled ${formatDateTime(new Date(detail.scheduledStartAt), siteTimeZone)}`
             : ""}
         </p>
         {detail.dispatchScope && (
@@ -130,7 +135,7 @@ export default async function VendorAssignmentDetailPage({
             </div>
           )}
           {detail.statusCode === "ACCEPTED" && (
-            <VendorEtaForm assignmentId={detail.id} />
+            <VendorEtaForm assignmentId={detail.id} siteTimeZone={siteTimeZone} />
           )}
           {detail.statusCode === "SCHEDULED" && (
             <VendorActionButton
@@ -183,7 +188,7 @@ export default async function VendorAssignmentDetailPage({
                   <NoteVisibilityBadge visibility={n.visibility} />
                   <span className="text-xs text-neutral-500">
                     {n.authorName ?? "Unknown"} ·{" "}
-                    {formatDateTime(new Date(n.createdAt))}
+                    {formatDateTime(new Date(n.createdAt), siteTimeZone)}
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-neutral-700">
@@ -227,7 +232,7 @@ export default async function VendorAssignmentDetailPage({
                     </span>
                     <span className="text-xs text-neutral-500">
                       {a.authorName ?? "Unknown"} ·{" "}
-                      {formatDateTime(new Date(a.createdAt))}
+                      {formatDateTime(new Date(a.createdAt), siteTimeZone)}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-neutral-700">{a.title}</p>
@@ -285,7 +290,7 @@ export default async function VendorAssignmentDetailPage({
                     {inv.invoiceNumber ?? "(no invoice #)"}
                   </p>
                   <p className="text-xs text-neutral-500">
-                    {formatDateTime(new Date(inv.createdAt))}
+                    {formatDateTime(new Date(inv.createdAt), siteTimeZone)}
                   </p>
                 </div>
                 <div className="text-right">

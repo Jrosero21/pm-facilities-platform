@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
+import { parseZonedDateTime } from "@/lib/datetime";
+import { getAssignmentSiteTimeZone } from "@/server/site-timezone";
 import { sendDispatch, setAssignmentStatus } from "@/server/dispatch";
 import { notifyVendorOfDispatch } from "@/server/dispatch-notify";
 import { approveRedispatch } from "@/server/redispatch-suggestion";
@@ -266,16 +268,25 @@ export async function recordVendorPresenceAction(
   const rawNote = formData.get("note");
   const note = typeof rawNote === "string" && rawNote.trim() !== "" ? rawNote.trim() : null;
 
-  // datetime-local yields "YYYY-MM-DDTHH:mm" (browser wall clock). Blank ⇒ the server default.
+  // datetime-local yields "YYYY-MM-DDTHH:mm" with NO zone attached. It is read as the SITE's wall
+  // clock — the same zone the form rendered and labeled it in. Reading it as the runtime's zone
+  // (the previous `new Date(raw)`) made a check-in time depend on where the server happened to run.
+  // Blank ⇒ the server default.
+  const siteTimeZone = await getAssignmentSiteTimeZone(tenantId, assignmentId);
   const rawWhen = formData.get("occurredAt");
   const when =
-    typeof rawWhen === "string" && rawWhen.trim() !== "" ? new Date(rawWhen) : undefined;
+    typeof rawWhen === "string" && rawWhen.trim() !== ""
+      ? parseZonedDateTime(rawWhen, siteTimeZone) ?? undefined
+      : undefined;
 
   try {
     if (kind === "eta") {
       if (!when) return { error: "An ETA needs a date and time." };
       const rawEnd = formData.get("etaEndAt");
-      const end = typeof rawEnd === "string" && rawEnd.trim() !== "" ? new Date(rawEnd) : null;
+      const end =
+        typeof rawEnd === "string" && rawEnd.trim() !== ""
+          ? parseZonedDateTime(rawEnd, siteTimeZone)
+          : null;
       const updateSchedule = formData.get("updateSchedule") === "on";
       await operatorRecordEta({
         tenantId, assignmentId, etaStartAt: when, etaEndAt: end, note,

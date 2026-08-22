@@ -3,17 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireTenant } from "@/server/auth-context";
+import { parseZonedDateTime } from "@/lib/datetime";
+import { getJobSiteTimeZone } from "@/server/site-timezone";
 import { createDispatch } from "@/server/dispatch";
 import { prepareRedispatchSuggestion, type RedispatchSuggestionResult } from "@/server/redispatch-suggestion";
 
 export type CreateDispatchState = { error: string } | null;
 
-function parseDateTime(value: string): Date | null {
-  const v = value.trim();
-  if (!v) return null;
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+
 
 export async function createDispatchAction(
   jobId: string,
@@ -22,12 +19,18 @@ export async function createDispatchAction(
 ): Promise<CreateDispatchState> {
   const ctx = await requireTenant();
 
+  // ★ Parse the typed wall clock in the SITE's zone — the same zone the form rendered it in. Using
+  // the runtime's zone here (the previous behaviour) meant the operator's browser wrote the value
+  // and the server read it back in the deploy region's zone, shifting the stored instant by the
+  // offset between them: UTC on Vercel against a Pacific coordinator is a seven-hour error.
+  const siteTimeZone = await getJobSiteTimeZone(ctx.activeTenant.tenantId, jobId);
+
   const vendorId = String(formData.get("vendorId") ?? "").trim();
   const vendorLocationId = String(formData.get("vendorLocationId") ?? "").trim() || null;
   const vendorContactId = String(formData.get("vendorContactId") ?? "").trim() || null;
   const agreedNteAmount = String(formData.get("agreedNteAmount") ?? "").trim() || null;
-  const scheduledStartAt = parseDateTime(String(formData.get("scheduledStartAt") ?? ""));
-  const scheduledEndAt = parseDateTime(String(formData.get("scheduledEndAt") ?? ""));
+  const scheduledStartAt = parseZonedDateTime(String(formData.get("scheduledStartAt") ?? ""), siteTimeZone);
+  const scheduledEndAt = parseZonedDateTime(String(formData.get("scheduledEndAt") ?? ""), siteTimeZone);
   const dispatchScope = String(formData.get("dispatchScope") ?? "").trim() || null;
   // Gap 5 — the chain link, present only on a re-dispatch after a cancellation. Stamping it here
   // means a manually re-dispatched job produces the SAME linked structure as the agent path, which

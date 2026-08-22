@@ -164,13 +164,13 @@ export function WorkOrderDocument({ data }: { data: WorkOrderPdfData }) {
             {data.scheduledStartAt ? (
               <View style={styles.metaRow}>
                 <Text style={styles.metaKey}>Scheduled start</Text>
-                <Text style={styles.metaVal}>{formatDateTime(data.scheduledStartAt)}</Text>
+                <Text style={styles.metaVal}>{formatDateTime(data.scheduledStartAt, data.siteTimeZone)}</Text>
               </View>
             ) : null}
             {data.issuedAt ? (
               <View style={styles.metaRow}>
                 <Text style={styles.metaKey}>Issued</Text>
-                <Text style={styles.metaVal}>{formatDateTime(data.issuedAt)}</Text>
+                <Text style={styles.metaVal}>{formatDateTime(data.issuedAt, data.siteTimeZone)}</Text>
               </View>
             ) : null}
           </View>

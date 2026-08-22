@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { updateJobAction, type UpdateJobState } from "@/app/(app)/jobs/actions";
-import { toLocalInputValue } from "@/lib/datetime";
+import { toZonedInputValue } from "@/lib/datetime";
+import { timeZoneAbbreviation } from "@/lib/format-date";
 import { FOLLOW_UP_CATEGORIES, FOLLOW_UP_CATEGORY_LABELS, type FollowUpCategory } from "@/lib/follow-up";
 
 const inputClass =
@@ -38,6 +39,7 @@ export function JobEditForm({
   trades,
   priorities,
   hasActiveAssignment,
+  siteTimeZone,
 }: {
   jobId: string;
   sourceType: string;
@@ -47,6 +49,8 @@ export function JobEditForm({
   trades: Option[];
   priorities: Option[];
   hasActiveAssignment: boolean;
+  /** The site's IANA zone — the basis this form and jobs/actions both use. */
+  siteTimeZone: string;
 }) {
   const [state, formAction, pending] = useActionState<UpdateJobState, FormData>(
     updateJobAction.bind(null, jobId),
@@ -128,12 +132,15 @@ export function JobEditForm({
           (a date requires a type) and treats a blank date as an explicit CLEAR of both. */}
       <div className="block">
         <span className="text-sm font-medium text-neutral-800">
-          Follow-up (next action) <span className="font-normal text-neutral-500">(optional — clear the date to remove)</span>
+          Follow-up (next action){" "}
+          <span className="font-normal text-neutral-500">
+            (optional — clear the date to remove · {timeZoneAbbreviation(siteTimeZone)} site time)
+          </span>
         </span>
         <input
           type="datetime-local"
           name="followUpAt"
-          defaultValue={toLocalInputValue(current.followUpAt)}
+          defaultValue={toZonedInputValue(current.followUpAt, siteTimeZone)}
           className={inputClass}
         />
         <select name="followUpCategory" defaultValue={current.followUpCategory ?? ""} className={inputClass}>

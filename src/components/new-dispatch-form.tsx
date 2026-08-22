@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { timeZoneAbbreviation } from "@/lib/format-date";
 import Link from "next/link";
 import {
   createDispatchAction,
@@ -39,6 +40,7 @@ export function NewDispatchForm({
   scopeFromProblem,
   noApprovedScope,
   defaultScheduledStart,
+  siteTimeZone,
   defaultNte,
   replacesAssignmentId,
 }: {
@@ -49,6 +51,8 @@ export function NewDispatchForm({
   scopeFromProblem: boolean;
   noApprovedScope: boolean;
   defaultScheduledStart: string;
+  /** The site's IANA zone — shown beside the schedule inputs so the operator knows the basis. */
+  siteTimeZone: string;
   /** Pre-filled from the replaced assignment on a re-dispatch. */
   defaultNte?: string;
   /** Gap 5: set when this dispatch replaces a cancelled one — carries the chain link. */
@@ -219,7 +223,15 @@ export function NewDispatchForm({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="block">
-          <span className="text-sm font-medium text-neutral-800">Scheduled start</span>
+          <span className="text-sm font-medium text-neutral-800">
+            Scheduled start{" "}
+            {/* ★ An <input type="datetime-local"> carries no zone of its own, so the basis has to
+                be stated in the label. Without it the operator assumes their own zone — which is
+                exactly the assumption that made the old browser-zone behaviour invisible. */}
+            <span className="font-normal text-neutral-500">
+              ({timeZoneAbbreviation(siteTimeZone)} — site time)
+            </span>
+          </span>
           <input
             type="datetime-local"
             name="scheduledStartAt"

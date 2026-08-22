@@ -24,6 +24,7 @@ import {
 } from "@/components/dispatch-facets";
 import { formatMoney } from "@/lib/money";
 import { formatDateTime } from "@/lib/format-date";
+import { getAssignmentSiteTimeZone } from "@/server/site-timezone";
 
 /** matched_geo_types_at_dispatch is JSON (longtext on MariaDB) — parse defensively. */
 function geoTypes(raw: unknown): string[] {
@@ -60,6 +61,11 @@ export default async function AssignmentDetailPage({
     : null;
   const replacedIsStillSent = isAgentRedispatchSuggestion(replacedAssignment?.statusCode);
 
+  // ★ Every time on this page — and in the forms below it — renders in the SITE's zone, labeled.
+  // The presence/ETA form posts back to actions that parse in the same zone; if the two ever
+  // disagree the stored instant silently shifts by the offset between them.
+  const siteTimeZone = await getAssignmentSiteTimeZone(tenantId, assignmentId);
+
   // Vendor-link controls: is there a deliverable recipient email, and the existing tokens.
   const recipientEmail = a.vendorContactId
     ? (await getVendorContact(tenantId, a.vendorContactId))?.email ?? null
@@ -76,8 +82,8 @@ export default async function AssignmentDetailPage({
     { label: "Vendor", value: a.vendorName },
     { label: "Branch", value: a.vendorLocationName ?? "Vendor-wide (no branch)" },
     { label: "Vendor contact", value: a.vendorContactName },
-    { label: "Scheduled start", value: formatDateTime(a.scheduledStartAt) },
-    { label: "Scheduled end", value: formatDateTime(a.scheduledEndAt) },
+    { label: "Scheduled start", value: formatDateTime(a.scheduledStartAt, siteTimeZone) },
+    { label: "Scheduled end", value: formatDateTime(a.scheduledEndAt, siteTimeZone) },
     { label: "Agreed NTE", value: a.agreedNteAmount ? formatMoney(a.agreedNteAmount) : null },
   ];
 
@@ -142,7 +148,7 @@ export default async function AssignmentDetailPage({
       <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
         <p className="text-xs uppercase tracking-wide text-neutral-500">Vendor updates</p>
         <div className="mt-2 flex flex-wrap items-start gap-3">
-          <RecordVendorPresence jobId={a.jobId} assignmentId={a.id} />
+          <RecordVendorPresence jobId={a.jobId} assignmentId={a.id} siteTimeZone={siteTimeZone} />
           {/* Gap 5 — outcome 1(c). Only while the dispatch is live: a cancellation cannot be
               recorded against something already closed, or against a vendor already on site. */}
           {(CANCELLABLE_ASSIGNMENT_STATUSES as readonly string[]).includes(a.statusCode) && (
