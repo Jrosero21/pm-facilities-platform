@@ -108,6 +108,25 @@ export default async function AssignmentDetailPage({
         <DispatchStatusBadge category={a.statusCategory} label={a.statusName} />
       </div>
 
+      {/* Gap 5 — make the chain link VISIBLE. replaces_assignment_id has always been stamped, but
+          only analytics could see it: a coordinator opening a replacement had no way to tell it was
+          one, or which dispatch it succeeded. Free to render — replacedAssignment is already loaded
+          above for the control-set gate. The replaced status is named rather than assumed, so this
+          reads truthfully on both paths (DECLINED for an operator cancellation, SENT for an agent
+          suggestion the operator has not approved yet). */}
+      {replacedAssignment && (
+        <p className="mt-2 text-sm text-neutral-600">
+          Replaces the dispatch to{" "}
+          <Link
+            href={`/jobs/${id}/dispatch/${replacedAssignment.id}`}
+            className="font-medium text-neutral-900 underline underline-offset-2 hover:text-neutral-700"
+          >
+            {replacedAssignment.vendorName}
+          </Link>{" "}
+          ({replacedAssignment.statusName.toLowerCase()}).
+        </p>
+      )}
+
       <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {facts.map((f) => (
           <div key={f.label} className="rounded-lg border border-neutral-200 bg-white p-4">
@@ -182,7 +201,17 @@ export default async function AssignmentDetailPage({
 
       {a.statusCode === "DRAFT" && (
         <div className="mt-6">
-          {a.replacesAssignmentId ? (
+          {/* ★ Gap 5 — which control set this DRAFT gets is decided by the REPLACED assignment's
+              state, never by the mere presence of replacesAssignmentId. Both re-dispatch paths stamp
+              that column, so it cannot tell them apart:
+
+                replaced still SENT  → agent suggestion, vendor went silent → Approve (ghosts them)
+                replaced DECLINED    → an operator already closed it because the vendor CALLED to
+                                       cancel → ordinary Send. Offering to "ghost the unresponsive
+                                       vendor" here would libel a vendor who did the right thing, and
+                                       approveRedispatch hard-guards STUCK_NO_LONGER_SENT so the
+                                       click would throw anyway. */}
+          {replacedIsStillSent ? (
             <ApproveRedispatchButton jobId={id} draftAssignmentId={assignmentId} />
           ) : (
             <>
