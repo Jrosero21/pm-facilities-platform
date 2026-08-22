@@ -73,7 +73,22 @@ export default async function NewDispatchPage({
 
   // MANUAL dispatch = geo is a search-aid, not a hard filter: out-of-area vendors appear (labeled),
   // in-area first. The autonomy floor is untouched (auto-dispatch passes no geoMode → enforce).
-  const candidates = await findCandidateVendorsForJob(tenantId, id, { geoMode: "search" });
+  const allCandidates = await findCandidateVendorsForJob(tenantId, id, { geoMode: "search" });
+
+  // ★ Gap 5 — ON A RE-DISPATCH, DROP THE VENDOR WHO JUST CANCELLED.
+  // The whole reason this form is open is that they pulled out; offering them back as the ranked
+  // best candidate (which they often are, on trade and geo) invites re-dispatching straight to the
+  // vendor who cancelled an hour ago. Filtering here rather than in the matcher keeps
+  // findCandidateVendorsForJob honest for every other caller — this is a UI-level exclusion for one
+  // specific flow, not a change to what "eligible" means.
+  const candidates = replaced
+    ? allCandidates.filter((c) => c.vendorId !== replaced.vendorId)
+    : allCandidates;
+
+  // Distinguish "no vendor covers this trade" from "the only one who does is the one who
+  // cancelled" — the second is a different problem with a different fix.
+  const onlyCandidateWasCancelled =
+    replaced !== null && candidates.length === 0 && allCandidates.length > 0;
 
   if (candidates.length === 0) {
     return (
@@ -81,7 +96,18 @@ export default async function NewDispatchPage({
         {crumb}
         <h1 className="mt-1 text-2xl font-semibold tracking-tight">Dispatch a vendor</h1>
         <div className="mt-6 max-w-xl rounded-lg border border-neutral-200 bg-white p-4">
-          <p className="text-sm font-medium text-neutral-900">No vendors match this job.</p>
+          <p className="text-sm font-medium text-neutral-900">
+            {onlyCandidateWasCancelled
+              ? "No other vendor matches this job."
+              : "No vendors match this job."}
+          </p>
+          {onlyCandidateWasCancelled ? (
+            <p className="mt-2 text-sm text-neutral-600">
+              The only vendor with active <span className="font-medium">{job.tradeName}</span>{" "}
+              coverage for this client is the one that just cancelled. Add coverage on another
+              vendor, or dispatch this one again from the job page if they can now attend.
+            </p>
+          ) : (
           <p className="mt-2 text-sm text-neutral-600">
             To dispatch, a vendor needs active{" "}
             <span className="font-medium">{job.tradeName}</span> coverage and must not be
@@ -89,6 +115,7 @@ export default async function NewDispatchPage({
             dispatched — so an empty list means no vendor has this trade. Add coverage on a
             vendor, or change the job&apos;s trade.
           </p>
+          )}
           <div className="mt-4">
             <Link
               href={`/jobs/${id}`}

@@ -75,6 +75,13 @@ export function NewDispatchForm({
 
   return (
     <form action={formAction} className="max-w-xl space-y-5">
+      {/* ★ Gap 5 — the chain link, hoisted OUT of the vendor picker. It previously sat inside the
+          single-candidate branch, so a job with two or more candidates silently dropped it and the
+          replacement was created unlinked. It belongs to the form, not to one rendering path. */}
+      {replacesAssignmentId ? (
+        <input type="hidden" name="replacesAssignmentId" value={replacesAssignmentId} />
+      ) : null}
+
       {/* --- vendor picker --- */}
       <div>
         <span className="text-sm font-medium text-neutral-800">
@@ -87,10 +94,6 @@ export function NewDispatchForm({
         {single ? (
           <>
             <input type="hidden" name="vendorId" value={selectedVendorId} />
-            {/* Gap 5 — the chain link. Only present on a re-dispatch; createDispatchAction reads it. */}
-            {replacesAssignmentId ? (
-              <input type="hidden" name="replacesAssignmentId" value={replacesAssignmentId} />
-            ) : null}
             <div className="mt-1 rounded-md border border-neutral-300 bg-neutral-50 p-3">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-medium text-neutral-900">
